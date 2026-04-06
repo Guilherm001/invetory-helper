@@ -1,14 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from "../ui/button"
+import { Button } from "@/components/ui/button"
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from "../ui/dialog"
+} from "@/components/ui/dialog"
 import { Plus } from 'lucide-react'
 import { useProducts } from '../../hooks/useProducts'
 
@@ -25,7 +25,7 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
     const [notes, setNotes] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const [errorMessage, setErrorMessage] = useState('')
-    
+
     const { addProduct } = useProducts()
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -48,7 +48,7 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
             setPriority('Média')
             setStatus('Pendente')
             setNotes('')
-            
+
             if (onProductAdded) onProductAdded()
         } catch (error: any) {
             setErrorMessage(error.message || 'Erro ao salvar produto')

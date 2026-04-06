@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from "../ui/button"
+import { Button } from "@/components/ui/button"
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-} from "../ui/dialog"
+} from "@/components/ui/dialog"
 import { Product } from '../../hooks/useProducts'
 
 interface EditProductDialogProps {

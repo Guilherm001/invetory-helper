@@ -17,12 +17,15 @@ export function useProducts() {
   const fetchProducts = useCallback(async () => {
     setLoading(true)
     try {
+      console.log('Fetching products...')
       const response = await fetch("/api/products")
+      console.log('Response status:', response.status)
       if (!response.ok) throw new Error("Erro ao buscar produtos")
       const data = await response.json()
+      console.log('Data received:', data)
       setProducts(data)
     } catch (error) {
-      console.error(error)
+      console.error('Error fetching products:', error)
     } finally {
       setLoading(false)
     }

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useProducts, Product } from '../../hooks/useProducts'
-import ProductsTable from './ProductsTable'
+import { ProductsTable } from './ProductsTable'
 import EditProductDialog from './EditProductDialog'
 
 export default function ListaProdutos() {
@@ -42,12 +42,12 @@ export default function ListaProdutos() {
 
     return (
         <div className="py-6">
-            <ProductsTable 
-                products={products} 
-                onEdit={handleEdit} 
-                onDelete={handleDelete} 
+            <ProductsTable
+                products={products}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
             />
-            
+
             <EditProductDialog
                 open={dialogOpen}
                 product={editingProduct}
