@@ -14,7 +14,6 @@ export async function getAllProducts() {
   const { data, error } = await supabase
     .from("products")
     .select("*")
-    // Removida a ordenação por created_at para evitar erro se a coluna não existir
     .order("name", { ascending: true })
 
   if (error) throw new Error(error.message)
