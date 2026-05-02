@@ -10,6 +10,8 @@ export default function ListaProdutos() {
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingProduct, setEditingProduct] = useState<Product | null>(null)
 
+    
+
     const handleEdit = (product: Product) => {
         setEditingProduct(product)
         setDialogOpen(true)

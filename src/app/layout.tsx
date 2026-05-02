@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import {Header } from "../components/body/body"
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+
+
 
 export const metadata: Metadata = {
   title: "Inventory Helper",
@@ -24,10 +19,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body>
+        <main className="flex flex-col max-w-300 min-w-100 m-auto h-screen bg-white">
+          <div className="sticky top-0 z-10 bg-white border-b border-gray-200 py-4 px-4 md:py-0 md:border-b-0 md:px-10 md:m-10">
+            <Header />
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 md:px-10">
+            {children}
+          </div>
+        </main>
+
       </body>
     </html>
   );
