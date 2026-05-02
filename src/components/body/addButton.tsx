@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dialog"
 import { Plus } from 'lucide-react'
 import { useProducts } from '../../hooks/useProducts'
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group'
+import { Label } from '../ui/label'
 
 interface BotaoAddProps {
     onProductAdded?: () => void
@@ -50,8 +52,8 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
             setNotes('')
 
             if (onProductAdded) onProductAdded()
-        } catch (error: any) {
-            setErrorMessage(error.message || 'Erro ao salvar produto')
+        } catch (error: unknown) {
+            setErrorMessage((error as Error).message || 'Erro ao salvar produto')
         } finally {
             setIsSaving(false)
         }
@@ -93,30 +95,61 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
                             />
                         </div>
                         <div className="space-y-2">
+                            
+                            
                             <label className="text-sm font-medium text-gray-700">Prioridade</label>
-                            <select
-                                value={priority}
-                                onChange={(e) => setPriority(e.target.value)}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                            <RadioGroup
+                              value={priority}
+                            onValueChange={(value) => setPriority(value)}
+                            className="w-full p-2"
                             >
-                                <option value="Baixa">Baixa</option>
-                                <option value="Média">Média</option>
-                                <option value="Alta">Alta</option>
-                            </select>
-                        </div>
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Baixa" id="baixa" />
+                                <Label htmlFor="baixa">Baixa</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Média" id="media" />
+                                <Label htmlFor="media">Média</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Alta" id="alta" />
+                                <Label htmlFor="alta">Alta</Label>
+                              </div>
+                            </RadioGroup>
+                            
+                        
+                        </div>        
                     </div>
+                    
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Status</label>
-                        <select
+                        
+                        <RadioGroup
+                        
                             value={status}
-                            onChange={(e) => setStatus(e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                        >
-                            <option value="Pendente">Pendente</option>
-                            <option value="Em progresso">Em progresso</option>
-                            <option value="Concluído">Concluído</option>
-                        </select>
+                            onValueChange={(value) => setStatus(value)}
+                            className=" flex"
+                        
+                            >
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Pendente" id="pendente" />
+                                <Label htmlFor="pendente">Pendente</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Em progresso" id="progresso" />
+                                <Label htmlFor="progresso">Em progresso</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Concluído" id="concluido" />
+                                <Label htmlFor="concluido">Concluído</Label>
+                              </div>
+                            </RadioGroup>
                     </div>
+                    
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Notas</label>
                         <textarea

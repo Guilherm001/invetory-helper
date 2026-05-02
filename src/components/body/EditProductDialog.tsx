@@ -9,6 +9,9 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Product } from '../../hooks/useProducts'
+import {Label} from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+
 
 interface EditProductDialogProps {
     open: boolean
@@ -78,28 +81,54 @@ export default function EditProductDialog({ open, product, onClose, onSave }: Ed
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Prioridade</label>
-                            <select
-                                value={formData.priority || 'Média'}
-                                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                            <RadioGroup
+                              value={formData.priority || "Média"}
+                              onValueChange={(value) =>
+                                setFormData({ ...formData, priority: value })
+                              }
                             >
-                                <option value="Baixa">Baixa</option>
-                                <option value="Média">Média</option>
-                                <option value="Alta">Alta</option>
-                            </select>
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Baixa" id="baixa" />
+                                <Label htmlFor="baixa">Baixa</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Média" id="media" />
+                                <Label htmlFor="media">Média</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Alta" id="alta" />
+                                <Label htmlFor="alta">Alta</Label>
+                              </div>
+                            </RadioGroup>
+                            
                         </div>
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Status</label>
-                        <select
-                            value={formData.status || 'Pendente'}
-                            onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                        >
-                            <option value="Pendente">Pendente</option>
-                            <option value="Em progresso">Em progresso</option>
-                            <option value="Concluído">Concluído</option>
-                        </select>
+                        <RadioGroup
+                            className='flex'
+                              value={formData.status || "Pendente"}
+                              onValueChange={(value) =>
+                                setFormData({ ...formData, status: value })
+                              }
+                            >
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Pendente" id="pendente" />
+                                <Label htmlFor="pendente">Pendente</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Em progresso" id="progresso" />
+                                <Label htmlFor="progresso">Em progresso</Label>
+                              </div>
+                          
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="Concluído" id="concluido" />
+                                <Label htmlFor="concluido">Concluído</Label>
+                              </div>
+                            </RadioGroup>
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Notas</label>
