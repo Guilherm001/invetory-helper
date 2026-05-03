@@ -29,14 +29,16 @@ export function Header() {
     }
     return (
         <div>
-            <div>
+            <div className="flex items-center justify-between py-4 px-4 md:py-0 md:px-10 md:m-10">
                     <div>
+                        <img src="logo.png" alt="Logo" className="h-30 w-auto" />
                     </div>
                     <div className="flex justify-end">
                         <Link href="/note">Adicionar Nota</Link>
+                        
                         <BotaoAdd onProductAdded={handleProductAdded} />
                     </div>
-                </div>
+            </div>
         </div>
     )
 }
