@@ -45,16 +45,20 @@ export default function NotesPage() {
         title="Alta Prioridade"
         notes={altaPriority}
         colorClass="text-red-500"
+        bgclass="bg-red-100"
       />
       <NoteCard
         title="Média Prioridade"
         notes={mediaPriority}
         colorClass="text-yellow-500"
+        bgclass="bg-yellow-100"
+
       />
       <NoteCard
         title="Baixa Prioridade"
         notes={baixaPriority}
         colorClass="text-green-500"
+        bgclass="bg-green-100"
       />
     </div>
   );

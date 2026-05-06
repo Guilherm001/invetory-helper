@@ -17,19 +17,20 @@ interface NoteCardProps {
   title: string;
   notes: Note[];
   colorClass: string;
+  bgclass: string;
 }
 
-export default function NoteCard({ title, notes, colorClass }: NoteCardProps) {
+export default function NoteCard({ title, notes, colorClass, bgclass }: NoteCardProps) {
   return (
-    <div className="flex-1 border rounded-lg p-4">
+    <div className={`flex-1 border rounded-lg p-4 `}>
       <h2 className={`font-bold text-lg mb-2 ${colorClass}`}>{title}</h2>
       {notes.length === 0 ? (
         <p className="text-sm text-gray-400">Nenhuma nota</p>
       ) : (
         notes.map((note) => (
-          <HoverCard key={note.id} openDelay={10} closeDelay={100}>
+          <HoverCard key={note.id} openDelay={10} closeDelay={100}  >
             <HoverCardTrigger asChild>
-              <Button variant="destructive" className="w-full mb-2">
+              <Button variant="ghost" className={`w-full mb-2 ${bgclass}`}>
                 {note.title}
               </Button>
             </HoverCardTrigger>
