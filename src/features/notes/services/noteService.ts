@@ -10,9 +10,8 @@ export interface Note {
 export class NotesService {
     async getAllNotes(): Promise<Note[]> {
         const { data, error } = await supabase
-            .from("notas")
+            .from("note")
             .select("*")
-            .order("created_at", { ascending: false });
 
         if (error) {
             console.error('[NotesService] getAllNotes error:', error.message)
@@ -21,3 +20,4 @@ export class NotesService {
         return data;
     }
 }
+
