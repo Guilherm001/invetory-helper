@@ -35,6 +35,9 @@ export function useProducts() {
     fetchProducts()
   }, [fetchProducts])
 
+
+
+  
   const addProduct = async (product: Omit<Product, "id" | "created_at">) => {
     const response = await fetch("/api/products", {
       method: "POST",

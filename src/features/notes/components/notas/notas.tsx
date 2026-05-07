@@ -23,7 +23,7 @@ interface NoteCardProps {
 export default function NoteCard({ title, notes, colorClass, bgclass }: NoteCardProps) {
   return (
     <div className={`flex-1 border rounded-lg p-4 `}>
-      <h2 className={`font-bold text-lg mb-2 ${colorClass}`}>{title}</h2>
+      <h1 className={`font-bold text-lg mb-2 ${colorClass}`}>{title}</h1>
       {notes.length === 0 ? (
         <p className="text-sm text-gray-400">Nenhuma nota</p>
       ) : (
