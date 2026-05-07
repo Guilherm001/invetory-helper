@@ -9,6 +9,7 @@ export async function GET() {
         const notes = await notesService.getAllNotes();
         return NextResponse.json(notes);
     } catch (err) {
+
         return NextResponse.json(
             { error: "Erro interno" },
             { status: 500 }

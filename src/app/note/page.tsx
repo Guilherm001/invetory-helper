@@ -7,7 +7,7 @@ import Notes from '@/features/notes/page' // ajuste o caminho se precisar
 export default function Note() {
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchNotes = async () => {
     setLoading(true)
@@ -17,9 +17,11 @@ export default function Note() {
       const data = await res.json()
       setNotes(data)
     } catch (err) {
-      setError(error.message)
-    } finally {
-      setLoading(false)
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("Erro desconhecido")
+      }
     }
   }
 
