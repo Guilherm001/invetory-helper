@@ -8,12 +8,12 @@ export async function GET() {
         const notesService = new NotesService();
         const notes = await notesService.getAllNotes();
         return NextResponse.json(notes);
-    } catch (error:unknown) {
+    } catch (err) {
         return NextResponse.json(
-            {error: "Erro interno"},
-            {status: 500}
+            { error: "Erro interno" },
+            { status: 500 }
         )
-    } 
+    }
 }
 
 export async function POST(request: Request) {
@@ -21,8 +21,8 @@ export async function POST(request: Request) {
         const body = await request.json();
         if (!body.title) {
             return NextResponse.json(
-                {error: "O campo 'title' é obrigatório"},
-                {status: 400}
+                { error: "O campo 'title' é obrigatório" },
+                { status: 400 }
             )
         }
         const newNote = await createNote({
@@ -31,11 +31,11 @@ export async function POST(request: Request) {
             notes: body.notes
         });
         return NextResponse.json(newNote, { status: 201 });
-    } catch (error: unknown) {
-        console.error("Erro ao criar nota:", error);
+    } catch (err) {
+        console.error("Erro ao criar nota:", err);
         return NextResponse.json(
-            {error: "Erro interno"},
-            {status: 500}
+            { error: "Erro interno" },
+            { status: 500 }
         )
 
     }
