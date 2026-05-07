@@ -31,12 +31,12 @@ export default function AddNoteButton({ onNoteAdded }: AddNotasProps) {
   // Supondo que useNotes() tenha um método addNote
   const { addNote } = useNotes()
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsSaving(true)
     setErrorMessage('')
 
-     try {
+    try {
       await addNote({ title, priority, notes })
       // Sucesso! Limpa, fecha e AVISA O PAI
       setOpen(false)
