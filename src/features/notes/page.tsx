@@ -14,8 +14,7 @@ interface NotesProps {
   error: string | null
 }
 
-export default function Notes({ notes, loading, error }: NotesProps) {
-  if (loading) return <div>Carregando...</div>
+export default function Notes({ notes, error }: NotesProps) {
   if (error) return <div>Erro: {error}</div>
 
   const altaPriority = notes.filter(n => n.priority === 'alta')
