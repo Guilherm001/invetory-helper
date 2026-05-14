@@ -1,3 +1,4 @@
+import { get } from "http"
 import { supabase } from "../lib/supabase"
 
 export interface Product {
@@ -10,14 +11,18 @@ export interface Product {
   created_at?: string
 }
 
-export async function getAllProducts() {
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .order("created_at", { ascending: false })
-
-  if (error) throw new Error(error.message)
-  return data
+export class ListProducts {
+  async getAllProducts(): Promise<Product[]> {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+    
+      if (error) {
+        throw new Error(error.message)
+      }
+      
+      return data
+    }
 }
 
 export async function createProduct(product: Omit<Product, "id" | "created_at">) {

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
-import { getAllProducts, createProduct } from "@/services/listService"
+import { ListProducts, createProduct } from "@/services/listService"
 
 export async function GET() {
   try {
-    const products = await getAllProducts()
-    return NextResponse.json(products)
-  } catch (error: unknown) {
-    console.error("Erro ao buscar produtos:", error)
+    const products = new ListProducts();
+    const product = await products.getAllProducts()
+    return NextResponse.json(product)
+  } catch (err) {
+    console.error("Erro ao buscar produtos:", err)
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })
   }
 }
@@ -28,8 +29,8 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json(newProduct, { status: 201 })
-  } catch (error: unknown) {
-    console.error("Erro ao criar produto:", error)
+  } catch (err) {
+    console.error("Erro ao criar produto:", err)
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })
   }
 }
