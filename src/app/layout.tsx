@@ -20,7 +20,7 @@ export default function RootLayout({
           <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
             <div className="flex items-center justify-between px-4 py-4 md:px-10">
               <Link href="/">
-                <img src="/logo.png" alt="Logo" className="h-10 w-auto" />
+                <img src="/logo.png" alt="Logo" className="h-40 w-auto" />
               </Link>
               <nav className="flex items-center gap-3">
                 <Link
