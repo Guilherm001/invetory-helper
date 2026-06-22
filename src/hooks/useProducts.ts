@@ -13,9 +13,11 @@ export interface Product {
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchProducts = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       console.log('Fetching products...')
       const response = await fetch("/api/products")
@@ -25,7 +27,9 @@ export function useProducts() {
       console.log('Data received:', data)
       setProducts(data)
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido'
       console.error('Error fetching products:', error)
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -75,6 +79,7 @@ export function useProducts() {
   return {
     products,
     loading,
+    error,
     deleteProduct,
     updateProduct,
     addProduct,

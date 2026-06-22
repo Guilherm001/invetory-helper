@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import {Header } from "../components/body/body"
-
-
-
-
 
 export const metadata: Metadata = {
   title: "Inventory Helper",
@@ -19,16 +14,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body     >
+      <body>
         <main className="flex flex-col max-w-300 min-w-100 m-auto h-screen bg-white">
-          <div >
-            <Header />
-          </div>
           <div className="flex-1 overflow-y-auto px-4 md:px-10">
             {children}
           </div>
         </main>
-
       </body>
     </html>
   );

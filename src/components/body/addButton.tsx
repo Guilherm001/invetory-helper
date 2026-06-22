@@ -1,24 +1,24 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from "@/components/ui/button"
+import { Button } from '@/components/ui/button'
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog'
 import { Plus } from 'lucide-react'
-import { useProducts } from '../../hooks/useProducts'
+import { Product } from '../../hooks/useProducts'
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group'
 import { Label } from '../ui/label'
 
 interface BotaoAddProps {
-    onProductAdded?: () => void
+    addProduct: (product: Omit<Product, 'id' | 'created_at'>) => Promise<Product>
 }
 
-export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
+export default function BotaoAdd({ addProduct }: BotaoAddProps) {
     const [open, setOpen] = useState(false)
     const [name, setName] = useState('')
     const [quantity, setQuantity] = useState(1)
@@ -27,8 +27,6 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
     const [notes, setNotes] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const [errorMessage, setErrorMessage] = useState('')
-
-    const { addProduct } = useProducts()
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -41,7 +39,7 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
                 quantity,
                 priority,
                 status,
-                notes
+                notes,
             })
 
             setOpen(false)
@@ -50,8 +48,6 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
             setPriority('Média')
             setStatus('Pendente')
             setNotes('')
-
-            if (onProductAdded) onProductAdded()
         } catch (error: unknown) {
             setErrorMessage((error as Error).message || 'Erro ao salvar produto')
         } finally {
@@ -95,61 +91,48 @@ export default function BotaoAdd({ onProductAdded }: BotaoAddProps) {
                             />
                         </div>
                         <div className="space-y-2">
-                            
-                            
                             <label className="text-sm font-medium text-gray-700">Prioridade</label>
                             <RadioGroup
-                              value={priority}
-                            onValueChange={(value) => setPriority(value)}
-                            className="w-full p-2"
+                                value={priority}
+                                onValueChange={(value) => setPriority(value)}
+                                className="w-full p-2"
                             >
-                              <div className="flex items-center gap-3">
-                                <RadioGroupItem value="Baixa" id="baixa" />
-                                <Label htmlFor="baixa">Baixa</Label>
-                              </div>
-                          
-                              <div className="flex items-center gap-3">
-                                <RadioGroupItem value="Média" id="media" />
-                                <Label htmlFor="media">Média</Label>
-                              </div>
-                          
-                              <div className="flex items-center gap-3">
-                                <RadioGroupItem value="Alta" id="alta" />
-                                <Label htmlFor="alta">Alta</Label>
-                              </div>
+                                <div className="flex items-center gap-3">
+                                    <RadioGroupItem value="Baixa" id="baixa" />
+                                    <Label htmlFor="baixa">Baixa</Label>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <RadioGroupItem value="Média" id="media" />
+                                    <Label htmlFor="media">Média</Label>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <RadioGroupItem value="Alta" id="alta" />
+                                    <Label htmlFor="alta">Alta</Label>
+                                </div>
                             </RadioGroup>
-                            
-                        
-                        </div>        
+                        </div>
                     </div>
-                    
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Status</label>
-                        
                         <RadioGroup
-                        
                             value={status}
                             onValueChange={(value) => setStatus(value)}
-                            className=" flex"
-                        
-                            >
-                              <div className="flex items-center gap-3">
+                            className="flex"
+                        >
+                            <div className="flex items-center gap-3">
                                 <RadioGroupItem value="Pendente" id="pendente" />
                                 <Label htmlFor="pendente">Pendente</Label>
-                              </div>
-                          
-                              <div className="flex items-center gap-3">
+                            </div>
+                            <div className="flex items-center gap-3">
                                 <RadioGroupItem value="Em progresso" id="progresso" />
                                 <Label htmlFor="progresso">Em progresso</Label>
-                              </div>
-                          
-                              <div className="flex items-center gap-3">
+                            </div>
+                            <div className="flex items-center gap-3">
                                 <RadioGroupItem value="Concluído" id="concluido" />
                                 <Label htmlFor="concluido">Concluído</Label>
-                              </div>
-                            </RadioGroup>
+                            </div>
+                        </RadioGroup>
                     </div>
-                    
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Notas</label>
                         <textarea

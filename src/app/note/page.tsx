@@ -2,7 +2,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import AddNotas from '@/features/notes/components/addnotas/addNotas'
-import Notes from '@/features/notes/page' // ajuste o caminho se precisar
+import Notes from '@/features/notes/page' 
 
 export default function Note() {
   const [notes, setNotes] = useState([])
