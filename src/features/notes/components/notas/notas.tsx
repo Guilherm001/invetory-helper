@@ -4,6 +4,7 @@ import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
+  
 } from "@/components/ui/hover-card";
 
 interface Note {
@@ -28,10 +29,16 @@ export default function NoteCard({ title, notes, colorClass, bgclass }: NoteCard
         <p className="text-sm text-gray-400">Nenhuma nota</p>
       ) : (
         notes.map((note) => (
-          <HoverCard key={note.id} openDelay={10} closeDelay={100}  >
+          <HoverCard key={note.id} openDelay={10} closeDelay={100} >
             <HoverCardTrigger asChild>
               <Button variant="ghost" className={`w-full mb-2 ${bgclass}`}>
                 {note.title}
+                
+              </Button>
+            </HoverCardTrigger>
+            <HoverCardTrigger>
+              <Button>
+                tst
               </Button>
             </HoverCardTrigger>
             <HoverCardContent className="flex w-64 flex-col gap-0.5">
@@ -40,7 +47,9 @@ export default function NoteCard({ title, notes, colorClass, bgclass }: NoteCard
               </div>
               <div>{note.notes}</div>
             </HoverCardContent>
+            
           </HoverCard>
+
         ))
       )}
     </div>
