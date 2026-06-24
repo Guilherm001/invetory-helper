@@ -10,9 +10,9 @@ interface ProductsMobileProps {
 
 export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobileProps) {
     const handleDelete = (id: string) => {
-        if (confirm('Tem certeza que deseja deletar este produto?')) {
+        
             onDelete(id);
-        }
+        
     };
 
     return (
