@@ -49,7 +49,7 @@ export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobilePro
                 </div>
                 
             ))}
-            <div className="flex justify-center py-4 ">
+            <div className="fixed bottom-0 left-0 w-full p-4 bg-white md:hidden">
                 <BotaoAdd addProduct={addProduct} />
             </div>
         </div>

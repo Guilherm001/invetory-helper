@@ -58,7 +58,7 @@ export default function BotaoAdd({ addProduct }: BotaoAddProps) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg flex items-center gap-2 transition-colors w-full md:w-auto justify-center">
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg flex items-center gap-2 transition-colors w-full md:w-auto justify-center ">
                     <Plus className="w-5 h-5" />
                     Adicionar Produto
                 </Button>
