@@ -16,9 +16,9 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
             return;
         }
         
-        if (confirm('Tem certeza que deseja deletar este produto?')) {
+        
             onDelete(id);
-        }
+        
     };
 
     return (
