@@ -1,7 +1,8 @@
 'use client';
 
-import { Product } from '@/hooks/useProducts';
+import { Product, useProducts } from '@/hooks/useProducts';
 import { ProductsMobile } from './ProductsMobile';
+import BotaoAdd from './addButton';
 
 interface ProductsTableProps {
     products: Product[];
@@ -16,15 +17,26 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
             return;
         }
         
-        
+        if (confirm('Tem certeza que deseja deletar este produto?')) {
             onDelete(id);
-        
+        }
     };
+    const {
+        
+        addProduct,
+      } = useProducts()
 
     return (
         <>
+
+            
+
             {/* Desktop */}
             <div className="hidden md:block overflow-x-auto">
+                <div className="flex justify-end py-4">
+                    <BotaoAdd addProduct={addProduct} />
+                  </div>
+                   
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b text-left text-gray-600 font-medium">
@@ -81,3 +93,6 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
         </>
     );
 }
+
+
+

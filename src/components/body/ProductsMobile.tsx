@@ -1,6 +1,8 @@
 'use client'
 
-import { Product } from '@/hooks/useProducts';
+import { Product, useProducts } from '@/hooks/useProducts';
+import BotaoAdd from './addButton';
+
 
 interface ProductsMobileProps {
     products: Product[];
@@ -14,6 +16,10 @@ export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobilePro
             onDelete(id);
         
     };
+    const {
+        
+        addProduct,
+      } = useProducts()
 
     return (
         <div className="space-y-3">
@@ -41,7 +47,11 @@ export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobilePro
                         </button>
                     </div>
                 </div>
+                
             ))}
+            <div className="flex justify-center py-4 ">
+                <BotaoAdd addProduct={addProduct} />
+            </div>
         </div>
     );
 }
