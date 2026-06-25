@@ -1,3 +1,4 @@
+import { supabase } from "@/lib/supabase"
 import { useState, useEffect, useCallback } from "react"
 
 export interface Product {
@@ -36,8 +37,28 @@ export function useProducts() {
   }, [])
 
   useEffect(() => {
+  fetchProducts()
+
+  const channel = supabase
+    .channel("products-changes")
+    .on(
+  "postgres_changes",
+  {
+    event: "*",
+    schema: "public",
+    table: "products",
+  },
+  (payload) => {
+    console.log("Mudança detectada:", payload)
     fetchProducts()
-  }, [fetchProducts])
+  }
+)
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [fetchProducts])
 
 
 
