@@ -16,6 +16,9 @@ export function Body() {
 
   return (
     <div>
+      <div className="flex justify-end py-4 hidden md:block ">
+        <BotaoAdd addProduct={addProduct} />
+       </div>
       
       <Corpo
         products={products}
@@ -25,6 +28,9 @@ export function Body() {
         updateProduct={updateProduct}
       />
 
+      <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
+            <BotaoAdd addProduct={addProduct} />
+      </div>
       
     </div>
 

@@ -1,7 +1,6 @@
 'use client'
 
-import { Product, useProducts } from '@/hooks/useProducts';
-import BotaoAdd from './addButton';
+import { Product } from '@/hooks/useProducts';
 
 
 interface ProductsMobileProps {
@@ -16,13 +15,9 @@ export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobilePro
             onDelete(id);
         
     };
-    const {
-        
-        addProduct,
-      } = useProducts()
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-3 pb-20">
             {products.map((product) => (
                 <div
                     key={product.id}
@@ -49,9 +44,7 @@ export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobilePro
                 </div>
                 
             ))}
-            <div className="fixed bottom-0 left-0 w-full p-4 bg-white md:hidden">
-                <BotaoAdd addProduct={addProduct} />
-            </div>
+            
         </div>
     );
 }
