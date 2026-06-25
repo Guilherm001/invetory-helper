@@ -63,14 +63,7 @@ export default function BotaoAdd({ addProduct }: BotaoAddProps) {
                     Adicionar Produto
                 </Button>
             </DialogTrigger>
-            <DialogContent className="
-    bg-white
-    sm:max-w-[425px]
-    max-h-[90vh]
-    overflow-y-auto
-    top-[5%]
-    translate-y-0
-  ">
+            <DialogContent className=" bg-white sm:max-w-[425px] max-h-[90vh] overflow-y-auto top-[5%] translate-y-0 ">
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold text-gray-900">Novo Produto</DialogTitle>
                 </DialogHeader>

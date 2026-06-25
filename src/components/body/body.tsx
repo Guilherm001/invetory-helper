@@ -15,8 +15,8 @@ export function Body() {
   } = useProducts()
 
   return (
-    <div>
-      <div className="flex justify-end py-4 hidden md:block ">
+    <div  >
+      <div className="flex justify-end py-4 hidden md:block ml-9">
         <BotaoAdd addProduct={addProduct} />
        </div>
       
