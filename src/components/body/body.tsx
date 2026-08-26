@@ -16,9 +16,15 @@ export function Body() {
 
   return (
     <div className='w-sceen' >
-      <div className="flex justify-end py-4 hidden md:block justify-self-end mr-10 ">
-        <BotaoAdd addProduct={addProduct} />
-       </div>
+      <div className=' flex py-4 justify-between'>
+        <article>
+          <h3 className="font-bold text-2xl">Lista de produtos</h3>
+          <p className='text-gray-400 text-sm'>Gerencie e acompanhe todos os produtos Cadastrados.</p>
+        </article>
+        <div className="flex justify-end  hidden md:block  mr-10 ">
+          <BotaoAdd addProduct={addProduct} />
+         </div>
+      </div>
       
       <Corpo
         products={products}
