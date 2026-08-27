@@ -5,7 +5,7 @@ import BotaoAdd from './addButton'
 import Cards from './cards'
 import Corpo from './corpo'
 import { InputDemo } from './input'
-import { NativeSelectDemo } from './select'
+import {  SelectDemo } from './select'
 
 export function Body() {
   const {
@@ -35,17 +35,19 @@ export function Body() {
       <div className='shadow-xl/20 p-6 rounded-lg'>
         <div className='flex items-center gap-4 max-w-150  '>
           <InputDemo/>
-          <NativeSelectDemo/>
-          <NativeSelectDemo/>
+          <SelectDemo />
+          <SelectDemo/>
 
         </div>
-        <Corpo
-          products={products}
-          loading={loading}
-          error={error}
-          deleteProduct={deleteProduct}
-          updateProduct={updateProduct}
-        />
+        <div>
+          <Corpo
+            products={products}
+            loading={loading}
+            error={error}
+            deleteProduct={deleteProduct}
+            updateProduct={updateProduct}
+          />
+        </div>
       </div>
 
       <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">

@@ -1,16 +1,35 @@
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select"
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
-export function NativeSelectDemo() {
+const items = [
+  { label: "Baixa", value: "Baixa" },
+  { label: "Media", value: "Media" },
+  { label: "Alta prioridade", value: "Alta prioridade" },
+]
+
+export function SelectDemo() {
   return (
-    <NativeSelect>
-      <NativeSelectOption value="">Select status</NativeSelectOption>
-      <NativeSelectOption value="todo">Todo</NativeSelectOption>
-      <NativeSelectOption value="in-progress">In Progress</NativeSelectOption>
-      <NativeSelectOption value="done">Done</NativeSelectOption>
-      <NativeSelectOption value="cancelled">Cancelled</NativeSelectOption>
-    </NativeSelect>
+    <Select items={items} >
+      <SelectTrigger className="w-full max-w-30 h-full max-h-10">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>Status</SelectLabel>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
