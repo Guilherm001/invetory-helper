@@ -4,6 +4,8 @@ import { useProducts } from '../../hooks/useProducts'
 import BotaoAdd from './addButton'
 import Cards from './cards'
 import Corpo from './corpo'
+import { InputDemo } from './input'
+import { NativeSelectDemo } from './select'
 
 export function Body() {
   const {
@@ -30,14 +32,21 @@ export function Body() {
       <Cards />
 
       
-      
-      <Corpo
-        products={products}
-        loading={loading}
-        error={error}
-        deleteProduct={deleteProduct}
-        updateProduct={updateProduct}
-      />
+      <div className='shadow-xl/20 p-6 rounded-lg'>
+        <div className='flex items-center gap-4 max-w-150  '>
+          <InputDemo/>
+          <NativeSelectDemo/>
+          <NativeSelectDemo/>
+
+        </div>
+        <Corpo
+          products={products}
+          loading={loading}
+          error={error}
+          deleteProduct={deleteProduct}
+          updateProduct={updateProduct}
+        />
+      </div>
 
       <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
             <BotaoAdd addProduct={addProduct} />

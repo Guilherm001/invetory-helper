@@ -28,7 +28,7 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
             
 
             {/* Desktop */}
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto shadow-xl/20 rounded-lg">
                 
                    
                 <table className="w-full border-collapse">
