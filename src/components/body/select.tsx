@@ -16,7 +16,7 @@ const items = [
 
 export function SelectDemo() {
   return (
-    <Select items={items} >
+    <Select  >
       <SelectTrigger className="w-full max-w-30 h-full max-h-10" >
         <SelectValue />
       </SelectTrigger>
