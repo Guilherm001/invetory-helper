@@ -5,6 +5,7 @@ import { Product } from '../../hooks/useProducts'
 import { ProductsTable } from './ProductsTable'
 import EditProductDialog from './EditProductDialog'
 
+
 interface ProductsProps {
   products: Product[]
   loading: boolean
@@ -30,8 +31,8 @@ export default function ListaProdutos({
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este produto?')) return
     setActionLoading(true)
+    
     try {
       await deleteProduct(id)
     } catch (error) {

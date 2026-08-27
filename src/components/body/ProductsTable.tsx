@@ -4,7 +4,17 @@ import { Product} from '@/hooks/useProducts';
 import { ProductsMobile } from './ProductsMobile';
 import { CiTrash } from "react-icons/ci";
 import { CiEdit } from "react-icons/ci";
-
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 interface ProductsTableProps {
     products: Product[];
     onEdit: (product: Product) => void;
@@ -75,12 +85,39 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                                     >
                                         <CiEdit className='h-8 w-8 ' color="#079C9C"/>
                                     </button>
-                                    <button
-                                        onClick={() => handleDelete(product.id)}
-                                        className="px-3 py-1  rounded hover:bg-[#f8c1c1] text-sm transition font-medium"
-                                    >
-                                        <CiTrash className='h-8 w-8 text-red-700' />
-                                    </button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <button
+                                          type="button"
+                                          className="px-3 py-1 rounded hover:bg-[#f8c1c1] text-sm transition font-medium"
+                                        >
+                                          <CiTrash className="h-8 w-8 text-red-700" />
+                                        </button>
+                                      </AlertDialogTrigger>
+                                                                        
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
+                                                                        
+                                          <AlertDialogDescription>
+                                            Tem certeza que deseja excluir o produto{" "}
+                                            <strong>{product.name}</strong>? Essa ação não poderá ser desfeita.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                                                        
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                        
+                                          <AlertDialogAction
+                                            onClick={() => handleDelete(product.id)}
+                                            className="bg-red-600 text-white hover:bg-red-700"
+                                          >
+                                            Excluir produto
+                                          </AlertDialogAction>
+                                          
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
                                 </td>
                             </tr>
                         ))}
