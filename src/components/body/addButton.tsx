@@ -59,7 +59,7 @@ export default function BotaoAdd({ addProduct }: BotaoAddProps) {
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <Button className="relative flex flex-1 items-center justify-center gap-2
-                    px-6 py-4 text-base font-medium text-white bg-[#079C9C]
+                    px-6 py-5 text-base font-medium text-white bg-[#079C9C]
                     transition-colors duration-200
                     hover:bg-slate-50 hover:text-[#079C9C]">
                     <Plus className="w-5 h-5" />

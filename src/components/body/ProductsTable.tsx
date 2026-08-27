@@ -33,7 +33,7 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                    
                 <table className="w-full border-collapse">
                     <thead>
-                        <tr className="border-b text-left text-gray-600 font-medium">
+                        <tr className="border-b text-left text-gray-700 font-medium">
                             <th className="py-2 px-2">Produto</th>
                             <th className="py-2 px-2">Qtd</th>
                             <th className="py-2 px-2">Prioridade</th>
