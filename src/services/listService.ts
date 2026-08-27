@@ -20,8 +20,18 @@ export class ListProducts {
       if (error) {
         throw new Error(error.message)
       }
+
+      const priorityOrder = {
+      Alta: 1,
+      Média: 2,
+      Baixa: 3,
+    }
       
-      return data
+      return data.sort(
+      (a, b) =>
+        priorityOrder[a.priority as keyof typeof priorityOrder] -
+        priorityOrder[b.priority as keyof typeof priorityOrder]
+    )
     }
 }
 
