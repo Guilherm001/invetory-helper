@@ -2,6 +2,8 @@
 
 import { Product} from '@/hooks/useProducts';
 import { ProductsMobile } from './ProductsMobile';
+import { CiTrash } from "react-icons/ci";
+import { CiEdit } from "react-icons/ci";
 
 interface ProductsTableProps {
     products: Product[];
@@ -59,15 +61,15 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                                 <td className="py-2 px-2 text-right space-x-2">
                                     <button
                                         onClick={() => onEdit(product)}
-                                        className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm transition font-medium"
+                                        className="px-3 py-1   rounded hover:bg-[#8ed6d6] text-sm transition font-medium"
                                     >
-                                        Editar
+                                        <CiEdit className='h-8 w-8 ' color="#079C9C"/>
                                     </button>
                                     <button
                                         onClick={() => handleDelete(product.id)}
-                                        className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm transition font-medium"
+                                        className="px-3 py-1  rounded hover:bg-[#f8c1c1] text-sm transition font-medium"
                                     >
-                                        Excluir
+                                        <CiTrash className='h-8 w-8 text-red-700' />
                                     </button>
                                 </td>
                             </tr>
