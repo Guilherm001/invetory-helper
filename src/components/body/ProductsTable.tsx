@@ -23,6 +23,7 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
         
     };
 
+    
 
     return (
         <>
@@ -50,8 +51,17 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                                 <td className="py-2 px-2 font-medium text-gray-900">{product.name}</td>
                                 <td className="py-2 px-2">{product.quantity}</td>
                                 <td className="py-2 px-2">
-                                    <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
-                                        {product.priority}
+                                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                                            product.priority === "Baixa"
+                                              ? "bg-green-100 text-green-700"
+                                              : product.priority === "Média"
+                                                ? "bg-yellow-100 text-yellow-700"
+                                                : product.priority === "Alta"
+                                                  ? "bg-red-100 text-red-700"
+                                                  : "bg-gray-100 text-gray-600"
+                                          }`}
+                                        >
+                                          {product.priority}
                                     </span>
                                 </td>
                                 <td className="py-2 px-2">{product.status}</td>
