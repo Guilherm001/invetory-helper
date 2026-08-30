@@ -1,6 +1,6 @@
 "use client"
 
-import { Icon } from "next/dist/lib/metadata/types/metadata-types";
+
 import {useState, SubmitEvent} from "react"
 
 interface CardProps {
@@ -85,7 +85,7 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
       : null;
 
     const resultado3 = calcularFuncao3
-      ? calcularFuncao3(numero1, numero2).toFixed(2)
+      ? calcularFuncao3(numero2, numero1).toFixed(0)
       : null;
 
     setResultados([
@@ -185,10 +185,14 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
 
                                                     {resultado.icon && resultado.icon}
                                                     <span className="text-2xl">{resultado.value2}</span>
+                                                    <span className="text-2xl">{resultado.value3}</span>
                                                     
                                                     {resultado.descricao && (
                                                         <p className="font-bold text-2xl">{resultado.descricao}</p>
                                                     )}
+
+                                                    
+
                                                     
                                                 </div>
                                             </div>
