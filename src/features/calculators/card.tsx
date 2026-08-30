@@ -145,9 +145,9 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
 
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 ">
                 <div>
-                    <h1>{titulo}</h1>
+                    <h1 className="font-bold text-2xl">{titulo}</h1>
                 </div>
                 <div className="flex gap-8 ">
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm basis-1/3">
@@ -177,36 +177,36 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
                                 className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm focus:border-[#079C9C] focus:outline-none focus:ring-1 focus:ring-[#079C9C] sm:text-sm"
                             />
 
-{selectOptions && (
-  <>
-    <label
-      htmlFor="select"
-      className="flex flex-col gap-2"
-    >
-      {selectLabel}
-    </label>
-
-    <select
-      id="select"
-      value={valorSelect}
-      onChange={(e) => setValorSelect(e.target.value)}
-      className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
-    >
-      <option value="">
-        Selecione uma opção
-      </option>
-
-      {selectOptions.map((option) => (
-        <option
-          key={option.label}
-          value={option.value}
-        >
-          {option.label}
-        </option>
-      ))}
-    </select>
-  </>
-)}                            
+                                {selectOptions && (
+                                  <>
+                                    <label
+                                      htmlFor="select"
+                                      className="flex flex-col gap-2"
+                                    >
+                                      {selectLabel}
+                                    </label>
+                                
+                                    <select
+                                      id="select"
+                                      value={valorSelect}
+                                      onChange={(e) => setValorSelect(e.target.value)}
+                                      className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                                    >
+                                      <option value="">
+                                        Selecione uma opção
+                                      </option>
+                                
+                                      {selectOptions.map((option) => (
+                                        <option
+                                          key={option.label}
+                                          value={option.value}
+                                        >
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </>
+                                )}                            
 
                             
                         
