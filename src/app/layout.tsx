@@ -36,13 +36,13 @@ export default function RootLayout({
                   Produtos
                 </Link>
                 <Link
-                  href="/note"
+                  href="/calculator"
                   className="flex flex-1 items-center justify-center gap-2
                     px-6 py-4 text-base font-medium text-slate-500
                     transition-colors duration-200
                     hover:bg-slate-50 hover:text-[#079C9C]"
                 >
-                  Notas
+                  Calculadora
                 </Link>
               </nav>
             </div>
