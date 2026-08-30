@@ -6,9 +6,9 @@ export default function CalculatorForros() {
   const calcularArea = (comprimento: number, largura: number) => {
     return comprimento * largura;
   };
-  const calcularQTD = (largura: number) => {
-    return 5 * largura
-  }
+  const calcularQTD = ( _comprimento: number, largura: number) => {
+  return Math.ceil(largura * 5);
+};
 
   return (
     <div>

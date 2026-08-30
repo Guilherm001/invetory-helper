@@ -10,6 +10,7 @@ import {
 import { Grid3X3, PanelTop, Blocks } from "lucide-react"
 import CalculatorForros from "./calculatorForros"
 import CalculatorLaje from "./calculatorLaje"
+import CalculatorTijolo from "./calculatorTijolo"
 
 // import { LajeCalculator } from "./LajeCalculator"
 // import { ForroPvcCalculator } from "./ForroPvcCalculator"
@@ -59,7 +60,7 @@ export function CalculatorTabs() {
            </TabsContent>
 
            <TabsContent value="blocos" className="mt-6">
-                <h1>tetse2</h1>
+                <CalculatorTijolo/>
             </TabsContent>
         </Tabs>
     </div>

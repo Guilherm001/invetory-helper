@@ -3,6 +3,11 @@
 
 import {useState, SubmitEvent} from "react"
 
+interface SelectOption {
+    label: string;
+    value: number;
+}
+
 interface CardProps {
     titulo: string;
 
@@ -15,8 +20,8 @@ interface CardProps {
     placeholder_largura?: string;
     placeholder_largura_2?: string;
 
-    calcularFuncao: (valor1: number, valor2: number) => number;
-    calcularFuncao2?: (valor1:number, valor2: number) => number;
+    calcularFuncao: (valor1: number, valor2: number, valorSelect?: number) => number;
+    calcularFuncao2?: (valor1:number, valor2: number, numeroSelect?:number) => number;
     calcularFuncao3?: (valor1:number, valor2: number) => number;
 
     result_resposta1: string;
@@ -31,33 +36,43 @@ interface CardProps {
     icone2?: React.ReactNode;
     icone3?: React.ReactNode;
 
+    selectLabel?: string;
+    selectOptions?: SelectOption[];
     
 
 }
 
 export default function CardCalculator({
-    titulo,
-    label_comprimento,
-    label_largura,
-    label_largura_2,
-    label_button,
-    placeholder_comprimento,
-    placeholder_largura,
-    placeholder_largura_2,
-    calcularFuncao,
-    calcularFuncao2,
-    calcularFuncao3,
-    result_resposta1,
-    result_resposta2,
-    result_resposta3,
-    descricao_resultado1,
-    descricao_resultado2,
-    descricao_resultado3,
-    icone1,
-    icone2,
-    icone3
+  titulo,
+  label_comprimento,
+  label_largura,
+  label_largura_2,
+  label_button,
+  placeholder_comprimento,
+  placeholder_largura,
+  placeholder_largura_2,
+
+  selectLabel,
+  selectOptions,
+
+  calcularFuncao,
+  calcularFuncao2,
+  calcularFuncao3,
+
+  result_resposta1,
+  result_resposta2,
+  result_resposta3,
+
+  descricao_resultado1,
+  descricao_resultado2,
+  descricao_resultado3,
+
+  icone1,
+  icone2,
+  icone3
 }: CardProps) {
 
+    const [valorSelect, setValorSelect] = useState("");
     const [valor1, setValor1] = useState("");
     const [valor2, setValor2] = useState("");
 
@@ -72,6 +87,7 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
 
   const numero1 = Number(valor1.replace(",","."));
   const numero2 = Number(valor2.replace(",","."));
+  const numeroSelect = Number(valorSelect);
 
   if (valor1 === '' || valor2 === '') {
     return;
@@ -81,8 +97,8 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     const resultado1 = calcularFuncao(numero1, numero2).toFixed(2);
 
     const resultado2 = calcularFuncao2
-      ? calcularFuncao2(numero2, numero1).toFixed(0)
-      : null;
+  ? calcularFuncao2(numero1, numero2, numeroSelect).toFixed(0)
+  : null;
 
     const resultado3 = calcularFuncao3
       ? calcularFuncao3(numero2, numero1).toFixed(0)
@@ -160,6 +176,39 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
                                 placeholder={placeholder_largura}
                                 className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm focus:border-[#079C9C] focus:outline-none focus:ring-1 focus:ring-[#079C9C] sm:text-sm"
                             />
+
+{selectOptions && (
+  <>
+    <label
+      htmlFor="select"
+      className="flex flex-col gap-2"
+    >
+      {selectLabel}
+    </label>
+
+    <select
+      id="select"
+      value={valorSelect}
+      onChange={(e) => setValorSelect(e.target.value)}
+      className="rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm"
+    >
+      <option value="">
+        Selecione uma opção
+      </option>
+
+      {selectOptions.map((option) => (
+        <option
+          key={option.label}
+          value={option.value}
+        >
+          {option.label}
+        </option>
+      ))}
+    </select>
+  </>
+)}                            
+
+                            
                         
                             <button
                             type="submit"
@@ -192,7 +241,7 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
                                                     )}
 
                                                     
-
+                                                    
                                                     
                                                 </div>
                                             </div>
