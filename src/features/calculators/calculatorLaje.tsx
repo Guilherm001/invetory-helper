@@ -12,7 +12,7 @@ export default function CalculatotLaje() {
   }
 
   const calcularTrilho = (largura:number) => {
-    return Math.ceil(largura / 0.42)
+    return Math.ceil(largura / 0.43)
   }
 
   return (
