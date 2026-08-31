@@ -23,16 +23,16 @@ export default function CalculatorTijolo() {
       value: 17,
     },
     {
-      label: "Cimento 09 x 19 x 29",
-      value: 17,
+      label: "Cimento 09 x 19 x 39",
+      value: 12.5,
     },
     {
-      label: "Cimento 14 x 19 x 29",
-      value: 17,
+      label: "Cimento 14 x 19 x 39",
+      value: 12.5,
     },
     {
-      label: "Cimento 19 x 19 x 29",
-      value: 17,
+      label: "Cimento 19 x 19 x 39",
+      value: 12.5,
     },
   ];
 
