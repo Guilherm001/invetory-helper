@@ -34,7 +34,7 @@ export default function CalculatotLaje() {
 
         label_button="Calcular"
 
-        result_resposta1="Área total em (m²)"
+        result_resposta1="Área total a cobrar"
 
         calcularFuncao={calcularArea}
         descricao_resultado1="m2"
