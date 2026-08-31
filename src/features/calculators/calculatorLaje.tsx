@@ -3,9 +3,7 @@ import Image from "next/image";
 
 export default function CalculatotLaje() {
 
-  const calcularArea = (comprimento: number, largura: number) => {
-    return comprimento * largura;
-  };
+ 
 
   const calcularLajota = (comprimento: number, largura:number) => {
     return (comprimento * largura)* 11.5;
@@ -14,6 +12,14 @@ export default function CalculatotLaje() {
   const calcularTrilho = (largura:number) => {
     return Math.ceil(largura / 0.43)
   }
+
+   const calcularArea = (comprimento: number, largura: number) => {
+
+    const resultadoTrilho = calcularTrilho(largura)
+
+    return (resultadoTrilho * 0.43) * comprimento;
+
+  };
 
   return (
     <div>
