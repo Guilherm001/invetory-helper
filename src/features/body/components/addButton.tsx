@@ -10,7 +10,9 @@ import {
     DialogTrigger,
 } from '../../../../components/ui/dialog'
 import { Plus } from 'lucide-react'
-import { Product } from '../hooks/useProducts'
+
+
+import { Product } from "../services/listService"
 import { RadioGroup, RadioGroupItem } from '../../../../components/ui/radio-group'
 import { Label } from '../../../../components/ui/label'
 
