@@ -10,10 +10,13 @@ interface ProductsMobileProps {
 }
 
 export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobileProps) {
-    const handleDelete = (id: string) => {
-        
-            onDelete(id);
-        
+    const handleDelete = (id: string | undefined) => {
+        if (!id) {
+            alert('Erro: ID do produto não encontrado.');
+            return;
+        }
+
+        onDelete(id);
     };
 
     return (
@@ -42,9 +45,9 @@ export function ProductsMobile({ products, onEdit, onDelete }: ProductsMobilePro
                         </button>
                     </div>
                 </div>
-                
+
             ))}
-            
+
         </div>
     );
 }
