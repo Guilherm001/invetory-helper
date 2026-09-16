@@ -1,15 +1,8 @@
 import { supabase } from "@/lib/supabase"
 import { useState, useEffect, useCallback } from "react"
+import { Product } from "../services/listService"
 
-export interface Product {
-  id: string
-  name: string
-  quantity: number
-  priority: string
-  status: string
-  notes?: string
-  created_at?: string
-}
+
 
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([])
@@ -40,20 +33,35 @@ export function useProducts() {
   fetchProducts()
 
   const channel = supabase
-    .channel("products-changes")
-    .on(
-  "postgres_changes",
-  {
-    event: "*",
-    schema: "public",
-    table: "products",
-  },
-  (payload) => {
-    console.log("Mudança detectada:", payload)
-    fetchProducts()
+  .channel("products-changes")
+  .on(
+    "postgres_changes",
+    {
+      event: "*",
+      schema: "public",
+      table: "products",
+    },
+    (payload) => {
+  console.log("Mudança detectada:", payload)
+
+  if (payload.eventType === "UPDATE") {
+    setProducts((prev) =>
+      prev.map((product) =>
+        product.id === payload.new.id
+          ? { ...product, ...payload.new }
+          : product
+      )
+    )
   }
-)
-    .subscribe()
+
+  if (payload.eventType === "DELETE") {
+    setProducts((prev) =>
+      prev.filter((product) => product.id !== payload.old.id)
+    )
+  }
+}
+  )
+  .subscribe()
 
   return () => {
     supabase.removeChannel(channel)

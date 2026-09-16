@@ -1,16 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from "@/components/ui/button"
+import { Button } from "../../../../components/ui/button"
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-} from "@/components/ui/dialog"
-import { Product } from '../../hooks/useProducts'
-import {Label} from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+} from "../../../../components/ui/dialog"
+import { Product } from "../services/listService"
+import {Label} from "../../../../components/ui/label"
+import { RadioGroup, RadioGroupItem } from "../../../../components/ui/radio-group"
 
 
 interface EditProductDialogProps {

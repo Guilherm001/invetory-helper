@@ -1,6 +1,6 @@
 'use client';
 
-import { Product} from '@/hooks/useProducts';
+import { Product } from "../services/listService"
 import { ProductsMobile } from './ProductsMobile';
 import { CiTrash } from "react-icons/ci";
 import { CiEdit } from "react-icons/ci";
@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "../../../../components/ui/alert-dialog";
 interface ProductsTableProps {
     products: Product[];
     onEdit: (product: Product) => void;
@@ -52,12 +52,12 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                             <th className="py-2 px-2">Prioridade</th>
                             <th className="py-2 px-2">Status</th>
                             <th className="py-2 px-2">Notas</th>
-                            <th className="py-2 px-2 text-right">Ações</th>
+                            <th className="py-2 px-2 text-right">Ação</th>
                         </tr>
                     </thead>
                     <tbody>
                         {products?.map((product) => (
-                            <tr key={product.id || Math.random().toString()} className="border-b hover:bg-gray-50">
+                            <tr key={product.id} className="border-b hover:bg-gray-50">
                                 <td className="py-2 px-2 font-medium text-gray-900">{product.name}</td>
                                 <td className="py-2 px-2">{product.quantity}</td>
                                 <td className="py-2 px-2">

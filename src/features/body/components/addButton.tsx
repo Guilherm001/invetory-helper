@@ -1,18 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { Button } from '../../../../components/ui/button'
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from '@/components/ui/dialog'
+} from '../../../../components/ui/dialog'
 import { Plus } from 'lucide-react'
-import { Product } from '../../hooks/useProducts'
-import { RadioGroup, RadioGroupItem } from '../ui/radio-group'
-import { Label } from '../ui/label'
+import { Product } from '../hooks/useProducts'
+import { RadioGroup, RadioGroupItem } from '../../../../components/ui/radio-group'
+import { Label } from '../../../../components/ui/label'
 
 interface BotaoAddProps {
     addProduct: (product: Omit<Product, 'id' | 'created_at'>) => Promise<Product>

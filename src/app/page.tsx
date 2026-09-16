@@ -1,4 +1,4 @@
-import {Body } from "../components/body/body"
+import {Body } from "../features/body/components/body"
 import Link from "next/link"
 export default function Page() {
   return (

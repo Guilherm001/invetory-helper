@@ -1,6 +1,6 @@
 'use client'
 
-import { Product } from '@/hooks/useProducts';
+import { Product } from "../services/listService"
 
 
 interface ProductsMobileProps {

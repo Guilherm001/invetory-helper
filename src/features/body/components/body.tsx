@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useProducts } from '../../hooks/useProducts'
+import { useProducts } from '../hooks/useProducts'
 import BotaoAdd from './addButton'
 import Cards from './cards'
 import Corpo from './corpo'

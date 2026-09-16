@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { updateProduct, deleteProduct } from "@/services/listService"
+import { updateProduct, deleteProduct } from "@/features/body/services/listService"
 
 export async function PUT(
   request: Request,

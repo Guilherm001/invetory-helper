@@ -5,7 +5,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@/components/ui/tabs"
+} from "../../../components/ui/tabs"
 
 import { Grid3X3, PanelTop, Blocks } from "lucide-react"
 import CalculatorForros from "./calculatorForros"
@@ -21,7 +21,7 @@ export function CalculatorTabs() {
     <div className="flex flex-col gap-10">
         <Tabs defaultValue="laje" className="w-full">
           <TabsList
-            variant="line"
+            variant="default"
             className="
               grid h-auto w-full grid-cols-3
               rounded-xl border border-slate-200
