@@ -44,6 +44,16 @@ export function useProducts() {
     (payload) => {
   console.log("Mudança detectada:", payload)
 
+  if (payload.eventType === "INSERT") {
+    const newProduct = payload.new as Product
+
+    setProducts((prev) =>
+      prev.some((product) => product.id === newProduct.id)
+        ? prev
+        : [newProduct, ...prev]
+    )
+  }
+
   if (payload.eventType === "UPDATE") {
     setProducts((prev) =>
       prev.map((product) =>
