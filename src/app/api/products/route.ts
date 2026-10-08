@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createSupabaseServer } from "@/lib/supabase-server"
-import { getAllProducts, createProduct } from "@/features/body/services/listService"
+import { getAllProducts, createProduct, deleteProducts } from "@/features/body/services/listService"
 
 export async function GET() {
   try {
@@ -45,6 +45,29 @@ export async function POST(request: Request) {
     return NextResponse.json(newProduct, { status: 201 })
   } catch (err) {
     console.error("Erro ao criar produto:", err)
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const supabase = await createSupabaseServer()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+    }
+
+    const { ids } = await request.json()
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: "Nenhum id informado" }, { status: 400 })
+    }
+
+    await deleteProducts(supabase, ids)
+    return NextResponse.json({ deleted: ids.length })
+  } catch (err) {
+    console.error("Erro ao excluir produtos:", err)
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })
   }
 }

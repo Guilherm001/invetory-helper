@@ -16,6 +16,13 @@ const priorityOrder: Record<string, number> = {
   Baixa: 3,
 }
 
+export async function deleteProducts(client: SupabaseClient, ids: string[]) {
+  const { error } = await client.from("products").delete().in("id", ids)
+
+  if (error) throw new Error(error.message)
+  return true
+}
+
 export async function getAllProducts(client: SupabaseClient): Promise<Product[]> {
   const { data, error } = await client
     .from("products")
@@ -29,6 +36,7 @@ export async function getAllProducts(client: SupabaseClient): Promise<Product[]>
       (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99)
   )
 }
+
 
 export async function createProduct(
   client: SupabaseClient,

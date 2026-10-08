@@ -1,7 +1,7 @@
 "use client"
 
 import { supabase } from "@/lib/supabase"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Product } from "../services/listService"
 
 const priorityOrder: Record<string, number> = { Alta: 1, Média: 2, Baixa: 3 }
@@ -26,6 +26,12 @@ export function useProducts() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // guarda sempre a lista mais recente, para o rollback das ações otimistas
+  const productsRef = useRef<Product[]>([])
+  useEffect(() => {
+    productsRef.current = products
+  }, [products])
 
   const fetchProducts = useCallback(async () => {
     setLoading(true)
@@ -77,27 +83,84 @@ export function useProducts() {
       body: JSON.stringify(product),
     })
     if (!response.ok) throw new Error("Erro ao adicionar produto")
-    const newProduct = await response.json()
+
+    const newProduct: Product = await response.json()
+
+    // upsert: se o evento realtime já inseriu, não duplica
     setProducts((prev) => upsert(prev, newProduct))
     return newProduct
   }
 
-  const deleteProduct = async (id: string) => {
-    const response = await fetch(`/api/products/${id}`, { method: "DELETE" })
-    if (!response.ok) throw new Error("Erro ao excluir produto")
-    setProducts((prev) => prev.filter((p) => p.id !== id))
+  const updateProduct = async (id: string, data: Partial<Product>) => {
+    const anterior = productsRef.current.find((p) => p.id === id)
+
+    // 1. atualiza a tela na hora
+    setProducts((prev) =>
+      sortByPriority(prev.map((p) => (p.id === id ? { ...p, ...data } : p)))
+    )
+
+    try {
+      const response = await fetch(`/api/products/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) throw new Error("Erro ao atualizar produto")
+
+      const updatedProduct: Product = await response.json()
+
+      // 2. confirma com o que o servidor devolveu (só se o item ainda existir)
+      setProducts((prev) =>
+        sortByPriority(
+          prev.map((p) => (p.id === id ? { ...p, ...updatedProduct } : p))
+        )
+      )
+      return updatedProduct
+    } catch (err) {
+      // 3. deu erro: volta ao estado anterior
+      if (anterior) {
+        setProducts((prev) =>
+          sortByPriority(prev.map((p) => (p.id === id ? anterior : p)))
+        )
+      }
+      throw err
+    }
   }
 
-  const updateProduct = async (id: string, data: Partial<Product>) => {
-    const response = await fetch(`/api/products/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    })
-    if (!response.ok) throw new Error("Erro ao atualizar produto")
-    const updatedProduct = await response.json()
-    setProducts((prev) => upsert(prev, { ...updatedProduct, id }))
-    return updatedProduct
+  const deleteProduct = async (id: string) => {
+    const anterior = productsRef.current.find((p) => p.id === id)
+
+    setProducts((prev) => prev.filter((p) => p.id !== id))
+
+    try {
+      const response = await fetch(`/api/products/${id}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("Erro ao excluir produto")
+    } catch (err) {
+      if (anterior) setProducts((prev) => upsert(prev, anterior))
+      throw err
+    }
+  }
+
+  const deleteMany = async (ids: string[]) => {
+    if (ids.length === 0) return
+
+    const anteriores = productsRef.current.filter(
+      (p) => p.id && ids.includes(p.id)
+    )
+
+    setProducts((prev) => prev.filter((p) => !p.id || !ids.includes(p.id)))
+
+    try {
+      const response = await fetch("/api/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      })
+      if (!response.ok) throw new Error("Erro ao excluir produtos")
+    } catch (err) {
+      setProducts((prev) => anteriores.reduce(upsert, prev))
+      throw err
+    }
   }
 
   return {
@@ -105,6 +168,7 @@ export function useProducts() {
     loading,
     error,
     deleteProduct,
+    deleteMany,
     updateProduct,
     addProduct,
     refetch: fetchProducts,
