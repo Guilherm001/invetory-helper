@@ -1,8 +1,26 @@
+"use client"
+
 import { supabase } from "@/lib/supabase"
 import { useState, useEffect, useCallback } from "react"
 import { Product } from "../services/listService"
 
+const priorityOrder: Record<string, number> = { Alta: 1, Média: 2, Baixa: 3 }
 
+function sortByPriority(list: Product[]) {
+  return [...list].sort(
+    (a, b) =>
+      (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99)
+  )
+}
+
+// insere sem duplicar e mantém a ordem por prioridade
+function upsert(list: Product[], item: Product) {
+  const exists = list.some((p) => p.id === item.id)
+  const next = exists
+    ? list.map((p) => (p.id === item.id ? { ...p, ...item } : p))
+    : [item, ...list]
+  return sortByPriority(next)
+}
 
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([])
@@ -13,16 +31,13 @@ export function useProducts() {
     setLoading(true)
     setError(null)
     try {
-      console.log('Fetching products...')
       const response = await fetch("/api/products")
-      console.log('Response status:', response.status)
       if (!response.ok) throw new Error("Erro ao buscar produtos")
       const data = await response.json()
-      console.log('Data received:', data)
       setProducts(data)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido'
-      console.error('Error fetching products:', error)
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido"
       setError(message)
     } finally {
       setLoading(false)
@@ -30,57 +45,31 @@ export function useProducts() {
   }, [])
 
   useEffect(() => {
-  fetchProducts()
+    fetchProducts()
 
-  const channel = supabase
-  .channel("products-changes")
-  .on(
-    "postgres_changes",
-    {
-      event: "*",
-      schema: "public",
-      table: "products",
-    },
-    (payload) => {
-  console.log("Mudança detectada:", payload)
+    const channel = supabase
+      .channel("products-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        (payload) => {
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            setProducts((prev) => upsert(prev, payload.new as Product))
+          }
 
-  if (payload.eventType === "INSERT") {
-    const newProduct = payload.new as Product
-
-    setProducts((prev) =>
-      prev.some((product) => product.id === newProduct.id)
-        ? prev
-        : [newProduct, ...prev]
-    )
-  }
-
-  if (payload.eventType === "UPDATE") {
-    setProducts((prev) =>
-      prev.map((product) =>
-        product.id === payload.new.id
-          ? { ...product, ...payload.new }
-          : product
+          if (payload.eventType === "DELETE") {
+            const id = (payload.old as Product).id
+            setProducts((prev) => prev.filter((p) => p.id !== id))
+          }
+        }
       )
-    )
-  }
+      .subscribe()
 
-  if (payload.eventType === "DELETE") {
-    setProducts((prev) =>
-      prev.filter((product) => product.id !== payload.old.id)
-    )
-  }
-}
-  )
-  .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchProducts])
 
-  return () => {
-    supabase.removeChannel(channel)
-  }
-}, [fetchProducts])
-
-
-
-  
   const addProduct = async (product: Omit<Product, "id" | "created_at">) => {
     const response = await fetch("/api/products", {
       method: "POST",
@@ -89,14 +78,12 @@ export function useProducts() {
     })
     if (!response.ok) throw new Error("Erro ao adicionar produto")
     const newProduct = await response.json()
-    setProducts((prev) => [newProduct, ...prev])
+    setProducts((prev) => upsert(prev, newProduct))
     return newProduct
   }
 
   const deleteProduct = async (id: string) => {
-    const response = await fetch(`/api/products/${id}`, {
-      method: "DELETE",
-    })
+    const response = await fetch(`/api/products/${id}`, { method: "DELETE" })
     if (!response.ok) throw new Error("Erro ao excluir produto")
     setProducts((prev) => prev.filter((p) => p.id !== id))
   }
@@ -109,9 +96,7 @@ export function useProducts() {
     })
     if (!response.ok) throw new Error("Erro ao atualizar produto")
     const updatedProduct = await response.json()
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updatedProduct } : p))
-    )
+    setProducts((prev) => upsert(prev, { ...updatedProduct, id }))
     return updatedProduct
   }
 
