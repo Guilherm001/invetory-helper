@@ -1,5 +1,4 @@
-
-import { supabase } from "@/lib/supabase"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export interface Product {
   id?: string
@@ -11,56 +10,58 @@ export interface Product {
   created_at?: string
 }
 
-export class ListProducts {
-  async getAllProducts(): Promise<Product[]> {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-    
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      const priorityOrder = {
-      Alta: 1,
-      Média: 2,
-      Baixa: 3,
-    }
-      
-      return data.sort(
-      (a, b) =>
-        priorityOrder[a.priority as keyof typeof priorityOrder] -
-        priorityOrder[b.priority as keyof typeof priorityOrder]
-    )
-    }
+const priorityOrder: Record<string, number> = {
+  Alta: 1,
+  Média: 2,
+  Baixa: 3,
 }
 
-export async function createProduct(product: Omit<Product, "id" | "created_at">) {
-  const { data, error } = await supabase
+export async function getAllProducts(client: SupabaseClient): Promise<Product[]> {
+  const { data, error } = await client
     .from("products")
-    .insert([product])
-    .select()
+    .select("*")
+    .order("created_at", { ascending: false })
 
   if (error) throw new Error(error.message)
-  return data[0]
+
+  return [...data].sort(
+    (a, b) =>
+      (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99)
+  )
 }
 
-export async function updateProduct(id: string, product: Partial<Product>) {
-  const { data, error } = await supabase
+export async function createProduct(
+  client: SupabaseClient,
+  product: Omit<Product, "id" | "created_at">
+): Promise<Product> {
+  const { data, error } = await client
+    .from("products")
+    .insert(product)
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function updateProduct(
+  client: SupabaseClient,
+  id: string,
+  product: Partial<Product>
+): Promise<Product> {
+  const { data, error } = await client
     .from("products")
     .update(product)
     .eq("id", id)
     .select()
+    .single()
 
   if (error) throw new Error(error.message)
-  return data[0]
+  return data
 }
 
-export async function deleteProduct(id: string) {
-  const { error } = await supabase
-    .from("products")
-    .delete()
-    .eq("id", id)
+export async function deleteProduct(client: SupabaseClient, id: string) {
+  const { error } = await client.from("products").delete().eq("id", id)
 
   if (error) throw new Error(error.message)
   return true
