@@ -10,7 +10,7 @@ export function LogoutButton() {
 
   async function handleLogout() {
     setLoading(true)
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({scope: "local"})
     // reload completo: limpa estado em memória e força o middleware a reavaliar
     window.location.assign("/")
   }
