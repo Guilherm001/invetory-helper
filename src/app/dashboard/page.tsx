@@ -1,11 +1,11 @@
-import LoginPage from "./login/page"
+import {Body } from "@/features/body/components/body"
 
 
 export default function Page() {
   return (
     <main className="min-h-screen ">
       
-      <LoginPage />
+      <Body />
 
 
     </main>
