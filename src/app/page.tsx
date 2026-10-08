@@ -6,6 +6,8 @@ export default function Page() {
       
       <Body />
 
+    <h1>teste do teste do teste</h1>
+
     </main>
   )
 }
