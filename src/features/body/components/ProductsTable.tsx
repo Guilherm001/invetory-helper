@@ -15,38 +15,33 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../../../../components/ui/alert-dialog";
+
 interface ProductsTableProps {
     products: Product[];
     onEdit: (product: Product) => void;
     onDelete: (id: string) => void;
+    onToggle: (product: Product) => void;
 }
 
-export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps) {
+export function ProductsTable({ products, onEdit, onDelete, onToggle }: ProductsTableProps) {
     const handleDelete = (id: string | undefined) => {
         if (!id) {
             alert('Erro: ID do produto não encontrado.');
             return;
         }
-        
-        
-            onDelete(id);
-        
+        onDelete(id);
     };
-
-    
 
     return (
         <>
-
-            
-
             {/* Desktop */}
             <div className="hidden md:block overflow-x-auto shadow-xl/20 rounded-lg">
-                
-                   
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b text-left text-gray-700 font-medium">
+                            <th className="py-2 px-2 w-10">
+                                <span className="sr-only">Comprado</span>
+                            </th>
                             <th className="py-2 px-2">Produto</th>
                             <th className="py-2 px-2">Qtd</th>
                             <th className="py-2 px-2">Prioridade</th>
@@ -56,12 +51,28 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                         </tr>
                     </thead>
                     <tbody>
-                        {products?.map((product) => (
-                            <tr key={product.id} className="border-b hover:bg-gray-50">
-                                <td className="py-2 px-2 font-medium text-gray-900">{product.name}</td>
-                                <td className="py-2 px-2">{product.quantity}</td>
-                                <td className="py-2 px-2">
-                                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                        {products?.map((product) => {
+                            const comprado = product.status === 'Concluído'
+                            return (
+                                <tr
+                                    key={product.id}
+                                    className={`border-b hover:bg-gray-50 ${comprado ? 'opacity-60' : ''}`}
+                                >
+                                    <td className="py-2 px-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={comprado}
+                                            onChange={() => onToggle(product)}
+                                            aria-label={`Marcar ${product.name} como comprado`}
+                                            className="h-5 w-5 cursor-pointer accent-[#079C9C]"
+                                        />
+                                    </td>
+                                    <td className={`py-2 px-2 font-medium text-gray-900 ${comprado ? 'line-through' : ''}`}>
+                                        {product.name}
+                                    </td>
+                                    <td className="py-2 px-2">{product.quantity}</td>
+                                    <td className="py-2 px-2">
+                                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
                                             product.priority === "Baixa"
                                               ? "bg-green-100 text-green-700"
                                               : product.priority === "Média"
@@ -69,58 +80,55 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                                                 : product.priority === "Alta"
                                                   ? "bg-red-100 text-red-700"
                                                   : "bg-gray-100 text-gray-600"
-                                          }`}
-                                        >
-                                          {product.priority}
-                                    </span>
-                                </td>
-                                <td className="py-2 px-2">{product.status}</td>
-                                <td className="py-2 px-2 text-gray-500 text-sm max-w-xs truncate">
-                                    {product.notes && product.notes.trim() !== "" ? product.notes : '-'}
-                                </td>
-                                <td className="py-2 px-2 text-right space-x-2">
-                                    <button
-                                        onClick={() => onEdit(product)}
-                                        className="px-3 py-1   rounded hover:bg-[#8ed6d6] text-sm transition font-medium"
-                                    >
-                                        <CiEdit className='h-8 w-8 ' color="#079C9C"/>
-                                    </button>
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
+                                        }`}>
+                                            {product.priority}
+                                        </span>
+                                    </td>
+                                    <td className="py-2 px-2">{product.status}</td>
+                                    <td className="py-2 px-2 text-gray-500 text-sm max-w-xs truncate">
+                                        {product.notes && product.notes.trim() !== "" ? product.notes : '-'}
+                                    </td>
+                                    <td className="py-2 px-2 text-right space-x-2">
                                         <button
-                                          type="button"
-                                          className="px-3 py-1 rounded hover:bg-[#f8c1c1] text-sm transition font-medium"
+                                            onClick={() => onEdit(product)}
+                                            className="px-3 py-1 rounded hover:bg-[#8ed6d6] text-sm transition font-medium"
                                         >
-                                          <CiTrash className="h-8 w-8 text-red-700" />
+                                            <CiEdit className='h-8 w-8' color="#079C9C" />
                                         </button>
-                                      </AlertDialogTrigger>
-                                                                        
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
-                                                                        
-                                          <AlertDialogDescription>
-                                            Tem certeza que deseja excluir o produto{" "}
-                                            <strong>{product.name}</strong>? Essa ação não poderá ser desfeita.
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                                                        
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                        
-                                          <AlertDialogAction
-                                            onClick={() => handleDelete(product.id)}
-                                            className="bg-red-600 text-white hover:bg-red-700"
-                                          >
-                                            Excluir produto
-                                          </AlertDialogAction>
-                                          
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                </td>
-                            </tr>
-                        ))}
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="px-3 py-1 rounded hover:bg-[#f8c1c1] text-sm transition font-medium"
+                                                >
+                                                    <CiTrash className="h-8 w-8 text-red-700" />
+                                                </button>
+                                            </AlertDialogTrigger>
+
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        Tem certeza que deseja excluir o produto{" "}
+                                                        <strong>{product.name}</strong>? Essa ação não poderá ser desfeita.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction
+                                                        onClick={() => handleDelete(product.id)}
+                                                        className="bg-red-600 text-white hover:bg-red-700"
+                                                    >
+                                                        Excluir produto
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </td>
+                                </tr>
+                            )
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -131,6 +139,7 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                     products={products}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    onToggle={onToggle}
                 />
             </div>
         </>

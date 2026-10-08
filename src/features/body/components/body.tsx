@@ -2,10 +2,11 @@
 
 import { useProducts } from '../hooks/useProducts'
 import BotaoAdd from './addButton'
-import Cards from './cards'
 import Corpo from './corpo'
 import { InputDemo } from './input'
 import {  SelectDemo } from './select'
+import { useMemo, useState } from 'react'
+import Resumo, { type Filtro } from './resumo'
 
 export function Body() {
   const {
@@ -16,6 +17,15 @@ export function Body() {
     updateProduct,
     addProduct,
   } = useProducts()
+
+  const [filtro, setFiltro] = useState<Filtro>('todos')
+
+const produtosVisiveis = useMemo(() => {
+  if (filtro === 'pendentes') return products.filter((p) => p.status === 'Pendente')
+  if (filtro === 'alta')
+    return products.filter((p) => p.priority === 'Alta' && p.status !== 'Concluído')
+  return products
+}, [products, filtro])
 
   return (
     <div className='w-sceen' >
@@ -28,8 +38,12 @@ export function Body() {
           <BotaoAdd addProduct={addProduct} />
          </div>
       </div>
-
-      <Cards />
+<Resumo
+  products={products}
+  loading={loading}
+  filtro={filtro}
+  onFiltroChange={setFiltro}
+/>
 
       
       <div className='shadow-xl/20 p-6 rounded-lg'>
@@ -41,7 +55,7 @@ export function Body() {
         </div>
         <div>
           <Corpo
-            products={products}
+          products={produtosVisiveis}
             loading={loading}
             error={error}
             deleteProduct={deleteProduct}
