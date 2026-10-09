@@ -91,6 +91,25 @@ export function useProducts() {
     return newProduct
   }
 
+  const addProducts = async (items: Omit<Product, "id" | "created_at">[]) => {
+    const response = await fetch("/api/products/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(items),
+    })
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      throw new Error(data?.error || "Erro ao adicionar produtos")
+    }
+
+    const created: Product[] = await response.json()
+
+    // upsert evita duplicar caso o realtime já tenha inserido
+    setProducts((prev) => created.reduce(upsert, prev))
+    return created
+  }
+
   const updateProduct = async (id: string, data: Partial<Product>) => {
     const anterior = productsRef.current.find((p) => p.id === id)
 
@@ -171,6 +190,7 @@ export function useProducts() {
     deleteMany,
     updateProduct,
     addProduct,
+    addProducts,
     refetch: fetchProducts,
   }
 }

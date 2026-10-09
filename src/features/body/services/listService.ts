@@ -39,7 +39,6 @@ export async function getAllProducts(client: SupabaseClient): Promise<Product[]>
   )
 }
 
-
 export async function createProduct(
   client: SupabaseClient,
   product: Omit<Product, "id" | "created_at">
@@ -49,6 +48,20 @@ export async function createProduct(
     .insert(product)
     .select()
     .single()
+
+  if (error) throw new Error(error.message)
+  return data
+}
+
+// insere vários de uma vez (atômico: ou entram todos, ou nenhum)
+export async function createProducts(
+  client: SupabaseClient,
+  products: Omit<Product, "id" | "created_at">[]
+): Promise<Product[]> {
+  const { data, error } = await client
+    .from("products")
+    .insert(products)
+    .select()
 
   if (error) throw new Error(error.message)
   return data

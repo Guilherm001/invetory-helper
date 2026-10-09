@@ -20,7 +20,7 @@ export function Body() {
     deleteProduct,
     deleteMany,
     updateProduct,
-    addProduct,
+    addProducts,
   } = useProducts()
 
   const [filtro, setFiltro] = useState<Filtro>('todos')
@@ -61,7 +61,7 @@ export function Body() {
           </p>
         </article>
         <div className="justify-end hidden md:block mr-10">
-          <BotaoAdd addProduct={addProduct} />
+          <BotaoAdd addProducts={addProducts} />
         </div>
       </div>
 
@@ -121,7 +121,7 @@ export function Body() {
       {/* botão de adicionar (celular) some durante a seleção */}
       {!sel.selecting && (
         <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
-          <BotaoAdd addProduct={addProduct} />
+          <BotaoAdd addProducts={addProducts} />
         </div>
       )}
 
@@ -154,13 +154,13 @@ export function Body() {
               setShowQtd(false)
               sel.cancel()
             } catch (err) {
-  console.error(err)
-  alert(
-    `Não foi possível gerar o PDF: ${
-      err instanceof Error ? err.message : 'erro desconhecido'
-    }`
-  )
-} finally {
+              console.error(err)
+              alert(
+                `Não foi possível gerar o PDF: ${
+                  err instanceof Error ? err.message : 'erro desconhecido'
+                }`
+              )
+            } finally {
               setGerando(false)
             }
           }}
