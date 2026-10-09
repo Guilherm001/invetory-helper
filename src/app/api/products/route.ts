@@ -40,6 +40,8 @@ export async function POST(request: Request) {
       priority: body.priority || "Média",
       status: body.status || "Pendente",
       notes: body.notes || "",
+      unit: body.unit ?? null,
+      catalog_code: body.catalog_code ?? null,
     })
 
     return NextResponse.json(newProduct, { status: 201 })

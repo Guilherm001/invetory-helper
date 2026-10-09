@@ -7,6 +7,8 @@ export interface Product {
   priority: string
   status: string
   notes?: string
+  unit?: string | null
+  catalog_code?: string | null
   created_at?: string
 }
 

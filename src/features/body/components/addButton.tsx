@@ -15,6 +15,8 @@ import { Plus } from 'lucide-react'
 import { Product } from "../services/listService"
 import { RadioGroup, RadioGroupItem } from '../../../../components/ui/radio-group'
 import { Label } from '../../../../components/ui/label'
+import BuscaCatalogo from '@/features/catalogo/components/buscarCatalogo'
+
 
 interface BotaoAddProps {
     addProduct: (product: Omit<Product, 'id' | 'created_at'>) => Promise<Product>
@@ -29,6 +31,10 @@ export default function BotaoAdd({ addProduct }: BotaoAddProps) {
     const [notes, setNotes] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const [errorMessage, setErrorMessage] = useState('')
+    const [unit, setUnit] = useState<string | null>(null)
+    const [catalogCode, setCatalogCode] = useState<string | null>(null)
+    
+    
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -42,6 +48,8 @@ export default function BotaoAdd({ addProduct }: BotaoAddProps) {
                 priority,
                 status,
                 notes,
+                unit,
+                catalog_code: catalogCode,
             })
 
             setOpen(false)
@@ -73,6 +81,17 @@ export default function BotaoAdd({ addProduct }: BotaoAddProps) {
                     <DialogTitle className="text-xl font-bold text-gray-900">Novo Produto</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Buscar no catálogo</label>
+                      <BuscaCatalogo
+                        onSelect={(item) => {
+                          setName(item.name)
+                          setUnit(item.unit)
+                          setCatalogCode(item.code)
+                        }}
+                      />
+                    </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Nome do Produto</label>
                         <input

@@ -59,7 +59,7 @@ export function ProductsTable({ products, onEdit, onDelete }: ProductsTableProps
                         {products?.map((product) => (
                             <tr key={product.id} className="border-b hover:bg-gray-50">
                                 <td className="py-2 px-2 font-medium text-gray-900">{product.name}</td>
-                                <td className="py-2 px-2">{product.quantity}</td>
+                                <td className="py-2 px-2">{product.quantity} {product.unit ?? ''}</td>
                                 <td className="py-2 px-2">
                                     <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
                                             product.priority === "Baixa"

@@ -25,6 +25,8 @@ export async function PUT(
       priority,
       status,
       notes,
+      unit: body.unit ?? null,
+      catalog_code: body.catalog_code ?? null,
     })
 
     return NextResponse.json(updatedProduct)
