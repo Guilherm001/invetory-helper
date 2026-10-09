@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Product } from '@/features/body/services/listService'
 import type { CotacaoData } from '../types'
-
+import { preparar } from '../services/gerarCotacao'
 interface Props {
   products: Product[]
   onClose: () => void
@@ -17,8 +17,9 @@ export default function QuantidadesCotacao({ products, onClose, onConfirm }: Pro
   const qtdRefs = useRef<(HTMLInputElement | null)[]>([])
 
   useEffect(() => {
-    fornecedorRef.current?.focus()
-  }, [])
+  fornecedorRef.current?.focus()
+  preparar()
+}, [])
 
   const completo =
     fornecedor.trim().length > 0 &&

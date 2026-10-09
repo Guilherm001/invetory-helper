@@ -153,9 +153,14 @@ export function Body() {
               await gerarCotacao(data)
               setShowQtd(false)
               sel.cancel()
-            } catch {
-              alert('Não foi possível gerar o PDF. Tente novamente.')
-            } finally {
+            } catch (err) {
+  console.error(err)
+  alert(
+    `Não foi possível gerar o PDF: ${
+      err instanceof Error ? err.message : 'erro desconhecido'
+    }`
+  )
+} finally {
               setGerando(false)
             }
           }}
