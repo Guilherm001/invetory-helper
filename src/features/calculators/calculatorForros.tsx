@@ -26,6 +26,9 @@ export default function CalculatorForros() {
         calcularFuncao={calcularArea}
         descricao_resultado1="m2"
 
+        label_largura_2="Largura 2 (opcional, para área irregular)"
+        placeholder_largura_2="Ex: 3"
+
         icone2={
           <Image src="/download.svg" width={30} height={30} alt="Forro" />
             }

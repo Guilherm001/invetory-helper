@@ -20,8 +20,8 @@ interface CardProps {
     placeholder_largura_2?: string;
 
     calcularFuncao: (valor1: number, valor2: number, valorSelect?: number) => number;
-    calcularFuncao2?: (valor1:number, valor2: number, numeroSelect?:number) => number;
-    calcularFuncao3?: (valor1:number, valor2: number) => number;
+    calcularFuncao2?: (valor1: number, valor2: number, numeroSelect?: number) => number;
+    calcularFuncao3?: (valor1: number, valor2: number) => number;
 
     result_resposta1: string;
     result_resposta2?: string;
@@ -75,6 +75,7 @@ export default function CardCalculator({
     const [valorSelect, setValorSelect] = useState("");
     const [valor1, setValor1] = useState("");
     const [valor2, setValor2] = useState("");
+    const [valor3, setValor3] = useState("");
 
     const [resultados, setResultados] = useState<(string | null)[]>([
         null,
@@ -83,6 +84,7 @@ export default function CardCalculator({
     ])
 
     const valor2Ref = useRef<HTMLInputElement>(null)
+    const valor3Ref = useRef<HTMLInputElement>(null)
     const resultadoRef = useRef<HTMLDivElement>(null)
 
     const temResultado = resultados.some((r) => r !== null)
@@ -94,44 +96,42 @@ export default function CardCalculator({
       resultadoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
     }, [resultados, temResultado])
 
-const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
-  e.preventDefault();
+    const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
+      e.preventDefault();
 
-  const numero1 = Number(valor1.replace(",","."));
-  const numero2 = Number(valor2.replace(",","."));
-  const numeroSelect = Number(valorSelect);
+      if (valor1 === '' || valor2 === '') return;
 
-  if (valor1 === '' || valor2 === '') {
-    return;
-  }
+      const numero1 = Number(valor1.replace(",", "."));
+      const numero2 = Number(valor2.replace(",", "."));
+      const numeroSelect = Number(valorSelect);
 
-  try {
-    const resultado1 = calcularFuncao(numero1, numero2).toFixed(2);
+      // terceiro valor é opcional: se preenchido, vira área irregular (trapézio)
+      const irregular = valor3.trim() !== "";
+      const numero3 = Number(valor3.replace(",", "."));
 
-    const resultado2 = calcularFuncao2
-  ? calcularFuncao2(numero1, numero2, numeroSelect).toFixed(0)
-  : null;
+      if (irregular && Number.isNaN(numero3)) return;
 
-    const resultado3 = calcularFuncao3
-      ? calcularFuncao3(numero2, numero1).toFixed(0)
-      : null;
+      // largura efetiva: média das duas larguras no caso irregular
+      const larguraEfetiva = irregular ? (numero2 + numero3) / 2 : numero2;
 
-    setResultados([
-      resultado1,
-      resultado2,
-      resultado3
-    ]);
+      try {
+        const resultado1 = calcularFuncao(numero1, larguraEfetiva).toFixed(2);
 
-  } catch (error) {
-    if (error instanceof Error) {
-      setResultados([
-        `Ocorreu um erro: ${error.message}`,
-        null,
-        null
-      ]);
-    }
-  }
-};
+        const resultado2 = calcularFuncao2
+          ? calcularFuncao2(numero1, larguraEfetiva, numeroSelect).toFixed(0)
+          : null;
+
+        const resultado3 = calcularFuncao3
+          ? calcularFuncao3(larguraEfetiva, numero1).toFixed(0)
+          : null;
+
+        setResultados([resultado1, resultado2, resultado3]);
+      } catch (error) {
+        if (error instanceof Error) {
+          setResultados([`Ocorreu um erro: ${error.message}`, null, null]);
+        }
+      }
+    };
 
     const resultadosConfig = [
         { label: result_resposta1, valor: resultados[0], descricao: descricao_resultado1, icon: icone1 },
@@ -169,6 +169,7 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
                                 placeholder={placeholder_comprimento}
                                 className={inputClass}
                             />
+
                             <label htmlFor="valor2" className="flex flex-col gap-2">
                                 {label_largura}
                             </label>
@@ -177,12 +178,37 @@ const handleSubmit = (e: SubmitEvent<HTMLFormElement>) => {
                                 ref={valor2Ref}
                                 type="text"
                                 inputMode="decimal"
-                                enterKeyHint="done"
+                                enterKeyHint={label_largura_2 ? "next" : "done"}
                                 value={valor2}
                                 onChange={(e) => setValor2(e.target.value)}
+                                onKeyDown={(e) => {
+                                  // se existe o campo da largura 2, Enter pula para ele
+                                  if (e.key !== "Enter" || !label_largura_2) return
+                                  e.preventDefault()
+                                  valor3Ref.current?.focus()
+                                }}
                                 placeholder={placeholder_largura}
                                 className={inputClass}
                             />
+
+                            {label_largura_2 && (
+                              <>
+                                <label htmlFor="valor3" className="flex flex-col gap-2">
+                                  {label_largura_2}
+                                </label>
+                                <input
+                                  id="valor3"
+                                  ref={valor3Ref}
+                                  type="text"
+                                  inputMode="decimal"
+                                  enterKeyHint="done"
+                                  value={valor3}
+                                  onChange={(e) => setValor3(e.target.value)}
+                                  placeholder={placeholder_largura_2}
+                                  className={inputClass}
+                                />
+                              </>
+                            )}
 
                             {selectOptions && (
                               <>
