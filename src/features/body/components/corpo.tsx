@@ -42,6 +42,16 @@ export default function ListaProdutos({
     }
   }
 
+  const handleToggle = async (product: Product) => {
+  if (!product.id) return
+  const novoStatus = product.status === 'Concluído' ? 'Pendente' : 'Concluído'
+  try {
+    await updateProduct(product.id, { status: novoStatus })
+  } catch {
+    alert('Erro ao atualizar produto')
+  }
+}
+
   const handleSave = async (id: string, data: Partial<Product>) => {
     setActionLoading(true)
     try {
@@ -69,10 +79,11 @@ export default function ListaProdutos({
   return (
     <div className="py-6">
       <ProductsTable
-        products={products}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
+  products={products}
+  onEdit={handleEdit}
+  onDelete={handleDelete}
+  onToggle={handleToggle}
+/>
 
       <EditProductDialog
         open={dialogOpen}
