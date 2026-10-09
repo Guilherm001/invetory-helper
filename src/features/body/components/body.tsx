@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from 'react'
 import { useProducts } from '../hooks/useProducts'
+import { useSelection } from '../hooks/useSelection'
 import BotaoAdd from './addButton'
 import Corpo from './corpo'
 import { InputDemo } from './input'
 import { SelectDemo } from './select'
 import Resumo, { type Filtro } from './resumo'
 import ExcluirComprados from './excluirComprados'
+import QuantidadesCotacao from '@/features/cotacao/components/QuantidadesCotacao'
+import { gerarCotacao } from '@/features/cotacao/services/gerarCotacao'
 
 export function Body() {
   const {
@@ -22,6 +25,11 @@ export function Body() {
 
   const [filtro, setFiltro] = useState<Filtro>('todos')
 
+  // cotação
+  const sel = useSelection()
+  const [showQtd, setShowQtd] = useState(false)
+  const [gerando, setGerando] = useState(false)
+
   const produtosVisiveis = useMemo(() => {
     if (filtro === 'pendentes')
       return products.filter((p) => p.status === 'Pendente')
@@ -35,6 +43,12 @@ export function Body() {
   const comprados = useMemo(
     () => products.filter((p) => p.status === 'Concluído'),
     [products]
+  )
+
+  // se um item for apagado (realtime), ele sai sozinho da seleção
+  const selecionados = useMemo(
+    () => products.filter((p) => p.id && sel.ids.has(p.id)),
+    [products, sel.ids]
   )
 
   return (
@@ -65,11 +79,29 @@ export function Body() {
           <SelectDemo />
         </div>
 
-        <div className="flex justify-end mt-4">
-          <ExcluirComprados
-            count={comprados.length}
-            onConfirm={() => deleteMany(comprados.map((p) => p.id!))}
-          />
+        <div className="flex items-center justify-between md:justify-end gap-3 mt-4">
+          {/* botão Cotação / Cancelar */}
+          <div>
+            {sel.selecting ? (
+              <button onClick={sel.cancel} className="text-sm text-gray-600">
+                Cancelar
+              </button>
+            ) : (
+              <button
+                onClick={sel.start}
+                className="px-3 py-2 rounded-md border border-[#079C9C] text-[#079C9C] text-sm font-medium"
+              >
+                Cotação
+              </button>
+            )}
+          </div>
+
+          {!sel.selecting && (
+            <ExcluirComprados
+              count={comprados.length}
+              onConfirm={() => deleteMany(comprados.map((p) => p.id!))}
+            />
+          )}
         </div>
 
         <div>
@@ -79,13 +111,56 @@ export function Body() {
             error={error}
             deleteProduct={deleteProduct}
             updateProduct={updateProduct}
+            selecting={sel.selecting}
+            selectedIds={sel.ids}
+            onSelect={sel.toggle}
           />
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
-        <BotaoAdd addProduct={addProduct} />
-      </div>
+      {/* botão de adicionar (celular) some durante a seleção */}
+      {!sel.selecting && (
+        <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
+          <BotaoAdd addProduct={addProduct} />
+        </div>
+      )}
+
+      {/* barra da cotação (celular e desktop) */}
+      {sel.selecting && (
+        <div className="fixed bottom-0 inset-x-0 z-20 bg-white border-t p-3 flex items-center justify-between">
+          <span className="text-sm text-gray-700">
+            {selecionados.length} selecionado(s)
+          </span>
+          <button
+            disabled={selecionados.length === 0}
+            onClick={() => setShowQtd(true)}
+            className="px-4 py-2 rounded-md bg-[#079C9C] text-white text-sm font-medium disabled:opacity-40"
+          >
+            Enviar para fornecedor
+          </button>
+        </div>
+      )}
+
+      {/* tela de quantidades */}
+      {showQtd && (
+        <QuantidadesCotacao
+          products={selecionados}
+          onClose={() => setShowQtd(false)}
+          onConfirm={async (data) => {
+            if (gerando) return
+            setGerando(true)
+            try {
+              await gerarCotacao(data)
+              setShowQtd(false)
+              sel.cancel()
+            } catch {
+              alert('Não foi possível gerar o PDF. Tente novamente.')
+            } finally {
+              setGerando(false)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

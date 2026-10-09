@@ -7,9 +7,20 @@ interface ProductsMobileProps {
     onEdit: (product: Product) => void;
     onDelete: (id: string) => void;
     onToggle: (product: Product) => void;
+    selecting: boolean;
+    selectedIds: Set<string>;
+    onSelect: (id: string) => void;
 }
 
-export function ProductsMobile({ products, onEdit, onDelete, onToggle }: ProductsMobileProps) {
+export function ProductsMobile({
+    products,
+    onEdit,
+    onDelete,
+    onToggle,
+    selecting,
+    selectedIds,
+    onSelect,
+}: ProductsMobileProps) {
     const handleDelete = (id: string | undefined) => {
         if (!id) {
             alert('Erro: ID do produto não encontrado.');
@@ -22,42 +33,56 @@ export function ProductsMobile({ products, onEdit, onDelete, onToggle }: Product
         <div className="space-y-3 pb-20">
             {products.map((product) => {
                 const comprado = product.status === 'Concluído'
+                const marcado = selecting ? selectedIds.has(product.id!) : comprado
+
                 return (
                     <div
                         key={product.id}
-                        className={`bg-white border border-gray-200 rounded-lg p-3 shadow-sm ${comprado ? 'opacity-60' : ''}`}
+                        className={`bg-white border rounded-lg p-3 shadow-sm ${
+                            selecting && marcado ? 'border-[#079C9C]' : 'border-gray-200'
+                        } ${!selecting && comprado ? 'opacity-60' : ''}`}
                     >
                         <div className="mb-2 flex items-start gap-3">
                             <input
                                 type="checkbox"
-                                checked={comprado}
-                                onChange={() => onToggle(product)}
-                                aria-label={`Marcar ${product.name} como comprado`}
+                                checked={marcado}
+                                onChange={() =>
+                                    selecting ? onSelect(product.id!) : onToggle(product)
+                                }
+                                aria-label={
+                                    selecting
+                                        ? `Selecionar ${product.name} para cotação`
+                                        : `Marcar ${product.name} como comprado`
+                                }
                                 className="mt-0.5 h-6 w-6 shrink-0 accent-[#079C9C]"
                             />
                             <div className="min-w-0">
-                                <p className={`text-sm font-medium text-gray-900 ${comprado ? 'line-through' : ''}`}>
+                                <p className={`text-sm font-medium text-gray-900 ${!selecting && comprado ? 'line-through' : ''}`}>
                                     {product.name}
                                 </p>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Qtd: {product.quantity} {product.unit ?? ''} · {product.priority}
+                                    Qtd: {product.quantity}
+                                    {product.unit ? ` ${product.unit}` : ''} · {product.priority}
                                 </p>
                             </div>
                         </div>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => onEdit(product)}
-                                className="flex-1 px-2 py-2 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 transition"
-                            >
-                                Editar
-                            </button>
-                            <button
-                                onClick={() => handleDelete(product.id)}
-                                className="flex-1 px-2 py-2 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition"
-                            >
-                                Excluir
-                            </button>
-                        </div>
+
+                        {!selecting && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => onEdit(product)}
+                                    className="flex-1 px-2 py-2 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 transition"
+                                >
+                                    Editar
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(product.id)}
+                                    className="flex-1 px-2 py-2 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600 transition"
+                                >
+                                    Excluir
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )
             })}

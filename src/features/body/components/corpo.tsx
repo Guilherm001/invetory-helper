@@ -12,6 +12,9 @@ interface ProductsProps {
   error: string | null
   deleteProduct: (id: string) => Promise<void>
   updateProduct: (id: string, data: Partial<Product>) => Promise<Product>
+  selecting: boolean
+  selectedIds: Set<string>
+  onSelect: (id: string) => void
 }
 
 export default function ListaProdutos({
@@ -20,6 +23,9 @@ export default function ListaProdutos({
   error,
   deleteProduct,
   updateProduct,
+  selecting,
+  selectedIds,
+  onSelect,
 }: ProductsProps) {
   const [actionLoading, setActionLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -32,7 +38,7 @@ export default function ListaProdutos({
 
   const handleDelete = async (id: string) => {
     setActionLoading(true)
-    
+
     try {
       await deleteProduct(id)
     } catch (error) {
@@ -43,14 +49,14 @@ export default function ListaProdutos({
   }
 
   const handleToggle = async (product: Product) => {
-  if (!product.id) return
-  const novoStatus = product.status === 'Concluído' ? 'Pendente' : 'Concluído'
-  try {
-    await updateProduct(product.id, { status: novoStatus })
-  } catch {
-    alert('Erro ao atualizar produto')
+    if (!product.id) return
+    const novoStatus = product.status === 'Concluído' ? 'Pendente' : 'Concluído'
+    try {
+      await updateProduct(product.id, { status: novoStatus })
+    } catch {
+      alert('Erro ao atualizar produto')
+    }
   }
-}
 
   const handleSave = async (id: string, data: Partial<Product>) => {
     setActionLoading(true)
@@ -79,11 +85,14 @@ export default function ListaProdutos({
   return (
     <div className="py-6">
       <ProductsTable
-  products={products}
-  onEdit={handleEdit}
-  onDelete={handleDelete}
-  onToggle={handleToggle}
-/>
+        products={products}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onToggle={handleToggle}
+        selecting={selecting}
+        selectedIds={selectedIds}
+        onSelect={onSelect}
+      />
 
       <EditProductDialog
         open={dialogOpen}
