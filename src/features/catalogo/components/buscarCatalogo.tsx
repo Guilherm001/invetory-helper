@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useCatalogSearch } from '../hooks/useCatalogSearch'
-import type { CatalogItem } from '../services/catalogService'
+import { searchCatalog, type CatalogItem } from '../services/catalogService'
 
 interface Props {
   onSelect: (item: CatalogItem) => void
@@ -11,6 +11,7 @@ interface Props {
 export default function BuscaCatalogo({ onSelect }: Props) {
   const [termo, setTermo] = useState('')
   const { results, loading } = useCatalogSearch(termo)
+  const lendo = useRef(false) // evita processar dois Enter seguidos
 
   function escolher(item: CatalogItem) {
     onSelect(item)
@@ -18,13 +19,30 @@ export default function BuscaCatalogo({ onSelect }: Props) {
   }
 
   // leitor de código de barras: digita o código e envia Enter
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  async function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      setTermo('')
+      return
+    }
     if (e.key !== 'Enter') return
     e.preventDefault() // não envia o formulário
+
     const t = termo.trim()
-    const exato = results.find((r) => r.barcode === t || r.code === t)
-    if (exato) escolher(exato)
-    else if (results.length === 1) escolher(results[0])
+    if (t.length < 2 || lendo.current) return
+
+    lendo.current = true
+    try {
+      // consulta direto: não depende do debounce da lista
+      const encontrados = await searchCatalog(t)
+      const exato = encontrados.find((r) => r.barcode === t || r.code === t)
+      if (exato) escolher(exato)
+      else if (encontrados.length === 1) escolher(encontrados[0])
+      // vários resultados: deixa a lista aberta para a pessoa escolher
+    } catch {
+      // erro de rede: a lista normal continua disponível
+    } finally {
+      lendo.current = false
+    }
   }
 
   return (

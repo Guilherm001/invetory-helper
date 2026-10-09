@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { LogoutButton } from "@/features/logout/logout-button";
+import { NavLinks } from "@/features/nav/nav-links";
 
 export const metadata: Metadata = {
   title: "Inventory Helper",
@@ -22,42 +23,28 @@ export default async function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        <main className="flex flex-col max-w-300 min-w-100 m-auto h-screen bg-white">
+        <main className="flex flex-col max-w-300 min-w-0 m-auto h-dvh bg-white">
           <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
-            <div className="flex items-center">
-              <Link href={user ? "/dashboard" : "/"}>
-                <img src="/logo.png" alt="Logo" className="h-40 w-auto" />
+            {/* celular: logo + sair em cima, abas embaixo | desktop: tudo na mesma linha */}
+            <div className="flex flex-wrap items-center md:flex-nowrap">
+              <Link
+                href={user ? "/dashboard" : "/"}
+                className="order-1 px-4 py-2 md:px-0 md:py-0"
+              >
+                <img
+                  src="/logo.png"
+                  alt="Logo"
+                  className="h-16 w-auto md:h-40"
+                />
               </Link>
 
               {user && (
                 <>
-                  <nav className="flex border-b border-gray-200 bg-white">
-                    <Link
-                      href="/dashboard"
-                      className="relative flex flex-1 items-center justify-center gap-2
-                        px-6 py-4 text-base font-medium text-[#079C9C]
-                        transition-colors duration-200
-                        hover:bg-[#079C9C]/5
-                        after:absolute after:bottom-0 after:left-0
-                        after:h-[3px] after:w-full
-                        after:rounded-t-full after:bg-[#079C9C]"
-                    >
-                      Produtos
-                    </Link>
-                    <Link
-                      href="/calculator"
-                      className="flex flex-1 items-center justify-center gap-2
-                        px-6 py-4 text-base font-medium text-slate-500
-                        transition-colors duration-200
-                        hover:bg-slate-50 hover:text-[#079C9C]"
-                    >
-                      Calculadora
-                    </Link>
-                  </nav>
-
-                  <div className="ml-auto pr-4">
+                  <div className="order-2 ml-auto pr-4 md:order-3">
                     <LogoutButton />
                   </div>
+
+                  <NavLinks className="order-3 w-full border-t border-gray-100 md:order-2 md:w-auto md:border-t-0" />
                 </>
               )}
             </div>
