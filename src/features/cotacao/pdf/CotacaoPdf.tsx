@@ -1,5 +1,6 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import type { CotacaoData } from '../types'
+import RomarLogo from './RomarLogo'
 
 const TEAL = '#079C9C'
 const GRAY_DARK = '#4B5563'
@@ -16,6 +17,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#111827',
   },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   logoRow: { flexDirection: 'row', alignItems: 'flex-end' },
   logoGrow: { fontFamily: 'Helvetica-Bold', fontSize: 52, color: TEAL, letterSpacing: 2 },
   logoLim: { fontFamily: 'Helvetica-Bold', fontSize: 52, color: GRAY_DARK, letterSpacing: 2 },
@@ -79,9 +81,12 @@ export default function CotacaoPdf({ data }: { data: CotacaoData }) {
   return (
     <Document title={`Cotação - ${data.fornecedor}`} author="GROWLIM">
       <Page size="A4" style={styles.page}>
-        <View style={styles.logoRow}>
-          <Text style={styles.logoGrow}>GROW</Text>
-          <Text style={styles.logoLim}>LIM</Text>
+        <View style={styles.header}>
+          <View style={styles.logoRow}>
+            <Text style={styles.logoGrow}>GROW</Text>
+            <Text style={styles.logoLim}>LIM</Text>
+          </View>
+          <RomarLogo height={52} />
         </View>
         <View style={styles.bar} />
 
