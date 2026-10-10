@@ -4,6 +4,7 @@ import {
   LineChart,
   Package,
   Scale,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -21,6 +22,7 @@ export const LINKS: NavLink[] = [
   { href: '/catalogo', label: 'Catálogo', icon: Library, principal: true },
   { href: '/historico-precos', label: 'Histórico', icon: LineChart, principal: true },
   { href: '/calculator', label: 'Calculadora', icon: Calculator, principal: false },
+  { href: '/financeiro', label: 'Financeiro', icon: Wallet, principal: false },
 ]
 
 export const estaAtivo = (pathname: string, href: string) =>
