@@ -70,7 +70,7 @@ export function ProductsTable({
     return (
         <>
             {/* Desktop */}
-            <div role="table" className="hidden md:block">
+            <div role="table" className="hidden xl:block">
                 {/* Cabeçalho */}
                 <div role="row" className={`${GRID} px-5 pb-3`}>
                     <span role="columnheader" className="sr-only">
@@ -237,7 +237,7 @@ export function ProductsTable({
             </div>
 
             {/* Mobile */}
-            <div className="md:hidden">
+            <div className="xl:hidden">
                 <ProductsMobile
                     products={products}
                     onEdit={onEdit}
