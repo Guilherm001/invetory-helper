@@ -20,6 +20,12 @@ import { cn } from "@/lib/utils"
 
 const signupSchema = z
   .object({
+    empresa: z
+      .string()
+      .trim()
+      .min(1, "Informe o nome da empresa")
+      .min(2, "O nome da empresa é muito curto")
+      .max(120, "O nome da empresa é muito longo"),
     name: z
       .string()
       .trim()
@@ -37,7 +43,7 @@ const signupSchema = z
     path: ["confirmPassword"],
   })
 
-type Campo = "name" | "email" | "password" | "confirmPassword"
+type Campo = "empresa" | "name" | "email" | "password" | "confirmPassword"
 type CampoErros = Partial<Record<Campo, string>>
 
 function traduzErro(message: string) {
@@ -74,6 +80,7 @@ export function SignupForm({
 
     const formData = new FormData(form)
     const parsed = signupSchema.safeParse({
+      empresa: formData.get("empresa"),
       name: formData.get("name"),
       email: formData.get("email"),
       password: formData.get("password"),
@@ -83,6 +90,7 @@ export function SignupForm({
     if (!parsed.success) {
       const erros = parsed.error.flatten().fieldErrors
       setFieldErrors({
+        empresa: erros.empresa?.[0],
         name: erros.name?.[0],
         email: erros.email?.[0],
         password: erros.password?.[0],
@@ -98,7 +106,10 @@ export function SignupForm({
         email: parsed.data.email,
         password: parsed.data.password,
         options: {
-          data: { full_name: parsed.data.name },
+          data: {
+            full_name: parsed.data.name,
+            empresa_nome: parsed.data.empresa,
+          },
           emailRedirectTo: `${window.location.origin}/login`,
         },
       })
@@ -155,19 +166,36 @@ export function SignupForm({
                   Crie sua conta
                 </h1>
                 <p className="text-balance text-sm text-muted-foreground">
-                  Preencha seus dados para começar
+                  Cadastre sua empresa para começar
                 </p>
               </div>
 
               <Field>
-                <FieldLabel htmlFor="name">Nome e sobrenome</FieldLabel>
+                <FieldLabel htmlFor="empresa">Nome da empresa</FieldLabel>
+                <Input
+                  id="empresa"
+                  name="empresa"
+                  type="text"
+                  placeholder="Ex: Madeireira Silva"
+                  autoComplete="organization"
+                  autoFocus
+                  required
+                  disabled={loading}
+                  aria-invalid={!!fieldErrors.empresa}
+                  aria-describedby={fieldErrors.empresa ? "empresa-erro" : undefined}
+                  className={inputClass}
+                />
+                {erroCampo("empresa")}
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="name">Seu nome e sobrenome</FieldLabel>
                 <Input
                   id="name"
                   name="name"
                   type="text"
                   placeholder="Seu nome completo"
                   autoComplete="name"
-                  autoFocus
                   required
                   disabled={loading}
                   aria-invalid={!!fieldErrors.name}

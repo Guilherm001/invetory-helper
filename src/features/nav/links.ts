@@ -5,6 +5,7 @@ import {
   Package,
   Scale,
   Wallet,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -23,6 +24,7 @@ export const LINKS: NavLink[] = [
   { href: '/historico-precos', label: 'Histórico', icon: LineChart, principal: true },
   { href: '/calculator', label: 'Calculadora', icon: Calculator, principal: false },
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, principal: false },
+  { href: '/equipe', label: 'Equipe', icon: Users, principal: false },
 ]
 
 export const estaAtivo = (pathname: string, href: string) =>
