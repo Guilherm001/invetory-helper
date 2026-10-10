@@ -24,7 +24,6 @@ export const metadata: Metadata = {
 const EM_BREVE = [
   { label: "Cotações", icon: FileText },
   { label: "Fornecedores", icon: Truck },
-  { label: "Comparar preços", icon: Scale },
   { label: "Histórico de preços", icon: LineChart },
   { label: "Pedidos de compra", icon: ClipboardCheck },
   { label: "Obras", icon: HardHat },
