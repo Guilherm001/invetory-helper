@@ -43,16 +43,14 @@ export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] })
         } else {
           setMsg({ tipo: 'erro', texto: r.erro })
         }
-      } catch (err) {
-        // erro que escapou da ação (servidor recusou, versão antiga da página etc.)
-        console.error('[equipe]', err)
-        setMsg({
-          tipo: 'erro',
-          texto: `Falha ao falar com o servidor: ${
-            err instanceof Error ? err.message : 'erro desconhecido'
-          }`,
-        })
-      }
+      }  catch (err) {
+  console.error('[equipe]', err)
+  const digest = (err as { digest?: string })?.digest
+  setMsg({
+    tipo: 'erro',
+    texto: `Falha ao falar com o servidor${digest ? ` (código ${digest})` : ''}`,
+  })
+}
     })
 
   return (
