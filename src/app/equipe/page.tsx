@@ -10,11 +10,19 @@ export default async function Page() {
   if (!user) redirect('/')
 
   // as regras do banco já limitam isso à empresa do dono
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('perfis')
     .select('id, nome, email')
     .eq('papel', 'funcionario')
     .order('criado_em')
+
+  if (error) {
+    return (
+      <div className="mt-10 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 md:max-w-xl">
+        Não foi possível carregar a equipe: {error.message}
+      </div>
+    )
+  }
 
   return <EquipeManager funcionarios={data ?? []} />
 }
