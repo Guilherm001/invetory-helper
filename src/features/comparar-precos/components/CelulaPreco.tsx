@@ -58,9 +58,10 @@ export default function CelulaPreco({ valor, destaque, coluna, rotulo, onSalvar 
   }
 
   const irParaProxima = (atual: HTMLInputElement) => {
+    // só os campos visíveis: a tabela (desktop) e os cards (celular) existem juntos no HTML
     const campos = Array.from(
       document.querySelectorAll<HTMLInputElement>(`[data-preco-col="${coluna}"]`)
-    )
+    ).filter((el) => el.offsetParent !== null)
     const proximo = campos[campos.indexOf(atual) + 1]
     if (proximo) proximo.focus()
     else atual.blur()
@@ -95,12 +96,13 @@ export default function CelulaPreco({ valor, destaque, coluna, rotulo, onSalvar 
           }
         }}
         inputMode="decimal"
+        enterKeyHint="next"
         placeholder="—"
         aria-label={rotulo}
         aria-invalid={!!erro}
         title={erro || undefined}
         disabled={saving}
-        className={`w-full rounded-lg border py-2 pl-8 pr-2 text-right text-sm outline-none transition placeholder:text-slate-300 focus:ring-2 disabled:opacity-60 ${
+        className={`w-full rounded-lg border py-2.5 pl-8 pr-2 text-right text-base outline-none transition placeholder:text-slate-300 focus:ring-2 disabled:opacity-60 md:py-2 md:text-sm ${
           erro
             ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400 focus:ring-red-200'
             : destaque

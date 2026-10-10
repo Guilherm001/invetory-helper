@@ -88,7 +88,7 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
       <div className="mt-7 space-y-3">
         {voltar}
         <div>
-          <h3 className="text-3xl font-bold">{c.comparacao.name}</h3>
+          <h3 className="text-2xl font-bold md:text-3xl">{c.comparacao.name}</h3>
           <p className="text-sm text-gray-400">
             Criada em {new Date(c.comparacao.created_at).toLocaleDateString('pt-BR')} ·{' '}
             {c.itens.length} {c.itens.length === 1 ? 'item' : 'itens'} ·{' '}
@@ -115,10 +115,11 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
             className="shrink-0 gap-1.5 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
           >
             {adicionando ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Plus className="size-4" />
-            )}
+  <Loader2 className="size-4 animate-spin" />
+) : (
+  <Plus className="size-4" />
+)}
+<span className="hidden sm:inline">Adicionar</span>
             Adicionar
           </Button>
         </div>

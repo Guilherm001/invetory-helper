@@ -18,7 +18,7 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'fornecedor'
 
-export async function gerarPedidoPdf(pedido: PedidoSugerido, nomeComparacao?: string) {
+export async function montarPdf(pedido: PedidoSugerido, nomeComparacao?: string) {
   const { jsPDF } = await import('jspdf')
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -164,5 +164,54 @@ export async function gerarPedidoPdf(pedido: PedidoSugerido, nomeComparacao?: st
     doc.text(`Página ${i} de ${paginas}`, W - M, H - 10, { align: 'right' })
   }
 
-  doc.save(`pedido-${slug(pedido.fornecedor.name)}.pdf`)
+  return {
+    blob: doc.output('blob') as Blob,
+    nome: `pedido-${slug(pedido.fornecedor.name)}.pdf`,
+  }
+}
+
+// carrega a biblioteca antes do clique: o navegador só deixa compartilhar logo após o toque
+export function precarregarPdf() {
+  void import('jspdf')
+}
+
+function ehCelular() {
+  return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+}
+
+function baixar(blob: Blob, nome: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nome
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+// celular: compartilhar | computador: baixar
+export async function gerarPedidoPdf(pedido: PedidoSugerido, nomeComparacao?: string) {
+  const { blob, nome } = await montarPdf(pedido, nomeComparacao)
+  const arquivo = new File([blob], nome, { type: 'application/pdf' })
+
+  if (
+    ehCelular() &&
+    typeof navigator.share === 'function' &&
+    navigator.canShare?.({ files: [arquivo] })
+  ) {
+    try {
+      await navigator.share({
+        files: [arquivo],
+        title: `Pedido - ${pedido.fornecedor.name}`,
+      })
+      return
+    } catch (e) {
+      // a pessoa fechou a folha de compartilhar: não é erro
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      // qualquer outra falha: cai para o download
+    }
+  }
+
+  baixar(blob, nome)
 }

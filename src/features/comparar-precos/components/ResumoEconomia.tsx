@@ -1,10 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { Check, ClipboardCopy, FileDown, Loader2, PiggyBank, Scale, Trophy } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import {
+  Check,
+  ClipboardCopy,
+  FileDown,
+  Loader2,
+  PiggyBank,
+  Scale,
+  Share2,
+  Trophy,
+} from 'lucide-react'
 import type { Fornecedor, ItemComparacao } from '../types'
 import { formatarReais, type Analise, type PedidoSugerido } from '../utils/melhorPreco'
-import { gerarPedidoPdf } from '../utils/gerarPedidoPdf'
+import { gerarPedidoPdf, precarregarPdf } from '../utils/gerarPedidoPdf'
 
 interface Props {
   itens: ItemComparacao[]
@@ -34,6 +43,11 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
   const [copiado, setCopiado] = useState<string | null>(null)
   const [gerandoPdf, setGerandoPdf] = useState<string | null>(null)
   const [erroAcao, setErroAcao] = useState('')
+
+  // carrega a biblioteca do PDF antes do clique (necessário para compartilhar no iPhone)
+  useEffect(() => {
+    precarregarPdf()
+  }, [])
 
   if (itens.length === 0 || fornecedores.length === 0) return null
 
@@ -242,7 +256,7 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
                 key={p.fornecedor.id}
                 className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
               >
-                <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+                <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-slate-900" title={p.fornecedor.name}>
                       {p.fornecedor.name}
@@ -254,11 +268,11 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
                     </p>
                   </div>
 
-                  <div className="flex shrink-0 gap-1.5">
+                  <div className="flex gap-2 sm:shrink-0 sm:gap-1.5">
                     <button
                       type="button"
                       onClick={() => copiar(p)}
-                      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition active:scale-95 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs ${
                         copiado === p.fornecedor.id
                           ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                           : 'border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10'
@@ -266,12 +280,12 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
                     >
                       {copiado === p.fornecedor.id ? (
                         <>
-                          <Check className="size-3.5" />
+                          <Check className="size-4 sm:size-3.5" />
                           Copiado
                         </>
                       ) : (
                         <>
-                          <ClipboardCopy className="size-3.5" />
+                          <ClipboardCopy className="size-4 sm:size-3.5" />
                           Copiar pedido
                         </>
                       )}
@@ -281,17 +295,19 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
                       type="button"
                       onClick={() => baixarPdf(p)}
                       disabled={gerandoPdf !== null}
-                      className="flex items-center gap-1.5 rounded-lg bg-[#079C9C] px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs"
                     >
                       {gerandoPdf === p.fornecedor.id ? (
                         <>
-                          <Loader2 className="size-3.5 animate-spin" />
+                          <Loader2 className="size-4 animate-spin sm:size-3.5" />
                           Gerando...
                         </>
                       ) : (
                         <>
-                          <FileDown className="size-3.5" />
-                          PDF
+                          <Share2 className="size-4 sm:hidden" />
+                          <FileDown className="hidden size-3.5 sm:block" />
+                          <span className="sm:hidden">Compartilhar</span>
+                          <span className="hidden sm:inline">PDF</span>
                         </>
                       )}
                     </button>
@@ -300,17 +316,23 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
 
                 <ul className="divide-y divide-slate-100 text-sm">
                   {p.itens.map(({ item, preco, subtotal }) => (
-                    <li key={item.id} className="flex items-center justify-between gap-3 py-1.5">
-                      <span className="min-w-0 truncate text-slate-700" title={item.name}>
+                    <li
+                      key={item.id}
+                      className="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-1.5"
+                    >
+                      <span
+                        className="min-w-0 break-words text-slate-700 sm:truncate"
+                        title={item.name}
+                      >
                         <span className="font-semibold text-[#079C9C]">
                           {numero(item.quantity)}
                           {item.unit ? ` ${item.unit}` : ''}
                         </span>{' '}
                         {item.name}
                       </span>
-                      <span className="shrink-0 text-right text-slate-500">
+                      <span className="shrink-0 text-xs text-slate-500 sm:text-right sm:text-sm">
                         {formatarReais(preco)}
-                        <span className="ml-2 font-medium text-slate-800">
+                        <span className="ml-2 text-sm font-medium text-slate-800">
                           {formatarReais(subtotal)}
                         </span>
                       </span>

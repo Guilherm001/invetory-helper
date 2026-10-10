@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, Plus, Trash2, Trophy, X, Clock } from 'lucide-react'
+import { Clock, Minus, Pencil, Plus, Trash2, Trophy, X } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,7 +69,7 @@ function Confirmar({
   )
 }
 
-// quantidade editável; salva ao sair do campo
+// quantidade editável (desktop); salva ao sair do campo
 function QuantidadeInput({
   valor,
   unidade,
@@ -114,6 +114,46 @@ function QuantidadeInput({
   )
 }
 
+// quantidade com − e + grandes (celular)
+function QuantidadeStepper({
+  valor,
+  unidade,
+  onSalvar,
+}: {
+  valor: number
+  unidade: string | null
+  onSalvar: (n: number) => void
+}) {
+  const botao =
+    'flex size-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition active:scale-90 active:border-[#079C9C] active:text-[#079C9C] disabled:opacity-40'
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        aria-label="Diminuir quantidade"
+        disabled={valor <= 1}
+        onClick={() => onSalvar(valor - 1)}
+        className={botao}
+      >
+        <Minus className="size-4" />
+      </button>
+      <span className="min-w-[3.5rem] text-center text-sm font-semibold text-[#079C9C]">
+        {numero(valor)}
+        {unidade ? ` ${unidade}` : ''}
+      </span>
+      <button
+        type="button"
+        aria-label="Aumentar quantidade"
+        onClick={() => onSalvar(valor + 1)}
+        className={botao}
+      >
+        <Plus className="size-4" />
+      </button>
+    </div>
+  )
+}
+
 export default function TabelaComparativa({
   itens,
   fornecedores,
@@ -129,7 +169,7 @@ export default function TabelaComparativa({
   const [erro, setErro] = useState('')
   const mapa = montarMapa(precos)
 
-  // erros de ações que não têm campo próprio aparecem no topo da tabela
+  // erros de ações que não têm campo próprio aparecem no topo
   const tentar = async (acao: () => Promise<void>) => {
     setErro('')
     try {
@@ -160,6 +200,7 @@ export default function TabelaComparativa({
   }
 
   const totalDe = (id: string) => analise.ranking.find((t) => t.fornecedor.id === id)
+  const completos = analise.ranking.filter((x) => x.completo).length
 
   return (
     <div className="space-y-3">
@@ -169,7 +210,187 @@ export default function TabelaComparativa({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* ===================== CELULAR ===================== */}
+      <div className="space-y-4 md:hidden">
+        {/* Fornecedores: faixa rolável */}
+        <div className="-mx-4 overflow-x-auto px-4">
+          <div className="flex gap-2 pb-1">
+            {fornecedores.map((f) => (
+              <div
+                key={f.id}
+                className="flex shrink-0 items-center gap-0.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-3 pr-1 shadow-sm"
+              >
+                <div className="max-w-[130px] min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{f.name}</p>
+                  {f.lead_time_days != null && (
+                    <p className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <Clock className="size-3" />
+                      {f.lead_time_days} {f.lead_time_days === 1 ? 'dia' : 'dias'}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Editar ${f.name}`}
+                  onClick={() => onEditarFornecedor(f)}
+                  className="rounded-lg p-2 text-slate-400 active:bg-[#079C9C]/10 active:text-[#079C9C]"
+                >
+                  <Pencil className="size-4" />
+                </button>
+                <Confirmar
+                  titulo="Tirar fornecedor desta comparação?"
+                  descricao={
+                    <>
+                      <strong>{f.name}</strong> sai desta comparação e os preços dele aqui serão
+                      apagados. O cadastro do fornecedor continua guardado.
+                    </>
+                  }
+                  rotuloBotao="Tirar fornecedor"
+                  onConfirmar={() => tentar(() => onRemoverFornecedor(f.id))}
+                >
+                  <button
+                    type="button"
+                    aria-label={`Tirar ${f.name} da comparação`}
+                    className="rounded-lg p-2 text-slate-400 active:bg-red-50 active:text-red-600"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </Confirmar>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={onAdicionarFornecedor}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-dashed border-[#079C9C] px-3.5 text-sm font-semibold text-[#079C9C] active:bg-[#079C9C]/10"
+            >
+              <Plus className="size-4" />
+              Fornecedor
+            </button>
+          </div>
+        </div>
+
+        {/* Itens: um card por item */}
+        <ul className="space-y-3">
+          {itens.map((item) => {
+            const linha = analise.linhas.get(item.id)
+
+            return (
+              <li
+                key={item.id}
+                className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 break-words font-semibold text-slate-900">{item.name}</p>
+
+                  <Confirmar
+                    titulo="Remover item?"
+                    descricao={
+                      <>
+                        <strong>{item.name}</strong> sai da comparação junto com os preços que já
+                        foram preenchidos.
+                      </>
+                    }
+                    rotuloBotao="Remover item"
+                    onConfirmar={() => tentar(() => onRemoverItem(item.id))}
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Remover ${item.name}`}
+                      className="-mr-1 -mt-1 shrink-0 rounded-lg p-2 text-slate-300 active:bg-red-50 active:text-red-600"
+                    >
+                      <Trash2 className="size-5" />
+                    </button>
+                  </Confirmar>
+                </div>
+
+                <div className="mt-2">
+                  <QuantidadeStepper
+                    valor={item.quantity}
+                    unidade={item.unit}
+                    onSalvar={(n) => tentar(() => onAlterarQuantidade(item.id, n))}
+                  />
+                </div>
+
+                <div className="mt-3 space-y-2.5 border-t border-slate-100 pt-3">
+                  {fornecedores.map((f) => {
+                    const preco = mapa.get(chave(item.id, f.id))
+                    const destaque =
+                      !!linha?.comparavel && preco !== undefined && linha.vencedores.includes(f.id)
+
+                    return (
+                      <div key={f.id} className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-slate-700">{f.name}</p>
+                          {destaque && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                              <Trophy className="size-3" />
+                              Menor preço
+                            </span>
+                          )}
+                        </div>
+                        <div className="w-36 shrink-0">
+                          <CelulaPreco
+                            valor={preco}
+                            destaque={destaque}
+                            coluna={f.id}
+                            rotulo={`Preço de ${item.name} em ${f.name}`}
+                            onSalvar={(v) => onDefinirPreco(item.id, f.id, v)}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+
+        {/* Totais */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Total por fornecedor
+          </p>
+          <ul className="divide-y divide-slate-100">
+            {fornecedores.map((f) => {
+              const t = totalDe(f.id)
+              const melhor = analise.melhorUnico?.fornecedor.id === f.id
+
+              return (
+                <li key={f.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-800">{f.name}</p>
+                    {t && !t.completo && (
+                      <p className="text-[11px] font-medium text-amber-600">
+                        {t.cotados === 0
+                          ? 'Sem preços'
+                          : `Faltam ${t.faltando} ${t.faltando === 1 ? 'item' : 'itens'}`}
+                      </p>
+                    )}
+                    {melhor && completos > 1 && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                        <Trophy className="size-3" />
+                        Melhor
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className={`shrink-0 text-base font-bold ${
+                      melhor ? 'text-emerald-700' : 'text-slate-800'
+                    }`}
+                  >
+                    {t && t.cotados > 0 ? formatarReais(t.total) : '—'}
+                  </p>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      </div>
+
+      {/* ===================== DESKTOP ===================== */}
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 align-bottom">
@@ -323,7 +544,7 @@ export default function TabelaComparativa({
                       {t && t.cotados > 0 ? formatarReais(t.total) : '—'}
                     </p>
 
-                    {melhor && analise.ranking.filter((x) => x.completo).length > 1 && (
+                    {melhor && completos > 1 && (
                       <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                         <Trophy className="size-3" />
                         Melhor
@@ -347,7 +568,7 @@ export default function TabelaComparativa({
         </table>
       </div>
 
-      <p className="text-xs text-slate-400">
+      <p className="hidden text-xs text-slate-400 md:block">
         Dica: digite o preço e aperte Enter para ir ao próximo item. Esc cancela e campo vazio
         apaga o preço.
       </p>
