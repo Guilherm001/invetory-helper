@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,13 +15,29 @@ import { formatarReais } from '@/features/comparar-precos/utils/melhorPreco'
 import { lerRelatorioCaixa } from '../utils/lerRelatorioCaixa'
 import { lerMovimentacao } from '../utils/lerMovimentacao'
 import { calcularResumo } from '../utils/calcularDia'
-import type { ResultadoCaixa, ResultadoMovimentacao } from '../utils/tipos'
+import type { DiaPendente } from '../utils/diasPendentes'
+import type { DiaCaixa, ResultadoCaixa, ResultadoMovimentacao } from '../utils/tipos'
 import {
   gravarCaixa,
   gravarItens,
   precosDoCatalogo,
   verificarDias,
 } from '../services/financeiroService'
+
+interface ArquivoCaixa {
+  id: number
+  nome: string
+  resultado: ResultadoCaixa
+}
+
+interface ArquivoMov {
+  id: number
+  nome: string
+  resultado: ResultadoMovimentacao
+  dia: string // AAAA-MM-DD (vazio = ainda não escolhido)
+  sugerido: boolean // a data foi sugerida pelo sistema, não escolhida por você
+  ordem: number // quando o arquivo foi exportado
+}
 
 const reais = (n: number | null) => (n === null ? '—' : formatarReais(n))
 
@@ -30,66 +46,105 @@ const formatarDia = (iso: string) => {
   return `${d}/${m}/${a}`
 }
 
+const rotuloDia = (iso: string) => {
+  const [a, m, d] = iso.split('-').map(Number)
+  return new Date(a, m - 1, d).toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+  })
+}
+
 function ontem() {
   const d = new Date()
   d.setDate(d.getDate() - 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function Stat({
-  rotulo,
-  valor,
-  sub,
-  tom,
-}: {
-  rotulo: string
-  valor: string
-  sub?: string
-  tom?: 'verde' | 'vermelho'
-}) {
+// "excel_10102026_122904.csv" -> momento da exportação (senão, a data do arquivo)
+function ordemDoArquivo(f: File) {
+  const m = /(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})/.exec(f.name)
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]).getTime()
+  return f.lastModified
+}
+
+// sugere a data de cada movimentação nova, sem nunca decidir sozinho quando há dúvida
+function sugerir(
+  novos: ArquivoMov[],
+  caixas: ArquivoCaixa[],
+  jaTem: ArquivoMov[],
+  pendentes: DiaPendente[]
+): ArquivoMov[] {
+  if (novos.length === 0) return novos
+
+  const ocupados = new Set(jaTem.map((m) => m.dia).filter(Boolean))
+  const ordenados = [...novos].sort((a, b) => a.ordem - b.ordem)
+
+  const doCaixa = [...new Set(caixas.flatMap((a) => a.resultado.dias.map((d) => d.dia)))]
+    .filter((d) => !ocupados.has(d))
+    .sort()
+  const dosPendentes = pendentes
+    .filter((p) => p.faltaItens && !ocupados.has(p.dia))
+    .map((p) => p.dia)
+    .sort()
+
+  const candidatos =
+    doCaixa.length === ordenados.length
+      ? doCaixa
+      : dosPendentes.length === ordenados.length
+        ? dosPendentes
+        : ordenados.length === 1
+          ? [ontem()]
+          : []
+
+  const mapa = new Map<number, string>()
+  ordenados.forEach((m, i) => {
+    if (candidatos[i]) mapa.set(m.id, candidatos[i])
+  })
+
+  return novos.map((m) => (mapa.has(m.id) ? { ...m, dia: mapa.get(m.id)!, sugerido: true } : m))
+}
+
+function Celula({ rotulo, valor, tom }: { rotulo: string; valor: string; tom?: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-      <p className="text-xs text-slate-500">{rotulo}</p>
-      <p
-        className={`mt-0.5 text-lg font-bold md:text-xl ${
-          tom === 'verde' ? 'text-emerald-700' : tom === 'vermelho' ? 'text-red-600' : 'text-slate-900'
-        }`}
-      >
-        {valor}
-      </p>
-      {sub && <p className="text-[11px] text-slate-400">{sub}</p>}
+    <div>
+      <p className="text-[11px] uppercase tracking-wide text-slate-400">{rotulo}</p>
+      <p className={`text-sm font-semibold md:text-base ${tom ?? 'text-slate-800'}`}>{valor}</p>
     </div>
   )
 }
 
-export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
-  const [caixa, setCaixa] = useState<ResultadoCaixa | null>(null)
-  const [nomeCaixa, setNomeCaixa] = useState('')
-  const [mov, setMov] = useState<ResultadoMovimentacao | null>(null)
-  const [nomeMov, setNomeMov] = useState('')
-  const [diaMov, setDiaMov] = useState('')
-  const [diaEditado, setDiaEditado] = useState(false)
+export default function ImportarDia({
+  onSalvo,
+  pendentes = [],
+}: {
+  onSalvo: () => void
+  pendentes?: DiaPendente[]
+}) {
+  const [caixas, setCaixas] = useState<ArquivoCaixa[]>([])
+  const [movs, setMovs] = useState<ArquivoMov[]>([])
   const [precos, setPrecos] = useState<Map<string, number | null> | null>(null)
-  const [existentes, setExistentes] = useState<{ caixa: string[]; itens: boolean }>({
+  const [existentes, setExistentes] = useState<{ caixa: string[]; itens: string[] }>({
     caixa: [],
-    itens: false,
+    itens: [],
   })
   const [erros, setErros] = useState<string[]>([])
   const [sucesso, setSucesso] = useState('')
   const [lendo, setLendo] = useState(false)
   const [saving, setSaving] = useState(false)
   const [arrastando, setArrastando] = useState(false)
+  const contador = useRef(0)
 
   // preços do catálogo e dias que já existem (para avisar da substituição)
-  const verificar = async (
-    cx: ResultadoCaixa | null,
-    mv: ResultadoMovimentacao | null,
-    dMov: string
-  ) => {
+  const verificar = async (cx: ArquivoCaixa[], mv: ArquivoMov[]) => {
     try {
+      const codigos = mv.flatMap((m) => m.resultado.itens.map((i) => i.codigo))
+      const diasCx = [...new Set(cx.flatMap((a) => a.resultado.dias.map((d) => d.dia)))]
+      const diasIt = [...new Set(mv.map((m) => m.dia).filter(Boolean))]
+
       const [p, ex] = await Promise.all([
-        mv ? precosDoCatalogo(mv.itens.map((i) => i.codigo)) : Promise.resolve(null),
-        verificarDias(cx ? cx.dias.map((d) => d.dia) : [], mv && dMov ? dMov : null),
+        codigos.length > 0 ? precosDoCatalogo(codigos) : Promise.resolve(null),
+        verificarDias(diasCx, diasIt),
       ])
       setPrecos(p)
       setExistentes(ex)
@@ -104,21 +159,24 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
     setLendo(true)
 
     const novosErros: string[] = []
-    let cx = caixa
-    let nc = nomeCaixa
-    let mv = mov
-    let nm = nomeMov
+    let cx = [...caixas]
+    const novosMovs: ArquivoMov[] = []
 
     for (const f of arquivos) {
       try {
         const buffer = await f.arrayBuffer()
         const nome = f.name.toLowerCase()
         if (nome.endsWith('.csv')) {
-          mv = lerMovimentacao(buffer)
-          nm = f.name
+          novosMovs.push({
+            id: ++contador.current,
+            nome: f.name,
+            resultado: lerMovimentacao(buffer),
+            dia: '',
+            sugerido: false,
+            ordem: ordemDoArquivo(f),
+          })
         } else if (nome.endsWith('.txt')) {
-          cx = lerRelatorioCaixa(buffer)
-          nc = f.name
+          cx = [...cx, { id: ++contador.current, nome: f.name, resultado: lerRelatorioCaixa(buffer) }]
         } else {
           throw new Error('Use o .txt do caixa ou o .csv de movimentação.')
         }
@@ -127,63 +185,78 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
       }
     }
 
-    // a movimentação não tem data: segue a do caixa (se for de um dia só), senão ontem
-    let d = diaMov
-    if (mv && !diaEditado) {
-      const unico = cx && cx.dias.length === 1 ? cx.dias[0].dia : null
-      d = unico ?? (diaMov || ontem())
-    }
-
-    setCaixa(cx)
-    setNomeCaixa(nc)
-    setMov(mv)
-    setNomeMov(nm)
-    setDiaMov(d)
+    const mv = [...movs, ...sugerir(novosMovs, cx, movs, pendentes)]
+    setCaixas(cx)
+    setMovs(mv)
     setErros(novosErros)
-    await verificar(cx, mv, d)
+    await verificar(cx, mv)
     setLendo(false)
   }
 
   const limpar = () => {
-    setCaixa(null)
-    setNomeCaixa('')
-    setMov(null)
-    setNomeMov('')
-    setDiaMov('')
-    setDiaEditado(false)
+    setCaixas([])
+    setMovs([])
     setPrecos(null)
-    setExistentes({ caixa: [], itens: false })
+    setExistentes({ caixa: [], itens: [] })
     setErros([])
   }
 
-  const removerCaixa = async () => {
-    setCaixa(null)
-    setNomeCaixa('')
-    await verificar(null, mov, diaMov)
+  const removerCaixa = async (id: number) => {
+    const cx = caixas.filter((a) => a.id !== id)
+    setCaixas(cx)
+    await verificar(cx, movs)
   }
 
-  const removerMov = async () => {
-    setMov(null)
-    setNomeMov('')
-    setPrecos(null)
-    await verificar(caixa, null, '')
+  const removerMov = async (id: number) => {
+    const mv = movs.filter((m) => m.id !== id)
+    setMovs(mv)
+    await verificar(caixas, mv)
   }
+
+  const mudarDiaMov = async (id: number, dia: string) => {
+    const mv = movs.map((m) => (m.id === id ? { ...m, dia, sugerido: false } : m))
+    setMovs(mv)
+    await verificar(caixas, mv)
+  }
+
+  // dias do caixa: se o mesmo dia vier em dois arquivos, vale o último
+  const mapaCaixa = new Map<string, DiaCaixa>()
+  const diasRepetidos: string[] = []
+  for (const a of caixas) {
+    for (const d of a.resultado.dias) {
+      if (mapaCaixa.has(d.dia)) diasRepetidos.push(d.dia)
+      mapaCaixa.set(d.dia, d)
+    }
+  }
+
+  const diasLista = [
+    ...new Set([...mapaCaixa.keys(), ...movs.map((m) => m.dia).filter(Boolean)]),
+  ].sort()
 
   const salvar = async () => {
-    if (mov && !diaMov) {
-      setErros(['Escolha a data da movimentação.'])
+    if (movs.some((m) => !m.dia)) {
+      setErros(['Escolha a data de cada movimentação.'])
       return
     }
+    const diasMov = movs.map((m) => m.dia)
+    if (new Set(diasMov).size !== diasMov.length) {
+      setErros(['Há dois arquivos de movimentação no mesmo dia.'])
+      return
+    }
+
     setSaving(true)
     setErros([])
     setSucesso('')
     try {
-      if (caixa) await gravarCaixa(caixa.dias)
-      if (mov) await gravarItens(diaMov, mov.itens, precos ?? new Map())
+      const diasCaixa = [...mapaCaixa.values()]
+      if (diasCaixa.length > 0) await gravarCaixa(diasCaixa)
+      for (const m of movs) await gravarItens(m.dia, m.resultado.itens, precos ?? new Map())
 
       const partes: string[] = []
-      if (caixa) partes.push(`caixa de ${caixa.dias.length} ${caixa.dias.length === 1 ? 'dia' : 'dias'}`)
-      if (mov) partes.push(`${mov.itens.length} itens de ${formatarDia(diaMov)}`)
+      if (diasCaixa.length > 0)
+        partes.push(`caixa de ${diasCaixa.length} ${diasCaixa.length === 1 ? 'dia' : 'dias'}`)
+      if (movs.length > 0)
+        partes.push(`movimentação de ${movs.length} ${movs.length === 1 ? 'dia' : 'dias'}`)
       setSucesso(`Importação salva: ${partes.join(' e ')}.`)
       limpar()
       onSalvo()
@@ -194,21 +267,35 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
     }
   }
 
-  const diaCaixa = caixa && caixa.dias.length === 1 ? caixa.dias[0] : null
-  const resumo = calcularResumo(diaCaixa, mov, precos ?? new Map())
-  const naoEncontrados = mov && precos ? mov.itens.filter((i) => !precos.has(i.codigo)) : []
-  const devolvidos = mov ? mov.itens.filter((i) => i.entrada > 0) : []
-  const avisos = [...(caixa?.avisos ?? []), ...(mov?.avisos ?? [])]
-  const dataDiferente = !!diaCaixa && !!mov && !!diaMov && diaCaixa.dia !== diaMov
-  const temArquivo = !!caixa || !!mov
+  const naoEncontrados = precos
+    ? [
+        ...new Map(
+          movs
+            .flatMap((m) => m.resultado.itens)
+            .filter((i) => !precos.has(i.codigo))
+            .map((i) => [i.codigo, i])
+        ).values(),
+      ]
+    : []
+
+  const avisos = [
+    ...caixas.flatMap((a) => a.resultado.avisos),
+    ...movs.flatMap((m) => m.resultado.avisos),
+    ...[...new Set(diasRepetidos)].map(
+      (d) => `O dia ${formatarDia(d)} está em mais de um arquivo de caixa. Vale o último.`
+    ),
+  ]
+
+  const temArquivo = caixas.length > 0 || movs.length > 0
+  const faltaData = movs.some((m) => !m.dia)
 
   return (
     <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
       <div>
-        <h4 className="text-lg font-bold text-slate-900">Importar o dia</h4>
+        <h4 className="text-lg font-bold text-slate-900">Importar fechamentos</h4>
         <p className="text-sm text-slate-500">
-          Solte o relatório do caixa (.txt) e a movimentação de estoque (.csv). Dá para enviar um
-          de cada vez.
+          Solte o relatório do caixa (.txt) e a movimentação de estoque (.csv). Para mais de um
+          dia, exporte um arquivo de cada dia e solte todos de uma vez.
         </p>
       </div>
 
@@ -238,7 +325,7 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
         <p className="text-sm font-semibold text-slate-700">
           {lendo ? 'Lendo os arquivos...' : 'Solte os arquivos aqui ou toque para escolher'}
         </p>
-        <p className="text-xs text-slate-400">Relatório do caixa (.txt) e movimentação (.csv)</p>
+        <p className="text-xs text-slate-400">Caixa (.txt) e movimentação (.csv), de um ou mais dias</p>
         <input
           type="file"
           accept=".txt,.csv"
@@ -271,64 +358,79 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
         <div className="space-y-4">
           {/* Arquivos lidos */}
           <ul className="space-y-2">
-            {caixa && (
-              <li className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+            {caixas.map((a) => (
+              <li
+                key={a.id}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
+              >
                 <FileText className="size-5 shrink-0 text-[#079C9C]" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">{nomeCaixa}</p>
+                  <p className="truncate text-sm font-medium text-slate-800">{a.nome}</p>
                   <p className="text-xs text-slate-500">
-                    {caixa.dias.length === 1
-                      ? `Caixa de ${formatarDia(caixa.dias[0].dia)}`
-                      : `Caixa de ${caixa.dias.length} dias`}
+                    Caixa de{' '}
+                    {a.resultado.dias.length === 1
+                      ? formatarDia(a.resultado.dias[0].dia)
+                      : `${a.resultado.dias.length} dias`}
                     {' · '}
-                    {caixa.dias.reduce((s, d) => s + d.pedidos, 0)} vendas
+                    {a.resultado.dias.reduce((s, d) => s + d.pedidos, 0)} vendas
                   </p>
                 </div>
                 <button
                   type="button"
-                  aria-label="Remover relatório do caixa"
-                  onClick={removerCaixa}
+                  aria-label={`Remover ${a.nome}`}
+                  onClick={() => removerCaixa(a.id)}
                   className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                 >
                   <X className="size-4" />
                 </button>
               </li>
-            )}
+            ))}
 
-            {mov && (
-              <li className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+            {movs.map((m) => (
+              <li
+                key={m.id}
+                className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
+              >
                 <FileSpreadsheet className="size-5 shrink-0 text-[#079C9C]" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">{nomeMov}</p>
-                  <p className="text-xs text-slate-500">{mov.itens.length} itens movimentados</p>
+                  <p className="truncate text-sm font-medium text-slate-800">{m.nome}</p>
+                  <p className="text-xs text-slate-500">
+                    {m.resultado.itens.length} itens movimentados
+                  </p>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-slate-500">
-                  Dia
-                  <input
-                    type="date"
-                    value={diaMov}
-                    onChange={(e) => {
-                      setDiaMov(e.target.value)
-                      setDiaEditado(true)
-                      verificar(caixa, mov, e.target.value)
-                    }}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
-                  />
-                </label>
+                <div className="flex flex-col items-end gap-0.5">
+                  <label className="flex items-center gap-2 text-xs text-slate-500">
+                    Dia
+                    <input
+                      type="date"
+                      value={m.dia}
+                      onChange={(e) => mudarDiaMov(m.id, e.target.value)}
+                      className={`rounded-md border bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 ${
+                        m.dia ? 'border-slate-200' : 'border-amber-400'
+                      }`}
+                    />
+                  </label>
+                  {m.sugerido && (
+                    <span className="text-[11px] text-amber-600">sugerida, confira</span>
+                  )}
+                  {!m.dia && (
+                    <span className="text-[11px] text-amber-600">escolha o dia</span>
+                  )}
+                </div>
                 <button
                   type="button"
-                  aria-label="Remover movimentação"
-                  onClick={removerMov}
+                  aria-label={`Remover ${m.nome}`}
+                  onClick={() => removerMov(m.id)}
                   className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                 >
                   <X className="size-4" />
                 </button>
               </li>
-            )}
+            ))}
           </ul>
 
-          {/* Avisos de substituição e de data */}
-          {(existentes.caixa.length > 0 || existentes.itens || dataDiferente) && (
+          {/* Avisos de substituição */}
+          {(existentes.caixa.length > 0 || existentes.itens.length > 0) && (
             <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
               {existentes.caixa.length > 0 && (
                 <p className="flex items-start gap-2">
@@ -337,86 +439,104 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
                   será substituído.
                 </p>
               )}
-              {existentes.itens && (
+              {existentes.itens.length > 0 && (
                 <p className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  A movimentação de {formatarDia(diaMov)} já estava importada e será substituída.
-                </p>
-              )}
-              {dataDiferente && diaCaixa && (
-                <p className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  A movimentação está no dia {formatarDia(diaMov)}, mas o caixa é de{' '}
-                  {formatarDia(diaCaixa.dia)}. Confira a data.
+                  A movimentação de {existentes.itens.map(formatarDia).join(', ')} já estava
+                  importada e será substituída.
                 </p>
               )}
             </div>
           )}
 
-          {/* Conferência */}
+          {/* Conferência, um cartão por dia */}
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-slate-700">
-              Conferência
-              {diaCaixa && ` · ${formatarDia(diaCaixa.dia)}`}
-            </p>
+            <p className="text-sm font-semibold text-slate-700">Conferência</p>
 
-            {caixa && !diaCaixa && (
-              <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                O relatório tem vários dias. Cada dia será gravado separadamente, mas o lucro só
-                é calculado depois de salvar, e o fiado não é atribuído a nenhum deles.
-              </p>
-            )}
+            {diasLista.map((dia) => {
+              const cx = mapaCaixa.get(dia) ?? null
+              const mv = movs.find((m) => m.dia === dia) ?? null
+              const r = calcularResumo(cx, mv?.resultado ?? null, precos ?? new Map())
+              const estranha = r.margem !== null && (r.margem < 10 || r.margem > 70)
+              const devolvidos = mv ? mv.resultado.itens.filter((i) => i.entrada > 0) : []
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Stat
-                rotulo="Vendas do dia"
-                valor={reais(resumo.vendas)}
-                sub={diaCaixa ? 'caixa − fiado antigo + fiado de hoje' : 'falta o relatório do caixa'}
-              />
-              <Stat
-                rotulo="Recebido"
-                valor={reais(resumo.recebido)}
-                sub={diaCaixa ? 'dinheiro + PIX + cartão' : 'falta o relatório do caixa'}
-              />
-              <Stat
-                rotulo="Custo das saídas"
-                valor={reais(resumo.custoLiquido)}
-                sub={mov ? 'já sem as devoluções' : 'falta a movimentação'}
-              />
-              <Stat
-                rotulo="Lucro bruto"
-                valor={reais(resumo.lucro)}
-                sub={resumo.margem !== null ? `margem de ${String(resumo.margem).replace('.', ',')}%` : 'precisa dos dois arquivos'}
-                tom={resumo.lucro === null ? undefined : resumo.lucro >= 0 ? 'verde' : 'vermelho'}
-              />
-            </div>
-
-            {diaCaixa && (
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg bg-slate-50 px-3 py-3 text-sm md:grid-cols-3">
-                {[
-                  ['Dinheiro', diaCaixa.dinheiro],
-                  ['PIX', diaCaixa.pix],
-                  ['Cartão', diaCaixa.cartao],
-                  ['Crédito do cliente usado', diaCaixa.creditoConta],
-                  ['Fiado de hoje', diaCaixa.pendencia ?? 0],
-                  ['Fiado antigo pago', diaCaixa.pendenciasPagas],
-                ].map(([nome, valor]) => (
-                  <div key={nome as string} className="flex justify-between gap-3">
-                    <dt className="text-slate-500">{nome}</dt>
-                    <dd className="font-medium text-slate-800">{formatarReais(valor as number)}</dd>
+              return (
+                <div key={dia} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <p className="font-semibold capitalize text-slate-900">{rotuloDia(dia)}</p>
+                    {!cx && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                        sem caixa
+                      </span>
+                    )}
+                    {!mv && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                        sem movimentação
+                      </span>
+                    )}
                   </div>
-                ))}
-              </dl>
-            )}
 
-            {devolvidos.length > 0 && (
-              <p className="text-sm text-slate-500">
-                <strong className="text-slate-700">Devoluções:</strong> {devolvidos.length}{' '}
-                {devolvidos.length === 1 ? 'item voltou' : 'itens voltaram'} ao estoque (custo{' '}
-                {formatarReais(mov!.custoEntradas)}, venda estimada em{' '}
-                {reais(resumo.devolucoesVenda)}). Entram abatendo vendas e custo.
-              </p>
-            )}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <Celula rotulo="Vendas" valor={reais(r.vendas)} />
+                    <Celula rotulo="Recebido" valor={reais(r.recebido)} />
+                    <Celula rotulo="Custo" valor={reais(r.custoLiquido)} />
+                    <Celula
+                      rotulo="Lucro"
+                      valor={
+                        r.lucro === null
+                          ? '—'
+                          : `${formatarReais(r.lucro)}${r.margem !== null ? ` (${String(r.margem).replace('.', ',')}%)` : ''}`
+                      }
+                      tom={
+                        r.lucro === null ? undefined : r.lucro >= 0 ? 'text-emerald-700' : 'text-red-600'
+                      }
+                    />
+                  </div>
+
+                  {estranha && (
+                    <p className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                      A margem está fora do comum. Confira se a movimentação é mesmo deste dia.
+                    </p>
+                  )}
+
+                  {(cx || devolvidos.length > 0) && (
+                    <details className="mt-2 text-sm">
+                      <summary className="cursor-pointer text-xs font-medium text-[#079C9C]">
+                        Ver detalhes
+                      </summary>
+                      {cx && (
+                        <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg bg-slate-50 px-3 py-3 md:grid-cols-3">
+                          {(
+                            [
+                              ['Dinheiro', cx.dinheiro],
+                              ['PIX', cx.pix],
+                              ['Cartão', cx.cartao],
+                              ['Crédito do cliente usado', cx.creditoConta],
+                              ['Fiado de hoje', cx.pendencia ?? 0],
+                              ['Fiado antigo pago', cx.pendenciasPagas],
+                            ] as [string, number][]
+                          ).map(([nome, valor]) => (
+                            <div key={nome} className="flex justify-between gap-3">
+                              <dt className="text-slate-500">{nome}</dt>
+                              <dd className="font-medium text-slate-800">{formatarReais(valor)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                      {devolvidos.length > 0 && mv && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          <strong className="text-slate-700">Devoluções:</strong>{' '}
+                          {devolvidos.length} {devolvidos.length === 1 ? 'item' : 'itens'} (custo{' '}
+                          {formatarReais(mv.resultado.custoEntradas)}, venda estimada em{' '}
+                          {reais(r.devolucoesVenda)}). Entram abatendo vendas e custo.
+                        </p>
+                      )}
+                    </details>
+                  )}
+                </div>
+              )
+            })}
 
             {naoEncontrados.length > 0 && (
               <details className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -460,7 +580,7 @@ export default function ImportarDia({ onSalvo }: { onSalvo: () => void }) {
             <Button
               type="button"
               onClick={salvar}
-              disabled={saving || lendo || (!!mov && !diaMov)}
+              disabled={saving || lendo || faltaData}
               className="min-w-44 gap-2 bg-[#079C9C] text-white shadow-sm hover:bg-[#079C9C]/90"
             >
               {saving ? (
