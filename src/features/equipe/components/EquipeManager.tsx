@@ -34,13 +34,24 @@ export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] })
   ) =>
     start(async () => {
       setMsg(null)
-      const r = await fn()
-      if (r.ok) {
-        setMsg({ tipo: 'ok', texto: textoOk })
-        depois?.()
-        router.refresh()
-      } else {
-        setMsg({ tipo: 'erro', texto: r.erro })
+      try {
+        const r = await fn()
+        if (r.ok) {
+          setMsg({ tipo: 'ok', texto: textoOk })
+          depois?.()
+          router.refresh()
+        } else {
+          setMsg({ tipo: 'erro', texto: r.erro })
+        }
+      } catch (err) {
+        // erro que escapou da ação (servidor recusou, versão antiga da página etc.)
+        console.error('[equipe]', err)
+        setMsg({
+          tipo: 'erro',
+          texto: `Falha ao falar com o servidor: ${
+            err instanceof Error ? err.message : 'erro desconhecido'
+          }`,
+        })
       }
     })
 
