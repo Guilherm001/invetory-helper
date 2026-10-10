@@ -4,17 +4,38 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { KeyRound, Loader2, Trash2, UserPlus, Users } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
-import {
-  criarFuncionario,
-  redefinirSenhaFuncionario,
-  removerFuncionario,
-  type Resultado,
-} from '../actions'
 
 type Funcionario = { id: string; nome: string | null; email: string | null }
+type Resultado = { ok: true } | { ok: false; erro: string }
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
+
+async function chamar(
+  metodo: 'POST' | 'PATCH' | 'DELETE',
+  corpo: Record<string, string>
+): Promise<Resultado> {
+  try {
+    const res = await fetch('/api/equipe', {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+    })
+
+    let json: Resultado | null = null
+    try {
+      json = (await res.json()) as Resultado
+    } catch {
+      return {
+        ok: false,
+        erro: `Resposta inesperada do servidor (código ${res.status})`,
+      }
+    }
+    return json
+  } catch {
+    return { ok: false, erro: 'Sem conexão com o servidor. Tente novamente.' }
+  }
+}
 
 export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] }) {
   const router = useRouter()
@@ -34,23 +55,14 @@ export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] })
   ) =>
     start(async () => {
       setMsg(null)
-      try {
-        const r = await fn()
-        if (r.ok) {
-          setMsg({ tipo: 'ok', texto: textoOk })
-          depois?.()
-          router.refresh()
-        } else {
-          setMsg({ tipo: 'erro', texto: r.erro })
-        }
-      }  catch (err) {
-  console.error('[equipe]', err)
-  const digest = (err as { digest?: string })?.digest
-  setMsg({
-    tipo: 'erro',
-    texto: `Falha ao falar com o servidor${digest ? ` (código ${digest})` : ''}`,
-  })
-}
+      const r = await fn()
+      if (r.ok) {
+        setMsg({ tipo: 'ok', texto: textoOk })
+        depois?.()
+        router.refresh()
+      } else {
+        setMsg({ tipo: 'erro', texto: r.erro })
+      }
     })
 
   return (
@@ -79,7 +91,7 @@ export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] })
         onSubmit={(e) => {
           e.preventDefault()
           executar(
-            () => criarFuncionario({ nome, email, senha }),
+            () => chamar('POST', { nome, email, senha }),
             'Funcionário criado.',
             () => {
               setNome('')
@@ -168,7 +180,7 @@ export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] })
                   disabled={pending}
                   onClick={() => {
                     if (!window.confirm(`Remover o acesso de ${f.nome || f.email}?`)) return
-                    executar(() => removerFuncionario(f.id), 'Funcionário removido.')
+                    executar(() => chamar('DELETE', { id: f.id }), 'Funcionário removido.')
                   }}
                   className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
                 >
@@ -191,7 +203,7 @@ export function EquipeManager({ funcionarios }: { funcionarios: Funcionario[] })
                   disabled={pending}
                   onClick={() =>
                     executar(
-                      () => redefinirSenhaFuncionario(f.id, novaSenha),
+                      () => chamar('PATCH', { id: f.id, senha: novaSenha }),
                       'Senha alterada.',
                       () => {
                         setTrocando(null)
