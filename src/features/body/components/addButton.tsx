@@ -35,6 +35,10 @@ interface BotaoAddProps {
 const PRIORIDADES = ['Baixa', 'Média', 'Alta']
 const STATUS = ['Pendente', 'Em progresso', 'Concluído']
 
+// false: o produto repetido apenas some (não duplica)
+// true: o produto repetido soma a quantidade no item que já está na lista
+const SOMAR_QUANTIDADE_DUPLICADO = false
+
 const COR_PRIORIDADE: Record<string, { chip: string; dot: string }> = {
     Baixa: { chip: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
     Média: { chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
@@ -68,6 +72,25 @@ function proximo(lista: string[], atual: string) {
     return lista[(lista.indexOf(atual) + 1) % lista.length]
 }
 
+// sem acento, minúsculo, espaços normalizados
+const normalizar = (s: string) =>
+    s
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim()
+
+// dois produtos são o mesmo se tiverem o mesmo código do catálogo
+// ou, na falta dele, o mesmo nome
+function mesmoProduto(
+    a: Pick<NovoProduto, 'name' | 'catalog_code'>,
+    b: Pick<NovoProduto, 'name' | 'catalog_code'>
+) {
+    if (a.catalog_code && b.catalog_code) return a.catalog_code === b.catalog_code
+    return normalizar(a.name) === normalizar(b.name)
+}
+
 export default function BotaoAdd({ addProducts }: BotaoAddProps) {
     const [open, setOpen] = useState(false)
 
@@ -87,7 +110,11 @@ export default function BotaoAdd({ addProducts }: BotaoAddProps) {
     const nomeRef = useRef<HTMLInputElement>(null)
     const contador = useRef(0)
 
-    const temNomePendente = nome.trim() !== ''
+    // o que está digitado só conta se ainda não existe na lista
+    const nomePendente = interpretar(nome).name
+    const temNomePendente =
+        nomePendente !== '' &&
+        !itens.some((i) => mesmoProduto(i, { name: nomePendente, catalog_code: null }))
     const total = itens.length + (temNomePendente ? 1 : 0)
 
     const criarItem = (dados: Partial<NovoProduto> & { name: string }): Item => ({
@@ -103,13 +130,34 @@ export default function BotaoAdd({ addProducts }: BotaoAddProps) {
 
     const adicionar = (novos: Item[]) => {
         if (novos.length === 0) return
-        // itens novos aparecem no topo, logo abaixo da barra
-        setItens((prev) => [...novos.reverse(), ...prev])
+
+        setItens((prev) => {
+            const lista = [...prev]
+
+            for (const novo of novos) {
+                const idx = lista.findIndex((i) => mesmoProduto(i, novo))
+
+                if (idx >= 0) {
+                    // já está na lista: não duplica
+                    if (SOMAR_QUANTIDADE_DUPLICADO) {
+                        lista[idx] = {
+                            ...lista[idx],
+                            quantity: lista[idx].quantity + novo.quantity,
+                        }
+                    }
+                    continue
+                }
+
+                // itens novos aparecem no topo, logo abaixo da barra
+                lista.unshift(novo)
+            }
+
+            return lista
+        })
         setErrorMessage('')
     }
 
     const adicionarDigitado = () => {
-        if (!temNomePendente) return
         const { name, quantity } = interpretar(nome)
         if (!name) return
         adicionar([criarItem({ name, quantity: quantity ?? quantidade })])
@@ -150,7 +198,7 @@ export default function BotaoAdd({ addProducts }: BotaoAddProps) {
     const handleSalvar = async () => {
         const lista: Item[] = [...itens]
 
-        // o que está digitado e não foi para a lista entra junto
+        // o que está digitado e não foi para a lista entra junto (se não for repetido)
         if (temNomePendente) {
             const { name, quantity } = interpretar(nome)
             if (name) lista.unshift(criarItem({ name, quantity: quantity ?? quantidade }))
@@ -295,7 +343,7 @@ export default function BotaoAdd({ addProducts }: BotaoAddProps) {
                             type="button"
                             aria-label="Adicionar à lista"
                             onClick={adicionarDigitado}
-                            disabled={!temNomePendente}
+                            disabled={nomePendente === ''}
                             className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#079C9C] text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-90 disabled:opacity-40"
                         >
                             <CornerDownLeft className="size-5" />

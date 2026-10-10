@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useProducts } from '../hooks/useProducts'
 import { useSelection } from '../hooks/useSelection'
 import BotaoAdd from './addButton'
@@ -12,6 +12,27 @@ import ExcluirComprados from './excluirComprados'
 import QuantidadesCotacao from '@/features/cotacao/components/QuantidadesCotacao'
 import { gerarCotacao } from '@/features/cotacao/services/gerarCotacao'
 
+// true: um produto já comprado (Concluído) não bloqueia adicionar o mesmo de novo
+// false: qualquer produto que já está na lista bloqueia
+const IGNORAR_COMPRADOS = false
+
+// sem acento, minúsculo, espaços normalizados
+const normalizar = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+type Comparavel = { name: string; catalog_code?: string | null }
+
+// mesmo código do catálogo ou, na falta dele, mesmo nome
+function mesmoProduto(a: Comparavel, b: Comparavel) {
+  if (a.catalog_code && b.catalog_code) return a.catalog_code === b.catalog_code
+  return normalizar(a.name) === normalizar(b.name)
+}
+
 export function Body() {
   const {
     products,
@@ -22,6 +43,30 @@ export function Body() {
     updateProduct,
     addProducts,
   } = useProducts()
+
+  // sempre aponta para a lista mais recente, mesmo dentro de funções async
+  const productsRef = useRef(products)
+  productsRef.current = products
+
+  // não deixa entrar na lista o que já está nela
+  const addProductsSemDuplicar: typeof addProducts = async (novos) => {
+    const existentes = productsRef.current.filter(
+      (p) => !(IGNORAR_COMPRADOS && p.status === 'Concluído')
+    )
+
+    const aceitos: typeof novos = []
+    for (const n of novos) {
+      const repetido =
+        existentes.some((e) => mesmoProduto(e, n)) ||
+        aceitos.some((a) => mesmoProduto(a, n))
+      if (!repetido) aceitos.push(n)
+    }
+
+    // tudo já existia: não salva nada
+    if (aceitos.length === 0) return []
+
+    return addProducts(aceitos)
+  }
 
   const [filtro, setFiltro] = useState<Filtro>('todos')
 
@@ -61,7 +106,7 @@ export function Body() {
           </p>
         </article>
         <div className="justify-end hidden md:block mr-10">
-          <BotaoAdd addProducts={addProducts} />
+          <BotaoAdd addProducts={addProductsSemDuplicar} />
         </div>
       </div>
 
@@ -121,7 +166,7 @@ export function Body() {
       {/* botão de adicionar (celular) some durante a seleção */}
       {!sel.selecting && (
         <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
-          <BotaoAdd addProducts={addProducts} />
+          <BotaoAdd addProducts={addProductsSemDuplicar} />
         </div>
       )}
 

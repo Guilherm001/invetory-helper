@@ -2,10 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Library } from 'lucide-react'
 
 const LINKS = [
   { href: '/dashboard', label: 'Produtos' },
   { href: '/calculator', label: 'Calculadora' },
+  { href: '/catalogo', label: 'Catálogo', icon: Library }
 ]
 
 export function NavLinks({ className = '' }: { className?: string }) {
