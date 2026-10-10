@@ -5,6 +5,7 @@ const CINZA_ESCURO: [number, number, number] = [30, 41, 59]
 const CINZA: [number, number, number] = [100, 116, 139]
 const CINZA_CLARO: [number, number, number] = [241, 245, 249]
 const LINHA: [number, number, number] = [226, 232, 240]
+const CINZA_MARCA: [number, number, number] = [107, 114, 128]
 
 const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
 
@@ -33,17 +34,30 @@ export async function gerarPedidoPdf(pedido: PedidoSugerido, nomeComparacao?: st
   const larguraItem = xPreco - 28 - xItem
 
   // ---------- cabeçalho ----------
-  doc.setFillColor(...TEAL)
-  doc.rect(0, 0, W, 30, 'F')
-
-  doc.setTextColor(255, 255, 255)
+  // marca: GROW (verde) + LIM (cinza), a segunda parte começa onde a primeira termina
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text('Pedido de compra', M, 14)
+  doc.setFontSize(26)
+  doc.setTextColor(...TEAL)
+  doc.text('GROW', M, 18)
+  const larguraGrow = doc.getTextWidth('GROW')
+  doc.setTextColor(...CINZA_MARCA)
+  doc.text('LIM', M + larguraGrow, 18)
+
+  // título e data, à direita
+  doc.setTextColor(...CINZA_ESCURO)
+  doc.setFontSize(14)
+  doc.text('Pedido de compra', W - M, 13, { align: 'right' })
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, M, 22)
+  doc.setTextColor(...CINZA)
+  doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, W - M, 20, {
+    align: 'right',
+  })
+
+  // faixa teal separando o cabeçalho
+  doc.setFillColor(...TEAL)
+  doc.rect(0, 28, W, 1.5, 'F')
 
   // ---------- dados do fornecedor ----------
   let y = 42
