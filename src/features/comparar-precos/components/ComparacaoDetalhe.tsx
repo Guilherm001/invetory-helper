@@ -10,6 +10,7 @@ import { analisar } from '../utils/melhorPreco'
 import TabelaComparativa from './TabelaComparativa'
 import ResumoEconomia from './ResumoEconomia'
 import FornecedorDialog from './FornecedorDialog'
+import { useReferencias } from '@/features/historico-precos/hooks/useReferencias'
 
 // "10 cimento" ou "10x cimento" -> quantidade 10
 function interpretar(texto: string): { name: string; quantity: number } {
@@ -24,6 +25,7 @@ function interpretar(texto: string): { name: string; quantity: number } {
 
 export default function ComparacaoDetalhe({ id }: { id: string }) {
   const c = useComparacao(id)
+  const referencias = useReferencias(id)
 
   const [dialogFornecedor, setDialogFornecedor] = useState<{
     open: boolean

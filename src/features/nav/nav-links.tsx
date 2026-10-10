@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Calculator, Library, Package, Scale } from 'lucide-react'
+import { Calculator, Library, LineChart, Package, Scale } from 'lucide-react'
 
 const LINKS = [
   { href: '/dashboard', label: 'Produtos', icon: Package },
   { href: '/comparar-precos', label: 'Comparar preços', icon: Scale },
+  { href: '/historico-precos', label: 'Histórico de Preços', icon: LineChart },
   { href: '/catalogo', label: 'Catálogo', icon: Library },
   { href: '/calculator', label: 'Calculadora', icon: Calculator },
 ]

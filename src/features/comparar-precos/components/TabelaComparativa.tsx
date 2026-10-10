@@ -14,6 +14,9 @@ import {
   AlertDialogTrigger,
 } from '../../../../components/ui/alert-dialog'
 import { Button } from '../../../../components/ui/button'
+import IndicadorHistorico from '@/features/historico-precos/components/IndicadorHistorico'
+import { chaveDoProduto } from '@/features/historico-precos/utils/estatisticas'
+import type { Referencia } from '@/features/historico-precos/utils/referencias'
 import type { Fornecedor, ItemComparacao, Preco } from '../types'
 import { chave, formatarReais, montarMapa, type Analise } from '../utils/melhorPreco'
 import CelulaPreco from './CelulaPreco'
@@ -23,6 +26,7 @@ interface Props {
   fornecedores: Fornecedor[]
   precos: Preco[]
   analise: Analise
+  referencias?: Map<string, Referencia>
   onDefinirPreco: (itemId: string, fornecedorId: string, valor: number | null) => Promise<void>
   onAlterarQuantidade: (itemId: string, quantidade: number) => Promise<void>
   onRemoverItem: (itemId: string) => Promise<void>
@@ -159,6 +163,7 @@ export default function TabelaComparativa({
   fornecedores,
   precos,
   analise,
+  referencias,
   onDefinirPreco,
   onAlterarQuantidade,
   onRemoverItem,
@@ -168,6 +173,10 @@ export default function TabelaComparativa({
 }: Props) {
   const [erro, setErro] = useState('')
   const mapa = montarMapa(precos)
+
+  // referência do histórico (última vez que o item foi cotado em outra comparação)
+  const refDe = (item: ItemComparacao) =>
+    referencias?.get(chaveDoProduto({ codigo: item.catalog_code, itemNome: item.name }))
 
   // erros de ações que não têm campo próprio aparecem no topo
   const tentar = async (acao: () => Promise<void>) => {
@@ -274,6 +283,7 @@ export default function TabelaComparativa({
         <ul className="space-y-3">
           {itens.map((item) => {
             const linha = analise.linhas.get(item.id)
+            const referencia = refDe(item)
 
             return (
               <li
@@ -319,8 +329,8 @@ export default function TabelaComparativa({
                       !!linha?.comparavel && preco !== undefined && linha.vencedores.includes(f.id)
 
                     return (
-                      <div key={f.id} className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
+                      <div key={f.id} className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 pt-2.5">
                           <p className="truncate text-sm font-medium text-slate-700">{f.name}</p>
                           {destaque && (
                             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
@@ -337,6 +347,7 @@ export default function TabelaComparativa({
                             rotulo={`Preço de ${item.name} em ${f.name}`}
                             onSalvar={(v) => onDefinirPreco(item.id, f.id, v)}
                           />
+                          <IndicadorHistorico preco={preco} referencia={referencia} />
                         </div>
                       </div>
                     )
@@ -462,6 +473,7 @@ export default function TabelaComparativa({
           <tbody className="divide-y divide-slate-100">
             {itens.map((item) => {
               const linha = analise.linhas.get(item.id)
+              const referencia = refDe(item)
 
               return (
                 <tr key={item.id} className="group">
@@ -514,6 +526,7 @@ export default function TabelaComparativa({
                           rotulo={`Preço de ${item.name} em ${f.name}`}
                           onSalvar={(v) => onDefinirPreco(item.id, f.id, v)}
                         />
+                        <IndicadorHistorico preco={preco} referencia={referencia} />
                       </td>
                     )
                   })}
