@@ -1,11 +1,9 @@
-﻿import type { Metadata } from "next";
+﻿import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
 import {
   FileText,
   Truck,
-  Scale,
-  LineChart,
   ClipboardCheck,
   HardHat,
   BarChart3,
@@ -14,10 +12,18 @@ import {
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { LogoutButton } from "@/features/logout/logout-button";
 import { NavLinks } from "@/features/nav/nav-links";
+import { MobileNav } from "@/features/nav/mobile-nav";
 
 export const metadata: Metadata = {
   title: "Inventory Helper",
   description: "Sistema de controle de compras",
+};
+
+// viewport-fit=cover permite à barra de baixo respeitar a área do gesto do iPhone
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 // ideias para o futuro (ainda sem página)
@@ -59,12 +65,11 @@ export default async function RootLayout({
     <html lang="pt-BR">
       <body>
         <main className="flex flex-col max-w-400 min-w-0 m-auto h-dvh bg-white">
-          <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
-            {/* celular: logo + usuário em cima, abas embaixo | desktop: logo e usuário na mesma linha */}
-            <div className="flex flex-wrap items-center md:flex-nowrap">
+          <header className="sticky top-0 z-20 border-b border-gray-200 bg-white pt-[env(safe-area-inset-top)]">
+            <div className="flex items-center justify-between">
               <Link
                 href={user ? "/dashboard" : "/"}
-                className="order-1 px-4 py-2 md:px-0 md:py-0"
+                className="px-4 py-2 md:px-0 md:py-0"
               >
                 <img
                   src="/logo.png"
@@ -74,25 +79,22 @@ export default async function RootLayout({
               </Link>
 
               {user && (
-                <>
-                  <div className="order-2 ml-auto flex min-w-0 items-center gap-3 pr-4 md:order-3 md:pr-8">
-                    {nome && (
-                      <span
-                        title={nome}
-                        className="max-w-[110px] truncate text-sm font-medium text-gray-700 md:max-w-[220px] md:text-base"
-                      >
-                        <span className="hidden text-gray-400 md:inline">
-                          Olá,{" "}
-                        </span>
-                        {nome}
-                      </span>
-                    )}
+                <div className="flex min-w-0 items-center gap-3 pr-4 md:pr-8">
+                  {nome && (
+                    <span
+                      title={nome}
+                      className="max-w-[170px] truncate text-sm text-gray-500 md:max-w-[240px] md:text-base"
+                    >
+                      Olá,{" "}
+                      <span className="font-semibold text-gray-800">{nome}</span>
+                    </span>
+                  )}
+
+                  {/* no celular o botão de sair fica dentro do "Mais" */}
+                  <div className="hidden md:block">
                     <LogoutButton />
                   </div>
-
-                  {/* só no celular: abas embaixo do header */}
-                  <NavLinks className="order-3 w-full border-t border-gray-100 md:hidden" />
-                </>
+                </div>
               )}
             </div>
           </header>
@@ -104,7 +106,7 @@ export default async function RootLayout({
                 <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Menu
                 </p>
-                <NavLinks className="flex-col items-stretch gap-1" />
+                <NavLinks />
 
                 {/* ideias para o futuro */}
                 <div className="mt-6 border-t border-slate-200 pt-4">
@@ -132,6 +134,9 @@ export default async function RootLayout({
               {children}
             </div>
           </div>
+
+          {/* só no celular: barra de baixo com o "Mais" */}
+          {user && <MobileNav logout={<LogoutButton />} />}
         </main>
       </body>
     </html>

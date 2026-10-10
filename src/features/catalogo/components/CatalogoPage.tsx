@@ -389,7 +389,7 @@ export default function CatalogoPage() {
 
       {/* Barra de seleção */}
       {qtdSelecionados > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 flex items-center justify-between border-t bg-white p-3 shadow-lg md:px-10">
+        <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 flex items-center justify-between border-t bg-white p-3 shadow-lg md:bottom-0 md:px-10">
           <span className="text-sm text-gray-700">{qtdSelecionados} selecionado(s)</span>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setSelecionados(new Set())}>
