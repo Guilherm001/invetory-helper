@@ -48,7 +48,7 @@ function traduzErro(message: string) {
 
 export function LoginForm({
   className,
-  redirectTo = "/dashboard",
+  redirectTo = "/loja",
   ...props
 }: LoginFormProps) {
   const [error, setError] = useState<string | null>(null)
