@@ -122,3 +122,19 @@ export async function converterOrcamento(id: string): Promise<{ numero: number }
   if (error) throw new Error(traduz(error.message))
   return { numero: Number((data as { numero: number }).numero) }
 }
+export async function buscarDocumento(id: string): Promise<DocumentoResumo> {
+  const { data, error } = await supabase
+    .from('vendas')
+    .select(COLUNAS)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) throw new Error(traduz(error.message))
+  if (!data) throw new Error('Documento não encontrado.')
+  return { ...data, total: Number(data.total) } as unknown as DocumentoResumo
+}
+
+export async function carregarDocumentoCompleto(id: string) {
+  const [doc, itens] = await Promise.all([buscarDocumento(id), listarItensDocumento(id)])
+  return { doc, itens }
+}

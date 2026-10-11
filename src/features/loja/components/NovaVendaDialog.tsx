@@ -28,6 +28,8 @@ import { useLojaCatalogo } from '../hooks/useLojaCatalogo'
 import type { ProdutoLoja } from '../services/lojaCatalogoService'
 import { criarVenda, type TipoEntrega } from '../services/vendaService'
 import { dataCurta } from '../lib/formatar'
+import BotoesImpressao from './BotoesImpressao'
+import { carregarDocumentoCompleto } from '../services/documentosService'
 
 export type ModoDocumento = 'venda' | 'orcamento'
 
@@ -132,10 +134,11 @@ function VendaConteudo({
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [feito, setFeito] = useState<{
-    numero: number
-    total: number
-    resumo: string
-  } | null>(null)
+  id: string
+  numero: number
+  total: number
+  resumo: string
+} | null>(null)
   const [copiado, setCopiado] = useState(false)
 
   // busca rápida (Enter)
@@ -300,10 +303,11 @@ function VendaConteudo({
         }))
       )
       setFeito({
-        numero: r.numero,
-        total: r.total,
-        resumo: montarResumo(r.numero, r.total, r.validade),
-      })
+  id: r.id,
+  numero: r.numero,
+  total: r.total,
+  resumo: montarResumo(r.numero, r.total, r.validade),
+})
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao registrar')
     } finally {
@@ -343,6 +347,11 @@ function VendaConteudo({
         </pre>
 
         {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+        <div className="space-y-1.5">
+  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Imprimir</p>
+  <BotoesImpressao centralizar carregar={() => carregarDocumentoCompleto(feito.id)} />
+</div>
 
         <div className="flex flex-wrap justify-center gap-2">
           <Button type="button" variant="outline" onClick={copiar} className="gap-2">

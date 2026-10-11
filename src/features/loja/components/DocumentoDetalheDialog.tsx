@@ -34,6 +34,7 @@ import {
   resumoDocumento,
   statusInfo,
 } from '../lib/formatar'
+import BotoesImpressao from './BotoesImpressao'
 
 export interface Aviso {
   texto: string
@@ -270,6 +271,10 @@ function Conteudo({
         )}
 
         <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-3.5">
+          <BotoesImpressao
+  carregar={async () => ({ doc, itens: itens ?? [] })}
+  desabilitado={!itens || agindo}
+/>
           <Button
             type="button"
             variant="outline"
