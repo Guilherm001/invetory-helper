@@ -1,6 +1,21 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
+const PROTEGIDAS = ["/dashboard", "/calculator", "/equipe", "/catalogo"]
+
+// redireciona sem perder os cookies de sessão que o Supabase acabou de renovar
+function redirecionar(
+  request: NextRequest,
+  response: NextResponse,
+  pathname: string
+) {
+  const url = request.nextUrl.clone()
+  url.pathname = pathname
+  const redirect = NextResponse.redirect(url)
+  response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
+  return redirect
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
@@ -31,21 +46,19 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isProtected = pathname.startsWith("/dashboard")
+  const isProtected = PROTEGIDAS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  )
   const isLoginPage = pathname === "/" // ajuste para a rota da sua tela de login
 
   // Sem login tentando acessar rota protegida -> manda para o login
   if (!user && isProtected) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/"
-    return NextResponse.redirect(url)
+    return redirecionar(request, response, "/")
   }
 
   // Já logado abrindo a tela de login -> manda para o dashboard
   if (user && isLoginPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/dashboard"
-    return NextResponse.redirect(url)
+    return redirecionar(request, response, "/dashboard")
   }
 
   return response

@@ -4,14 +4,21 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
-import { LINKS, estaAtivo } from './links'
+import { estaAtivo, linksVisiveis } from './links'
 
-const principais = LINKS.filter((l) => l.principal)
-const secundarios = LINKS.filter((l) => !l.principal)
-
-export function MobileNav({ logout }: { logout: React.ReactNode }) {
+export function MobileNav({
+  logout,
+  ehDono = false,
+}: {
+  logout: React.ReactNode
+  ehDono?: boolean
+}) {
   const pathname = usePathname()
   const [aberto, setAberto] = useState(false)
+
+  const links = linksVisiveis(ehDono)
+  const principais = links.filter((l) => l.principal)
+  const secundarios = links.filter((l) => !l.principal)
 
   // Esc fecha a gaveta
   useEffect(() => {

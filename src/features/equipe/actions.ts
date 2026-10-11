@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { createSupabaseServer } from '@/lib/supabase-server'
+import { donoAtual } from '@/lib/auth-dono'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const LIMITE_FUNCIONARIOS = 5
@@ -16,24 +16,6 @@ const novoSchema = z.object({
 })
 
 const senhaSchema = z.string().min(6, 'A senha deve ter pelo menos 6 caracteres')
-
-// quem está chamando precisa ser dono; a empresa vem do banco, nunca do navegador
-async function donoAtual() {
-  const supabase = await createSupabaseServer()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data } = await supabase
-    .from('perfis')
-    .select('empresa_id, papel')
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (!data || data.papel !== 'dono') return null
-  return { userId: user.id, empresaId: data.empresa_id as string }
-}
 
 async function ehFuncionarioDaEmpresa(
   admin: ReturnType<typeof createSupabaseAdmin>,
@@ -71,11 +53,13 @@ export async function criarFuncionario(input: {
 
   const admin = createSupabaseAdmin()
 
-  const { count } = await admin
+  const { count, error: erroCount } = await admin
     .from('perfis')
     .select('id', { count: 'exact', head: true })
     .eq('empresa_id', dono.empresaId)
     .eq('papel', 'funcionario')
+
+  if (erroCount) return { ok: false, erro: 'Não foi possível verificar o limite de funcionários' }
 
   if ((count ?? 0) >= LIMITE_FUNCIONARIOS)
     return { ok: false, erro: `Limite de ${LIMITE_FUNCIONARIOS} funcionários atingido` }
@@ -104,7 +88,16 @@ export async function removerFuncionario(id: string): Promise<Resultado> {
     return { ok: false, erro: 'Funcionário não encontrado' }
 
   // o que ele cadastrou fica com o dono (senão sumiria junto com a conta dele)
-  await admin.from('products').update({ user_id: dono.userId }).eq('user_id', id)
+  const { error: erroProdutos } = await admin
+    .from('products')
+    .update({ user_id: dono.userId })
+    .eq('user_id', id)
+
+  if (erroProdutos)
+    return {
+      ok: false,
+      erro: 'Não foi possível transferir os produtos do funcionário. Nada foi removido.',
+    }
 
   const { error } = await admin.auth.admin.deleteUser(id)
   if (error) return { ok: false, erro: error.message }

@@ -61,6 +61,17 @@ export default async function RootLayout({
 
   const nome = user ? nomeDoUsuario(user) : ""
 
+  // só o dono vê o link "Equipe"
+  let ehDono = false
+  if (user) {
+    const { data: perfil } = await supabase
+      .from("perfis")
+      .select("papel")
+      .eq("id", user.id)
+      .maybeSingle()
+    ehDono = perfil?.papel === "dono"
+  }
+
   return (
     <html lang="pt-BR">
       <body>
@@ -106,7 +117,7 @@ export default async function RootLayout({
                 <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Menu
                 </p>
-                <NavLinks />
+                <NavLinks ehDono={ehDono} />
 
                 {/* ideias para o futuro */}
                 <div className="mt-6 border-t border-slate-200 pt-4">
@@ -136,7 +147,7 @@ export default async function RootLayout({
           </div>
 
           {/* só no celular: barra de baixo com o "Mais" */}
-          {user && <MobileNav logout={<LogoutButton />} />}
+          {user && <MobileNav ehDono={ehDono} logout={<LogoutButton />} />}
         </main>
       </body>
     </html>

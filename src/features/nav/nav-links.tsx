@@ -2,14 +2,21 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LINKS, estaAtivo } from './links'
+import { estaAtivo, linksVisiveis } from './links'
 
-export function NavLinks({ className = '' }: { className?: string }) {
+export function NavLinks({
+  className = '',
+  ehDono = false,
+}: {
+  className?: string
+  ehDono?: boolean
+}) {
   const pathname = usePathname()
+  const links = linksVisiveis(ehDono)
 
   return (
     <nav aria-label="Menu" className={`flex flex-col items-stretch gap-1 ${className}`}>
-      {LINKS.map(({ href, label, icon: Icon }) => {
+      {links.map(({ href, label, icon: Icon }) => {
         const ativo = estaAtivo(pathname, href)
 
         return (

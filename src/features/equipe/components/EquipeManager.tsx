@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { KeyRound, Loader2, Trash2, UserPlus, Users } from 'lucide-react'
-import { Button } from '../../../../components/ui/button'
+import { Button } from '@/components/ui/button'
 
 type Funcionario = { id: string; nome: string | null; email: string | null }
 type Resultado = { ok: true } | { ok: false; erro: string }
