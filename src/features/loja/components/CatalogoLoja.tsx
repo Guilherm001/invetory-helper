@@ -22,8 +22,9 @@ const reais = (n: number | null) =>
 
 const numero = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ','))
 
+// tabela só a partir de xl: abaixo disso (com a sidebar) não há espaço para as colunas
 const GRID =
-  'md:grid md:grid-cols-[6rem_minmax(0,1fr)_3.5rem_8rem_9rem_11rem] md:items-center md:gap-4'
+  'xl:grid xl:grid-cols-[5rem_minmax(0,1fr)_3rem_8rem_9rem_11rem] xl:items-center xl:gap-4'
 
 const thClass = 'text-xs font-semibold uppercase tracking-wide text-slate-400'
 
@@ -114,18 +115,21 @@ function LinhaProduto({
   return (
     <li className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className={GRID}>
-        <span className="hidden truncate text-sm text-slate-500 md:block">{p.code}</span>
+        <span className="hidden truncate text-sm text-slate-500 xl:block">{p.code}</span>
 
         <div className="min-w-0">
-          <p className="font-semibold text-slate-900 md:truncate" title={p.name}>
+          <p
+            className="break-words font-semibold text-slate-900 xl:line-clamp-2"
+            title={p.name}
+          >
             {p.name}
           </p>
-          <p className="mt-0.5 text-xs text-slate-500 md:hidden">
+          <p className="mt-0.5 text-xs text-slate-500 xl:hidden">
             Cód. {p.code}
             {p.unit ? ` · ${p.unit}` : ''}
           </p>
           {p.barcode && (
-            <p className="hidden truncate text-xs text-slate-400 md:block">{p.barcode}</p>
+            <p className="hidden truncate text-xs text-slate-400 xl:block">{p.barcode}</p>
           )}
           {naLista > 0 && (
             <p className="mt-1 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
@@ -135,16 +139,16 @@ function LinhaProduto({
           )}
         </div>
 
-        <span className="hidden text-sm text-slate-600 md:block">{p.unit ?? '—'}</span>
+        <span className="hidden text-sm text-slate-600 xl:block">{p.unit ?? '—'}</span>
 
-        <div className="mt-2 flex items-center justify-between gap-2 md:contents">
-          <span className="text-lg font-bold text-[#079C9C] md:text-base md:text-slate-800">
+        <div className="mt-2 flex items-center justify-between gap-2 xl:contents">
+          <span className="text-lg font-bold text-[#079C9C] xl:text-base xl:text-slate-800">
             {reais(p.price)}
           </span>
           <Estoque valor={p.stock} unidade={p.unit} />
         </div>
 
-        <div className="mt-3 md:mt-0">
+        <div className="mt-3 xl:mt-0">
           {feito ? (
             <span className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700">
               <Check className="size-4" />
@@ -300,23 +304,23 @@ export default function CatalogoLoja() {
         </article>
 
         <div className="grid grid-cols-2 gap-2 md:flex">
-  <button
-    type="button"
-    onClick={() => setDoc('orcamento')}
-    className="flex items-center justify-center gap-2 rounded-lg border border-[#079C9C] bg-white px-5 py-3 text-sm font-semibold text-[#079C9C] shadow-sm transition hover:bg-[#079C9C]/10 active:scale-95"
-  >
-    <FileText className="size-5" />
-    Orçamento
-  </button>
-  <button
-    type="button"
-    onClick={() => setDoc('venda')}
-    className="flex items-center justify-center gap-2 rounded-lg bg-[#079C9C] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95"
-  >
-    <ShoppingCart className="size-5" />
-    Nova venda
-  </button>
-</div>
+          <button
+            type="button"
+            onClick={() => setDoc('orcamento')}
+            className="flex items-center justify-center gap-2 rounded-lg border border-[#079C9C] bg-white px-5 py-3 text-sm font-semibold text-[#079C9C] shadow-sm transition hover:bg-[#079C9C]/10 active:scale-95"
+          >
+            <FileText className="size-5" />
+            Orçamento
+          </button>
+          <button
+            type="button"
+            onClick={() => setDoc('venda')}
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#079C9C] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95"
+          >
+            <ShoppingCart className="size-5" />
+            Nova venda
+          </button>
+        </div>
       </div>
 
       {/* Busca (fica no topo ao rolar) */}
@@ -379,7 +383,7 @@ export default function CatalogoLoja() {
         </p>
       )}
 
-      {/* Cabeçalho (desktop) */}
+      {/* Cabeçalho da tabela (só xl) */}
       {c.itens.length > 0 && (
         <div className={`hidden px-4 pb-2 pt-3 ${GRID}`}>
           <span className={thClass}>Código</span>
@@ -400,7 +404,7 @@ export default function CatalogoLoja() {
           <p className="text-xs text-slate-400">Tente outra palavra ou confira o código.</p>
         </div>
       ) : (
-        <ul className={`mt-3 space-y-2 md:mt-0 ${c.atualizando ? 'opacity-60' : ''}`}>
+        <ul className={`mt-3 space-y-2 xl:mt-0 ${c.atualizando ? 'opacity-60' : ''}`}>
           {c.itens.map((p) => (
             <LinhaProduto
               key={p.id}
@@ -427,10 +431,10 @@ export default function CatalogoLoja() {
       )}
 
       <NovaVendaDialog
-  open={doc !== null}
-  modo={doc ?? 'venda'}
-  onClose={() => setDoc(null)}
-/>
+        open={doc !== null}
+        modo={doc ?? 'venda'}
+        onClose={() => setDoc(null)}
+      />
     </div>
   )
 }

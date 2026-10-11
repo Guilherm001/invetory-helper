@@ -163,16 +163,16 @@ export function Body() {
         </div>
       </div>
 
-      {/* botão de adicionar (celular) some durante a seleção */}
+      {/* botão de adicionar (celular): fica logo acima da barra de baixo e some durante a seleção */}
       {!sel.selecting && (
-        <div className="fixed bottom-0 left-0 w-full p-4 md:hidden mb-4 bg-white">
+        <div className="fixed inset-x-0 bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-20 border-t border-gray-200 bg-white p-3 md:hidden">
           <BotaoAdd addProducts={addProductsSemDuplicar} />
         </div>
       )}
 
-      {/* barra da cotação (celular e desktop) */}
+      {/* barra da cotação: no celular fica acima da barra de baixo, no desktop no rodapé */}
       {sel.selecting && (
-        <div className="fixed bottom-0 inset-x-0 z-20 bg-white border-t p-3 flex items-center justify-between">
+        <div className="fixed inset-x-0 bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-20 flex items-center justify-between border-t border-gray-200 bg-white p-3 md:bottom-0">
           <span className="text-sm text-gray-700">
             {selecionados.length} selecionado(s)
           </span>

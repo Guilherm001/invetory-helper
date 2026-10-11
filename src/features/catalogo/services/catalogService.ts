@@ -23,6 +23,7 @@ export interface CatalogMovement {
 }
 
 const COLUNAS = 'id, code, barcode, name, unit, price, stock'
+const LIMITE_BUSCA = 15
 
 function traduzErro(error: { message: string; code?: string }) {
   if (error.code === '23505') return new Error('Já existe um item com esse código.')
@@ -35,19 +36,38 @@ async function usuarioId() {
   return data.user.id
 }
 
+// junta as listas na ordem recebida, sem repetir item e respeitando o limite
+function juntar(listas: (CatalogItem[] | null)[], limite: number): CatalogItem[] {
+  const vistos = new Set<string>()
+  const saida: CatalogItem[] = []
+  for (const lista of listas) {
+    for (const item of lista ?? []) {
+      if (vistos.has(item.id)) continue
+      vistos.add(item.id)
+      saida.push(item)
+      if (saida.length >= limite) return saida
+    }
+  }
+  return saida
+}
+
 // ---------- busca usada na lista de produtos ----------
 
 export async function searchCatalog(termo: string): Promise<CatalogItem[]> {
   // vírgula, %, parênteses e * quebram o filtro .or()
-  const t = termo.trim().replace(/[%,()*]/g, ' ').trim()
+  const t = termo
+    .trim()
+    .replace(/[%,()*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   const soNumeros = /^\d+$/.test(t)
 
   // números aceitam 1 dígito (códigos 1 a 9); texto precisa de 2+
   if (t.length < (soNumeros ? 1 : 2)) return []
 
   if (soNumeros) {
-    // exatos em uma busca própria, para nunca ficarem de fora do limite
-    const [exatos, parecidos] = await Promise.all([
+    // 1) código/barras exato  2) código/barras que começa com o número  3) nome contém
+    const [exatos, comecam, nomes] = await Promise.all([
       supabase
         .from('catalog_items')
         .select(COLUNAS)
@@ -56,31 +76,73 @@ export async function searchCatalog(termo: string): Promise<CatalogItem[]> {
       supabase
         .from('catalog_items')
         .select(COLUNAS)
-        .or(`code.ilike.${t}%,barcode.ilike.${t}%,name.ilike.%${t}%`)
+        .or(`code.ilike.${t}%,barcode.ilike.${t}%`)
+        .order('code')
+        .limit(LIMITE_BUSCA),
+      supabase
+        .from('catalog_items')
+        .select(COLUNAS)
+        .ilike('name', `%${t}%`)
         .order('name')
-        .limit(15),
+        .limit(LIMITE_BUSCA * 2),
     ])
 
     if (exatos.error) throw new Error(exatos.error.message)
-    if (parecidos.error) throw new Error(parecidos.error.message)
+    if (comecam.error) throw new Error(comecam.error.message)
+    if (nomes.error) throw new Error(nomes.error.message)
 
-    const listaExatos = (exatos.data ?? []) as CatalogItem[]
-    const idsExatos = new Set(listaExatos.map((i) => i.id))
-    const resto = ((parecidos.data ?? []) as CatalogItem[]).filter(
-      (i) => !idsExatos.has(i.id)
+    return juntar(
+      [
+        exatos.data as CatalogItem[],
+        comecam.data as CatalogItem[],
+        nomes.data as CatalogItem[],
+      ],
+      LIMITE_BUSCA
     )
-
-    // exatos primeiro, depois os semelhantes
-    return [...listaExatos, ...resto]
   }
 
-  // texto: todas as palavras precisam estar na descrição, em qualquer ordem
-  let q = supabase.from('catalog_items').select(COLUNAS)
-  for (const palavra of t.split(/\s+/)) q = q.ilike('name', `%${palavra}%`)
+  const [primeira, ...demais] = t.split(' ')
 
-  const { data, error } = await q.order('name').limit(15)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as CatalogItem[]
+  // 1) código/barras exato (códigos alfanuméricos), só se for uma palavra
+  const exatos = demais.length === 0
+    ? supabase
+        .from('catalog_items')
+        .select(COLUNAS)
+        .or(`code.eq.${primeira},barcode.eq.${primeira}`)
+        .limit(5)
+    : null
+
+  // 2) nome começa com a primeira palavra e contém as demais
+  let comecam = supabase
+    .from('catalog_items')
+    .select(COLUNAS)
+    .ilike('name', `${primeira}%`)
+  for (const palavra of demais) comecam = comecam.ilike('name', `%${palavra}%`)
+
+  // 3) nome contém todas as palavras, em qualquer ordem
+  let contem = supabase.from('catalog_items').select(COLUNAS)
+  for (const palavra of [primeira, ...demais])
+    contem = contem.ilike('name', `%${palavra}%`)
+
+  const [rExatos, rComecam, rContem] = await Promise.all([
+    exatos ?? Promise.resolve({ data: [] as CatalogItem[], error: null }),
+    comecam.order('name').limit(LIMITE_BUSCA),
+    // limite maior: os que já vieram em "começam" são descartados na junção
+    contem.order('name').limit(LIMITE_BUSCA * 2),
+  ])
+
+  if (rExatos.error) throw new Error(rExatos.error.message)
+  if (rComecam.error) throw new Error(rComecam.error.message)
+  if (rContem.error) throw new Error(rContem.error.message)
+
+  return juntar(
+    [
+      rExatos.data as CatalogItem[],
+      rComecam.data as CatalogItem[],
+      rContem.data as CatalogItem[],
+    ],
+    LIMITE_BUSCA
+  )
 }
 
 export async function lastImportDate(): Promise<string | null> {
