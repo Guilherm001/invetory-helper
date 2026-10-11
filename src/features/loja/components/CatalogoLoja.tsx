@@ -10,10 +10,12 @@ import {
   Search,
   ShoppingCart,
   X,
+  FileText,
 } from 'lucide-react'
 import { useLojaCatalogo } from '../hooks/useLojaCatalogo'
 import { useListaCompras } from '../hooks/useListaCompras'
 import { pedirCompra, type ProdutoLoja } from '../services/lojaCatalogoService'
+import NovaVendaDialog from './NovaVendaDialog'
 
 const reais = (n: number | null) =>
   n === null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -285,6 +287,7 @@ function LinhaProduto({
 export default function CatalogoLoja() {
   const c = useLojaCatalogo()
   const lista = useListaCompras()
+  const [doc, setDoc] = useState<'venda' | 'orcamento' | null>(null)
 
   return (
     <div className="w-full pb-16">
@@ -296,17 +299,24 @@ export default function CatalogoLoja() {
           </p>
         </article>
 
-        {/* o sistema de vendas entra aqui */}
-        <button
-          type="button"
-          disabled
-          title="Em breve"
-          className="flex cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-[#079C9C] px-5 py-3 text-sm font-semibold text-white opacity-50"
-        >
-          <ShoppingCart className="size-5" />
-          Nova venda
-          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[11px]">em breve</span>
-        </button>
+        <div className="grid grid-cols-2 gap-2 md:flex">
+  <button
+    type="button"
+    onClick={() => setDoc('orcamento')}
+    className="flex items-center justify-center gap-2 rounded-lg border border-[#079C9C] bg-white px-5 py-3 text-sm font-semibold text-[#079C9C] shadow-sm transition hover:bg-[#079C9C]/10 active:scale-95"
+  >
+    <FileText className="size-5" />
+    Orçamento
+  </button>
+  <button
+    type="button"
+    onClick={() => setDoc('venda')}
+    className="flex items-center justify-center gap-2 rounded-lg bg-[#079C9C] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95"
+  >
+    <ShoppingCart className="size-5" />
+    Nova venda
+  </button>
+</div>
       </div>
 
       {/* Busca (fica no topo ao rolar) */}
@@ -415,6 +425,12 @@ export default function CatalogoLoja() {
           </button>
         </div>
       )}
+
+      <NovaVendaDialog
+  open={doc !== null}
+  modo={doc ?? 'venda'}
+  onClose={() => setDoc(null)}
+/>
     </div>
   )
 }

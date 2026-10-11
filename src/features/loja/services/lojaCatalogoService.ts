@@ -15,42 +15,49 @@ export const TAMANHO_PAGINA = 20
 const num = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v)
 
+interface LinhaBusca {
+  id: string
+  code: string
+  barcode: string | null
+  name: string
+  unit: string | null
+  price: number | string | null
+  stock: number | string | null
+  total: number | string
+}
+
+// a ordenação (código exato, começa com o texto, palavra no meio...) é feita no banco
 export async function buscarProdutos(opts: {
   termo: string
   pagina: number
   soComEstoque: boolean
 }): Promise<{ itens: ProdutoLoja[]; total: number }> {
-  let q = supabase
-    .from('catalog_items')
-    .select('id, code, barcode, name, unit, price, stock', { count: 'exact' })
+  const { data, error } = await supabase.rpc('buscar_catalogo', {
+    p_termo: opts.termo,
+    p_so_estoque: opts.soComEstoque,
+    p_limite: TAMANHO_PAGINA,
+    p_offset: opts.pagina * TAMANHO_PAGINA,
+  })
 
-  // vírgula, %, parênteses e * quebram o filtro .or()
-  const t = opts.termo.trim().replace(/[%,()*]/g, ' ').trim()
-  if (t) {
-    // cada palavra precisa aparecer na descrição, no código ou no código de barras
-    for (const palavra of t.split(/\s+/)) {
-      q = q.or(`name.ilike.%${palavra}%,code.ilike.${palavra}%,barcode.ilike.${palavra}%`)
-    }
+  if (error) {
+    if (error.message.toLowerCase().includes('could not find the function'))
+      throw new Error('A busca do catálogo ainda não foi criada no banco. Rode o SQL da busca.')
+    throw new Error(error.message)
   }
 
-  if (opts.soComEstoque) q = q.gt('stock', 0)
-
-  const de = opts.pagina * TAMANHO_PAGINA
-  const { data, error, count } = await q.order('name').range(de, de + TAMANHO_PAGINA - 1)
-
-  if (error) throw new Error(error.message)
+  const linhas = (data ?? []) as LinhaBusca[]
 
   return {
-    itens: (data ?? []).map((r) => ({
-      id: r.id as string,
-      code: r.code as string,
-      barcode: (r.barcode as string | null) ?? null,
-      name: r.name as string,
-      unit: (r.unit as string | null) ?? null,
+    itens: linhas.map((r) => ({
+      id: r.id,
+      code: r.code,
+      barcode: r.barcode ?? null,
+      name: r.name,
+      unit: r.unit ?? null,
       price: num(r.price),
       stock: num(r.stock),
     })),
-    total: count ?? 0,
+    total: linhas.length > 0 ? Number(linhas[0].total) : 0,
   }
 }
 

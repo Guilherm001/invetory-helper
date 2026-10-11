@@ -7,6 +7,8 @@ import {
   Store,
   Wallet,
   Users,
+  FileText,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -35,6 +37,8 @@ export const LINKS: NavLink[] = [
   // ---- Loja ----
   { href: '/calculator', label: 'Calculadora', icon: Calculator, grupo: 'loja', principal: true, ordemBarra: 2 },
   { href: '/loja', label: 'Catálogo da loja', curto: 'Loja', icon: Store, grupo: 'loja', principal: true, ordemBarra: 3 },
+  { href: '/orcamentos', label: 'Orçamentos', icon: FileText, grupo: 'loja', principal: false },
+{ href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: false },
 
   // ---- Compras ----
   { href: '/dashboard', label: 'Produtos', icon: Package, grupo: 'compras', principal: true, ordemBarra: 1 },

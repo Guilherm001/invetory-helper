@@ -49,7 +49,13 @@ export function useLojaCatalogo() {
       const r = await buscarProdutos({ termo: termoBusca, pagina: res.paginas, soComEstoque })
       setRes((atual) =>
         atual && atual.chave === chave
-          ? { ...atual, itens: [...atual.itens, ...r.itens], total: r.total, paginas: atual.paginas + 1 }
+          ? {
+              ...atual,
+              itens: [...atual.itens, ...r.itens],
+              // se não veio nada, o total real é o que já está na tela
+              total: r.itens.length > 0 ? r.total : atual.itens.length,
+              paginas: atual.paginas + 1,
+            }
           : atual
       )
     } catch (e) {
@@ -59,16 +65,30 @@ export function useLojaCatalogo() {
     }
   }
 
+  // o produto que o Enter deve escolher: o primeiro resultado do que está digitado
+  const primeiroResultado = async (): Promise<ProdutoLoja | null> => {
+    if (!termo.trim()) return null
+
+    // a lista na tela já é desta busca: o primeiro item dela é o resultado
+    if (res && res.chave === chave && termoBusca === termo) return res.itens[0] ?? null
+
+    // senão busca agora, sem esperar a pausa da digitação (leitor de código de barras)
+    const r = await buscarProdutos({ termo, pagina: 0, soComEstoque })
+    return r.itens[0] ?? null
+  }
+
   return {
     termo,
     setTermo,
-    buscarAgora: () => setTermoBusca(termo), // Enter (leitor de código de barras)
+    buscarAgora: () => setTermoBusca(termo), // Enter na página do catálogo
+    primeiroResultado, // Enter na janela de venda
     soComEstoque,
     alternarEstoque: () => setSoComEstoque((v) => !v),
     itens: res?.itens ?? [],
     total: res?.total ?? 0,
     carregando: res === null && erro === null,
     atualizando: res !== null && res.chave !== chave, // mostra o resultado antigo esmaecido
+    emDia: res !== null && res.chave === chave && termoBusca === termo, // a lista é do que está digitado
     temMais: res !== null && res.itens.length < res.total,
     carregandoMais,
     carregarMais,

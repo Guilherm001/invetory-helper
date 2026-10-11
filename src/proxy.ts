@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-const PROTEGIDAS = ["/dashboard", "/calculator", "/equipe", "/catalogo"]
+const PROTEGIDAS = ["/dashboard", "/calculator", "/equipe", "/catalogo", ]
 
 // redireciona sem perder os cookies de sessão que o Supabase acabou de renovar
 function redirecionar(
