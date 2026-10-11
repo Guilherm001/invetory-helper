@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation'
 import { estaAtivo, linksVisiveis } from './links'
 
 export function NavLinks({
-  className = '',
-  ehDono = false,
+  className = '',  ehDono = false,
 }: {
   className?: string
   ehDono?: boolean
