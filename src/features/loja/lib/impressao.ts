@@ -218,14 +218,20 @@ export function imprimirHtml(html: string) {
   documento.write(html)
   documento.close()
 
-  const limpar = () => quadro.remove()
+  const limpar = () => {
+    quadro.remove()
+    window.focus()
+  }
   janela.onafterprint = () => setTimeout(limpar, 500)
 
   // dá um instante para o conteúdo ser desenhado antes de imprimir
   setTimeout(() => {
-    janela.focus()
-    janela.print()
-    setTimeout(limpar, 60_000)
+    try {
+      janela.focus()
+      janela.print()
+    } finally {
+      setTimeout(limpar, 500)
+    }
   }, 250)
 }
 
