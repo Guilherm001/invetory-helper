@@ -51,9 +51,9 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
   @page { margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
-  body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm; color: #000;
-         font-family: "Courier New", Courier, monospace; font-size: 12px; line-height: 1.3;
-         overflow: hidden; }
+    body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm 5mm; color: #000;
+      font-family: "Courier New", Courier, monospace; font-size: 12px; font-weight: 700;
+      line-height: 1.3; }
   .c { text-align: center; }
   .b { font-weight: 700; }
   .marca { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
