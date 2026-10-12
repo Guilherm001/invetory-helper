@@ -4,6 +4,10 @@ import { dataCurta, dataHora, numeroTexto, reais } from './formatar'
 
 export type FormatoImpressao = 'cupom' | 'a4'
 
+// Largura do papel da térmica (ex.: 80 mm) e área realmente imprimível (~72 mm).
+// Se o texto sair cortado, diminua o 72; se sobrar espaço, aumente.
+const AREA_CUPOM_MM = Math.min(LARGURA_CUPOM_MM, 72)
+
 const esc = (s: string | null | undefined) =>
   (s ?? '')
     .replace(/&/g, '&amp;')
@@ -44,11 +48,12 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
 <html lang="pt-BR"><head><meta charset="utf-8">
 <title>${tituloDe(doc)} ${doc.numero}</title>
 <style>
-  @page { margin: 0; }
+  @page { size: ${LARGURA_CUPOM_MM}mm auto; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
-  body { width: ${LARGURA_CUPOM_MM}mm; padding: 2mm 1mm 14mm; color: #000;
-         font-family: "Courier New", Courier, monospace; font-size: 12px; line-height: 1.3; }
+  body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm; color: #000;
+         font-family: "Courier New", Courier, monospace; font-size: 12px; line-height: 1.3;
+         overflow: hidden; }
   .c { text-align: center; }
   .b { font-weight: 700; }
   .marca { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
@@ -112,7 +117,7 @@ export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
 <html lang="pt-BR"><head><meta charset="utf-8">
 <title>${tituloDe(doc)} ${doc.numero}</title>
 <style>
-  @page { size: A4; margin: 14mm 14mm 16mm; }
+  @page { size: A4; margin: 20mm 14mm 16mm; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { margin: 0; color: #1e293b; font-family: Arial, Helvetica, sans-serif; font-size: 12px; }
   .topo { display: flex; justify-content: space-between; align-items: flex-end;
@@ -167,11 +172,10 @@ export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
     </div>
     <div>
       <div class="rotulo">${doc.tipo === 'entrega' ? 'Entrega' : 'Retirada'}</div>
-      ${
-        doc.tipo === 'entrega'
-          ? `<div class="txt">${esc(end) || 'Endereço não informado'}</div>`
-          : '<div>Retirada na loja</div>'
-      }
+      ${doc.tipo === 'entrega'
+      ? `<div class="txt">${esc(end) || 'Endereço não informado'}</div>`
+      : '<div>Retirada na loja</div>'
+    }
     </div>
   </div>
 
@@ -198,7 +202,9 @@ export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
 export function imprimirHtml(html: string) {
   const quadro = document.createElement('iframe')
   quadro.setAttribute('aria-hidden', 'true')
-  quadro.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+  // fora da tela, mas com tamanho real (um iframe 0x0 pode imprimir em branco)
+  quadro.style.cssText =
+    'position:fixed;left:-10000px;top:0;width:800px;height:600px;border:0'
   document.body.appendChild(quadro)
 
   const janela = quadro.contentWindow
