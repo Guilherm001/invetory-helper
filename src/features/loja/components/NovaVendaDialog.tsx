@@ -26,12 +26,28 @@ import {
 } from '../../../../components/ui/dialog'
 import { useLojaCatalogo } from '../hooks/useLojaCatalogo'
 import type { ProdutoLoja } from '../services/lojaCatalogoService'
-import { criarVenda, type TipoEntrega } from '../services/vendaService'
-import { dataCurta } from '../lib/formatar'
+import {
+  criarVenda,
+  ErroSenha,
+  editarOrcamento,
+  type DadosVenda,
+  type TipoEntrega,
+} from '../services/vendaService'
+import { dataCurta, hoje } from '../lib/formatar'
 import BotoesImpressao from './BotoesImpressao'
-import { carregarDocumentoCompleto } from '../services/documentosService'
+import SenhaVendedor from './senhaVendedor'
+import {
+  carregarDocumentoCompleto,
+  type DocumentoResumo,
+  type ItemDocumento,
+} from '../services/documentosService'
 
 export type ModoDocumento = 'venda' | 'orcamento'
+
+export interface EdicaoOrcamento {
+  doc: DocumentoResumo
+  itens: ItemDocumento[]
+}
 
 // ---------- utilidades ----------
 
@@ -105,40 +121,60 @@ function Chip({
 
 function VendaConteudo({
   modo,
+  edicao,
   onFechar,
   onSujo,
   onNova,
+  onSalvo,
 }: {
   modo: ModoDocumento
+  edicao?: EdicaoOrcamento
   onFechar: () => void
   onSujo: (sujo: boolean) => void
   onNova: () => void
+  onSalvo?: () => void
 }) {
   const c = useLojaCatalogo()
   const ehOrc = modo === 'orcamento'
+  const d = edicao?.doc
 
   const [aba, setAba] = useState<'produtos' | 'pedido'>('produtos')
-  const [itens, setItens] = useState<ItemCarrinho[]>([])
+  const [itens, setItens] = useState<ItemCarrinho[]>(() =>
+    (edicao?.itens ?? []).map((i) => ({
+      id: i.id,
+      codigo: i.produto_codigo ?? '',
+      nome: i.produto_nome,
+      unidade: i.unidade,
+      estoque: null,
+      preco: emTexto(i.preco_unitario),
+      precoFixo: false, // na edição o preço pode ser ajustado
+      qtd: emTexto(i.quantidade),
+      obs: i.observacao ?? '',
+      obsAberta: false,
+    }))
+  )
 
-  const [cliente, setCliente] = useState('')
-  const [telefone, setTelefone] = useState('')
-  const [tipo, setTipo] = useState<TipoEntrega>('retirada')
-  const [endereco, setEndereco] = useState('')
-  const [bairro, setBairro] = useState('')
-  const [cidade, setCidade] = useState('')
-  const [complemento, setComplemento] = useState('')
-  const [pagamento, setPagamento] = useState('')
-  const [observacao, setObservacao] = useState('')
-  const [validadeDias, setValidadeDias] = useState(7)
+  const [cliente, setCliente] = useState(d?.cliente_nome ?? '')
+  const [telefone, setTelefone] = useState(d?.cliente_telefone ?? '')
+  const [tipo, setTipo] = useState<TipoEntrega>(d?.tipo ?? 'retirada')
+  const [endereco, setEndereco] = useState(d?.endereco ?? '')
+  const [bairro, setBairro] = useState(d?.bairro ?? '')
+  const [cidade, setCidade] = useState(d?.cidade ?? '')
+  const [complemento, setComplemento] = useState(d?.complemento ?? '')
+  const [pagamento, setPagamento] = useState(d?.pagamento ?? '')
+  const [observacao, setObservacao] = useState(d?.observacao ?? '')
+  // null (só na edição) = manter a validade que o orçamento já tinha
+  const [validadeDias, setValidadeDias] = useState<number | null>(edicao ? null : 7)
 
-  const [salvando, setSalvando] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
   const [erro, setErro] = useState('')
   const [feito, setFeito] = useState<{
-  id: string
-  numero: number
-  total: number
-  resumo: string
-} | null>(null)
+    id: string
+    numero: number
+    total: number
+    vendedor: string | null
+    resumo: string
+  } | null>(null)
   const [copiado, setCopiado] = useState(false)
 
   // busca rápida (Enter)
@@ -148,10 +184,26 @@ function VendaConteudo({
 
   const total = arredonda(itens.reduce((soma, i) => soma + subtotalDe(i), 0))
 
-  // avisa a janela se tem algo que seria perdido ao fechar
+  // na edição só pergunta antes de fechar se algo mudou
+  const snapshot = JSON.stringify([
+    itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.obs]),
+    cliente,
+    telefone,
+    tipo,
+    endereco,
+    bairro,
+    cidade,
+    complemento,
+    pagamento,
+    observacao,
+    validadeDias,
+  ])
+  const [inicial] = useState(snapshot)
+  const sujo = edicao ? snapshot !== inicial : itens.length > 0
+
   useEffect(() => {
-    onSujo(itens.length > 0 && !feito)
-  }, [itens.length, feito, onSujo])
+    onSujo(sujo && !feito)
+  }, [sujo, feito, onSujo])
 
   const alterar = (id: string, dados: Partial<ItemCarrinho>) =>
     setItens((prev) => prev.map((i) => (i.id === id ? { ...i, ...dados } : i)))
@@ -167,9 +219,9 @@ function VendaConteudo({
   const adicionar = (p: ProdutoLoja) => {
     setErro('')
     setItens((prev) => {
-      const idx = prev.findIndex((x) => x.id === p.id)
+      // já está no pedido (mesmo código): soma a quantidade
+      const idx = prev.findIndex((x) => x.codigo === p.code)
       if (idx >= 0) {
-        // já está no pedido: soma a quantidade
         const novo = [...prev]
         const atual = paraNumero(novo[idx].qtd)
         novo[idx] = {
@@ -249,13 +301,14 @@ function VendaConteudo({
     return linhas.join('\n')
   }
 
-  const enviar = async () => {
+  // confere o pedido antes de pedir a senha
+  const validar = (): boolean => {
     setErro('')
 
     if (itens.length === 0) {
       setErro('Adicione pelo menos um produto.')
       setAba('produtos')
-      return
+      return false
     }
     for (const i of itens) {
       const q = paraNumero(i.qtd)
@@ -263,55 +316,72 @@ function VendaConteudo({
       if (!Number.isFinite(q) || q <= 0) {
         setErro(`Informe a quantidade de ${i.nome}.`)
         setAba('pedido')
-        return
+        return false
       }
       if (!Number.isFinite(p) || p < 0) {
         setErro(`Informe o preço de ${i.nome}.`)
         setAba('pedido')
-        return
+        return false
       }
     }
     if (tipo === 'entrega' && !endereco.trim()) {
       setErro('Informe o endereço de entrega.')
       setAba('pedido')
-      return
+      return false
     }
+    return true
+  }
 
-    setSalvando(true)
+  // 1º passo: confere o pedido e pede a senha do vendedor
+  const pedirSenha = () => {
+    if (validar()) setConfirmando(true)
+  }
+
+  // 2º passo: com a senha, grava no banco (a senha identifica o vendedor)
+  const confirmar = async (pin: string) => {
+    const dados: DadosVenda = {
+      documento: ehOrc ? 'orcamento' : 'pedido',
+      validade_dias: ehOrc ? (validadeDias ?? undefined) : undefined,
+      pin,
+      cliente_nome: cliente,
+      cliente_telefone: telefone,
+      tipo,
+      endereco: tipo === 'entrega' ? endereco : '',
+      bairro: tipo === 'entrega' ? bairro : '',
+      cidade: tipo === 'entrega' ? cidade : '',
+      complemento: tipo === 'entrega' ? complemento : '',
+      pagamento,
+      observacao,
+    }
+    const lista = itens.map((i) => ({
+      codigo: i.codigo,
+      nome: i.nome,
+      unidade: i.unidade,
+      quantidade: paraNumero(i.qtd),
+      preco: paraNumero(i.preco),
+      observacao: i.obs.trim(),
+    }))
+
     try {
-      const r = await criarVenda(
-        {
-          documento: ehOrc ? 'orcamento' : 'pedido',
-          validade_dias: ehOrc ? validadeDias : undefined,
-          cliente_nome: cliente,
-          cliente_telefone: telefone,
-          tipo,
-          endereco: tipo === 'entrega' ? endereco : '',
-          bairro: tipo === 'entrega' ? bairro : '',
-          cidade: tipo === 'entrega' ? cidade : '',
-          complemento: tipo === 'entrega' ? complemento : '',
-          pagamento,
-          observacao,
-        },
-        itens.map((i) => ({
-          codigo: i.codigo,
-          nome: i.nome,
-          unidade: i.unidade,
-          quantidade: paraNumero(i.qtd),
-          preco: paraNumero(i.preco),
-          observacao: i.obs.trim(),
-        }))
-      )
+      const r = edicao
+        ? await editarOrcamento(edicao.doc.id, dados, lista)
+        : await criarVenda(dados, lista)
+
       setFeito({
-  id: r.id,
-  numero: r.numero,
-  total: r.total,
-  resumo: montarResumo(r.numero, r.total, r.validade),
-})
+        id: r.id,
+        numero: r.numero,
+        total: r.total,
+        vendedor: r.vendedor_nome,
+        resumo: montarResumo(r.numero, r.total, r.validade),
+      })
+      setConfirmando(false)
+      if (edicao) onSalvo?.()
     } catch (e) {
+      // erro de senha: a própria janela da senha mostra e deixa tentar de novo
+      if (e instanceof ErroSenha) throw e
+      // qualquer outro erro: fecha a janela da senha e mostra na tela
+      setConfirmando(false)
       setErro(e instanceof Error ? e.message : 'Erro ao registrar')
-    } finally {
-      setSalvando(false)
     }
   }
 
@@ -336,10 +406,15 @@ function VendaConteudo({
         <div>
           <h4 className="text-2xl font-bold text-slate-900">
             {ehOrc
-              ? `Orçamento nº ${feito.numero} salvo`
+              ? edicao
+                ? `Orçamento nº ${feito.numero} atualizado`
+                : `Orçamento nº ${feito.numero} salvo`
               : `Pedido nº ${feito.numero} registrado`}
           </h4>
           <p className="mt-1 text-3xl font-bold text-[#079C9C]">{reais(feito.total)}</p>
+          {feito.vendedor && (
+            <p className="mt-1 text-sm text-slate-500">Vendedor: {feito.vendedor}</p>
+          )}
         </div>
 
         <pre className="max-h-48 w-full max-w-md overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-left font-sans text-sm text-slate-700">
@@ -349,23 +424,27 @@ function VendaConteudo({
         {erro && <p className="text-sm text-red-600">{erro}</p>}
 
         <div className="space-y-1.5">
-  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Imprimir</p>
-  <BotoesImpressao centralizar carregar={() => carregarDocumentoCompleto(feito.id)} />
-</div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Imprimir
+          </p>
+          <BotoesImpressao centralizar carregar={() => carregarDocumentoCompleto(feito.id)} />
+        </div>
 
         <div className="flex flex-wrap justify-center gap-2">
           <Button type="button" variant="outline" onClick={copiar} className="gap-2">
             {copiado ? <Check className="size-4" /> : <ClipboardCopy className="size-4" />}
             {copiado ? 'Copiado!' : 'Copiar resumo'}
           </Button>
-          <Button
-            type="button"
-            onClick={onNova}
-            className="gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
-          >
-            <Plus className="size-4" />
-            {ehOrc ? 'Novo orçamento' : 'Nova venda'}
-          </Button>
+          {!edicao && (
+            <Button
+              type="button"
+              onClick={onNova}
+              className="gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
+            >
+              <Plus className="size-4" />
+              {ehOrc ? 'Novo orçamento' : 'Nova venda'}
+            </Button>
+          )}
           <Button asChild variant="outline">
             <Link href={ehOrc ? '/orcamentos' : '/pedidos'}>
               {ehOrc ? 'Ver orçamentos' : 'Ver pedidos'}
@@ -381,7 +460,7 @@ function VendaConteudo({
 
   // ---------- tela principal ----------
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       {/* abas (só no celular) */}
       <div className="grid grid-cols-2 border-b border-slate-200 md:hidden">
         {(
@@ -509,7 +588,7 @@ function VendaConteudo({
             ) : (
               <ul className={`space-y-2 ${c.atualizando ? 'opacity-60' : ''}`}>
                 {c.itens.map((p, idx) => {
-                  const noPedido = itens.find((i) => i.id === p.id)
+                  const noPedido = itens.find((i) => i.codigo === p.code)
                   // o primeiro resultado é o que o Enter vai adicionar
                   const destaque = idx === 0 && c.termo.trim() !== '' && c.emDia
                   return (
@@ -621,7 +700,7 @@ function VendaConteudo({
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-900">{i.nome}</p>
                             <p className="text-xs text-slate-500">
-                              Cód. {i.codigo}
+                              {i.codigo ? `Cód. ${i.codigo}` : 'Sem código'}
                               {i.unidade ? ` · ${i.unidade}` : ''}
                             </p>
                           </div>
@@ -675,7 +754,11 @@ function VendaConteudo({
                                 inputMode="decimal"
                                 placeholder="Preço"
                                 aria-label={`Preço de ${i.nome}`}
-                                className="h-9 w-24 rounded-lg border border-amber-300 bg-amber-50 px-2 text-center text-base outline-none focus:border-[#079C9C] md:text-sm"
+                                className={`h-9 w-24 rounded-lg border px-2 text-center text-base outline-none focus:border-[#079C9C] md:text-sm ${
+                                  i.preco.trim() === ''
+                                    ? 'border-amber-300 bg-amber-50'
+                                    : 'border-slate-200 bg-white'
+                                }`}
                               />
                             </div>
                           )}
@@ -724,12 +807,27 @@ function VendaConteudo({
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-slate-700">Validade do orçamento</p>
                 <div className="flex flex-wrap gap-2">
-                  {VALIDADES.map((d) => (
-                    <Chip key={d} ativo={validadeDias === d} onClick={() => setValidadeDias(d)}>
-                      {d} dias
+                  {d?.validade && (
+                    <Chip ativo={validadeDias === null} onClick={() => setValidadeDias(null)}>
+                      Manter ({d.validade < hoje() ? 'venceu em' : 'até'}{' '}
+                      {dataCurta(d.validade)})
+                    </Chip>
+                  )}
+                  {VALIDADES.map((dias) => (
+                    <Chip
+                      key={dias}
+                      ativo={validadeDias === dias}
+                      onClick={() => setValidadeDias(dias)}
+                    >
+                      {dias} dias
                     </Chip>
                   ))}
                 </div>
+                {edicao && (
+                  <p className="text-xs text-slate-400">
+                    Escolhendo um prazo, a contagem recomeça a partir de hoje.
+                  </p>
+                )}
               </div>
             )}
 
@@ -871,7 +969,6 @@ function VendaConteudo({
               type="button"
               variant="outline"
               onClick={onFechar}
-              disabled={salvando}
               className="hidden border-slate-200 bg-white text-slate-700 hover:bg-slate-100 sm:inline-flex"
             >
               Cancelar
@@ -891,26 +988,36 @@ function VendaConteudo({
 
             <Button
               type="button"
-              onClick={enviar}
-              disabled={salvando || itens.length === 0}
+              onClick={pedirSenha}
+              disabled={itens.length === 0}
               className={`min-w-44 gap-2 bg-[#079C9C] text-white shadow-sm hover:bg-[#079C9C]/90 ${
                 aba === 'produtos' ? 'hidden md:inline-flex' : ''
               }`}
             >
-              {salvando ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  {ehOrc ? 'Salvando...' : 'Registrando...'}
-                </>
-              ) : ehOrc ? (
-                'Salvar orçamento'
-              ) : (
-                'Registrar venda'
-              )}
+              {ehOrc ? (edicao ? 'Salvar alterações' : 'Salvar orçamento') : 'Registrar venda'}
             </Button>
           </div>
         </div>
       </div>
+
+      {/* passo final: senha do vendedor */}
+      {confirmando && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4">
+          <SenhaVendedor
+            titulo="Digite a sua senha"
+            descricao={
+              ehOrc
+                ? edicao
+                  ? 'Para salvar as alterações no seu nome.'
+                  : 'Para salvar o orçamento no seu nome.'
+                : 'Para registrar a venda no seu nome.'
+            }
+            textoBotao={ehOrc ? 'Salvar' : 'Registrar'}
+            onConfirmar={confirmar}
+            onCancelar={() => setConfirmando(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -920,11 +1027,15 @@ function VendaConteudo({
 export default function NovaVendaDialog({
   open,
   modo = 'venda',
+  edicao,
   onClose,
+  onSalvo,
 }: {
   open: boolean
   modo?: ModoDocumento
+  edicao?: EdicaoOrcamento
   onClose: () => void
+  onSalvo?: () => void
 }) {
   const sujo = useRef(false)
   const marcarSujo = useCallback((v: boolean) => {
@@ -937,7 +1048,9 @@ export default function NovaVendaDialog({
     if (
       sujo.current &&
       !window.confirm(
-        `Descartar ${ehOrc ? 'este orçamento' : 'esta venda'}? Os produtos adicionados serão perdidos.`
+        edicao
+          ? 'Descartar as alterações deste orçamento?'
+          : `Descartar ${ehOrc ? 'este orçamento' : 'esta venda'}? Os produtos adicionados serão perdidos.`
       )
     )
       return
@@ -967,12 +1080,18 @@ export default function NovaVendaDialog({
             </div>
             <div className="min-w-0">
               <DialogTitle className="text-xl font-bold text-white">
-                {ehOrc ? 'Novo orçamento' : 'Nova venda'}
+                {edicao
+                  ? `Editar orçamento nº ${edicao.doc.numero}`
+                  : ehOrc
+                    ? 'Novo orçamento'
+                    : 'Nova venda'}
               </DialogTitle>
               <DialogDescription className="text-sm text-white/80">
-                {ehOrc
-                  ? 'Monte o orçamento para o cliente e escolha por quanto tempo ele vale'
-                  : 'Adicione os produtos, os dados do cliente e registre o pedido'}
+                {edicao
+                  ? 'Altere produtos, cliente ou endereço e salve com a senha do vendedor'
+                  : ehOrc
+                    ? 'Monte o orçamento para o cliente e escolha por quanto tempo ele vale'
+                    : 'Adicione os produtos, os dados do cliente e registre o pedido'}
               </DialogDescription>
             </div>
           </div>
@@ -980,11 +1099,13 @@ export default function NovaVendaDialog({
 
         {open && (
           <VendaConteudo
-            key={`${modo}-${chave}`}
+            key={`${modo}-${chave}-${edicao?.doc.id ?? 'novo'}`}
             modo={modo}
+            edicao={edicao}
             onFechar={fechar}
             onSujo={marcarSujo}
             onNova={() => setChave((k) => k + 1)}
+            onSalvo={onSalvo}
           />
         )}
       </DialogContent>

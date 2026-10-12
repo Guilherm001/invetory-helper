@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { hoje } from '../lib/formatar'
+import { ErroSenha } from './vendedorService'
+
 
 export type Documento = 'pedido' | 'orcamento'
 export type StatusDocumento = 'aberta' | 'entregue' | 'cancelada'
@@ -24,6 +26,9 @@ export interface DocumentoResumo {
   validade: string | null
   orcamento_numero: number | null
   orcamento_em: string | null
+    orcamento_vendedor: string | null
+  editado_por: string | null
+  editado_em: string | null
   criado_em: string
 }
 
@@ -41,11 +46,18 @@ export interface ItemDocumento {
 export const TAMANHO_PAGINA = 20
 
 const COLUNAS =
-  'id, numero, documento, status, cliente_nome, cliente_telefone, tipo, endereco, bairro, cidade, complemento, pagamento, observacao, total, vendedor_nome, validade, orcamento_numero, orcamento_em, criado_em'
+  'id, numero, documento, status, cliente_nome, cliente_telefone, tipo, endereco, bairro, cidade, complemento, pagamento, observacao, total, vendedor_nome, validade, orcamento_numero, orcamento_em, criado_em, orcamento_vendedor, editado_por, editado_em'
 
 function traduz(message: string) {
-  if (message.toLowerCase().includes('could not find the function'))
+  const m = message.toLowerCase()
+  if (m.includes('could not find the function'))
     return 'As funções de pedidos ainda não existem no banco. Rode o SQL de orçamentos.'
+  if (m.includes('senha_invalida')) return 'Senha incorreta.'
+  if (m.includes('muitas_tentativas'))
+    return 'Muitas tentativas erradas. Aguarde alguns minutos e tente de novo.'
+  if (m.includes('senha_duplicada'))
+    return 'Essa senha está repetida entre vendedores. Peça ao dono para trocar uma delas.'
+  if (m.includes('sem_vendedor')) return 'Nenhum vendedor cadastrado. Cadastre em Equipe.'
   return message
 }
 
@@ -117,10 +129,16 @@ export async function alterarStatus(id: string, status: StatusDocumento) {
   if (error) throw new Error(traduz(error.message))
 }
 
-export async function converterOrcamento(id: string): Promise<{ numero: number }> {
-  const { data, error } = await supabase.rpc('converter_orcamento', { p_id: id })
+export async function converterOrcamento(id: string, pin: string): Promise<{ numero: number }> {
+  const { data, error } = await supabase.rpc('converter_orcamento', {
+    p_id: id,
+    p_pin: pin,
+  })
   if (error) throw new Error(traduz(error.message))
-  return { numero: Number((data as { numero: number }).numero) }
+
+  const r = data as { ok?: boolean; erro?: string; numero?: number } | null
+  if (!r || r.ok !== true) throw new Error(r?.erro || 'Não foi possível confirmar a senha.')
+  return { numero: Number(r.numero) }
 }
 export async function buscarDocumento(id: string): Promise<DocumentoResumo> {
   const { data, error } = await supabase

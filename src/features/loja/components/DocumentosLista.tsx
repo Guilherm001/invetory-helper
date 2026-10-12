@@ -8,9 +8,11 @@ import {
   type Documento,
   type DocumentoResumo,
   type FiltroDocumento,
+  type ItemDocumento,
 } from '../services/documentosService'
 import { dataCurta, dataHora, reais, statusInfo } from '../lib/formatar'
 import DocumentoDetalheDialog, { type Aviso } from './DocumentoDetalheDialog'
+import NovaVendaDialog from './NovaVendaDialog'
 
 interface Resultado {
   chave: string
@@ -52,6 +54,10 @@ export default function DocumentosLista({
   const [carregandoMais, setCarregandoMais] = useState(false)
   const [aberto, setAberto] = useState<DocumentoResumo | null>(null)
   const [aviso, setAviso] = useState<Aviso | null>(null)
+  const [editando, setEditando] = useState<{
+  doc: DocumentoResumo
+  itens: ItemDocumento[]
+} | null>(null)
 
   const chave = `${documento}|${filtro}|${termoBusca}|${versao}`
 
@@ -245,7 +251,7 @@ export default function DocumentosLista({
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {dataHora(d.criado_em)} · {d.tipo === 'entrega' ? 'Entrega' : 'Retirada'}
-                        {ehDono && d.vendedor_nome ? ` · ${d.vendedor_nome}` : ''}
+                        {d.vendedor_nome ? ` · ${d.vendedor_nome}` : ''}
                       </p>
                       {orc && d.validade && (
                         <p className="mt-0.5 text-xs text-slate-500">
@@ -284,6 +290,20 @@ export default function DocumentosLista({
           setAberto(null)
           setVersao((v) => v + 1)
           if (a) setAviso(a)
+        }}
+      onEditar={(doc, itens) => {
+  setAberto(null)
+  setEditando({ doc, itens })
+}}
+      />
+            <NovaVendaDialog
+        open={editando !== null}
+        modo="orcamento"
+        edicao={editando ?? undefined}
+        onClose={() => setEditando(null)}
+        onSalvo={() => {
+          setVersao((v) => v + 1)
+          setAviso({ texto: `Orçamento nº ${editando?.doc.numero} atualizado.` })
         }}
       />
     </div>

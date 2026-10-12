@@ -24,6 +24,7 @@ export interface DadosVenda {
   complemento: string
   pagamento: string
   observacao: string
+  pin: string // a senha do vendedor: o banco descobre quem é
 }
 
 export interface VendaCriada {
@@ -32,7 +33,11 @@ export interface VendaCriada {
   total: number
   documento: Documento
   validade: string | null
+  vendedor_nome: string
 }
+
+// senha errada, bloqueio ou senha repetida: a mensagem já vem pronta do banco
+export class ErroSenha extends Error {}
 
 function traduz(message: string) {
   const m = message.toLowerCase()
@@ -43,14 +48,32 @@ function traduz(message: string) {
   return message
 }
 
-export async function criarVenda(
-  venda: DadosVenda,
-  itens: ItemVenda[]
-): Promise<VendaCriada> {
+// o banco responde { ok: false, erro } quando a senha não confere
+function conferir(data: unknown): VendaCriada {
+  const r = data as ({ ok?: boolean; erro?: string } & Partial<VendaCriada>) | null
+  if (!r || r.ok !== true) throw new ErroSenha(r?.erro || 'Não foi possível confirmar a senha.')
+  return r as VendaCriada
+}
+
+export async function criarVenda(venda: DadosVenda, itens: ItemVenda[]): Promise<VendaCriada> {
   const { data, error } = await supabase.rpc('criar_venda', {
     p_venda: venda,
     p_itens: itens,
   })
   if (error) throw new Error(traduz(error.message))
-  return data as VendaCriada
+  return conferir(data)
+}
+
+export async function editarOrcamento(
+  id: string,
+  venda: DadosVenda,
+  itens: ItemVenda[]
+): Promise<VendaCriada> {
+  const { data, error } = await supabase.rpc('editar_orcamento', {
+    p_id: id,
+    p_venda: venda,
+    p_itens: itens,
+  })
+  if (error) throw new Error(traduz(error.message))
+  return conferir(data)
 }

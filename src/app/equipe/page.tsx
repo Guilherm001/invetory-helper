@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createSupabaseServer } from '@/lib/supabase-server'
-import { donoAtual } from '@/lib/auth-dono'
 import { EquipeManager } from '@/features/equipe/components/EquipeManager'
+import { VendedoresManager } from '@/features/equipe/components/vendedoresManager'
 
 export default async function Page() {
   const supabase = await createSupabaseServer()
@@ -9,10 +9,6 @@ export default async function Page() {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/')
-
-  // só o dono entra aqui; funcionário volta para os produtos
-  const dono = await donoAtual()
-  if (!dono) redirect('/dashboard')
 
   // as regras do banco já limitam isso à empresa do dono
   const { data, error } = await supabase
@@ -22,13 +18,17 @@ export default async function Page() {
     .order('criado_em')
 
   if (error) {
-    console.error('Erro ao carregar a equipe:', error.message)
     return (
       <div className="mt-10 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 md:max-w-xl">
-        Não foi possível carregar a equipe. Tente novamente em instantes.
+        Não foi possível carregar a equipe: {error.message}
       </div>
     )
   }
 
-  return <EquipeManager funcionarios={data ?? []} />
+  return (
+    <>
+      <EquipeManager funcionarios={data ?? []} />
+      <VendedoresManager />
+    </>
+  )
 }

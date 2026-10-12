@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FileText,
   Loader2,
+  Pencil
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
@@ -35,6 +36,7 @@ import {
   statusInfo,
 } from '../lib/formatar'
 import BotoesImpressao from './BotoesImpressao'
+import SenhaVendedor from './senhaVendedor'
 
 export interface Aviso {
   texto: string
@@ -56,15 +58,18 @@ function Conteudo({
   doc,
   ehDono,
   onMudou,
+  onEditar,
 }: {
   doc: DocumentoResumo
   ehDono: boolean
   onMudou: (aviso?: Aviso) => void
+  onEditar: (doc: DocumentoResumo, itens: ItemDocumento[]) => void
 }) {
   const [itens, setItens] = useState<ItemDocumento[] | null>(null)
   const [erro, setErro] = useState('')
   const [agindo, setAgindo] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [pedindoSenha, setPedindoSenha] = useState(false)
 
   const orc = doc.documento === 'orcamento'
   const aberto = doc.status === 'aberta'
@@ -102,19 +107,24 @@ function Conteudo({
       return aviso ? { texto: aviso } : undefined
     })
 
-  const converter = () => {
-    const msg = vencido
-      ? `Este orçamento venceu em ${dataCurta(doc.validade as string)}. Os preços podem ter mudado. Converter em pedido mesmo assim?`
-      : `Converter o orçamento nº ${doc.numero} em pedido?`
-    if (!window.confirm(msg)) return
-    executar(async () => {
-      const r = await converterOrcamento(doc.id)
-      return {
-        texto: `Orçamento nº ${doc.numero} virou o pedido nº ${r.numero}.`,
-        link: { href: '/pedidos', label: 'Ver pedidos' },
-      }
-    })
+    const converter = () => {
+    if (
+      vencido &&
+      !window.confirm(
+        `Este orçamento venceu em ${dataCurta(doc.validade as string)}. Os preços podem ter mudado. Converter em pedido mesmo assim?`
+      )
+    )
+      return
+    setPedindoSenha(true)
   }
+
+  const confirmarConversao = async (pin: string) => {
+  const r = await converterOrcamento(doc.id, pin)
+  onMudou({
+    texto: `Orçamento nº ${doc.numero} virou o pedido nº ${r.numero}.`,
+    link: { href: '/pedidos', label: 'Ver pedidos' },
+  })
+}
 
   const recusarOuCancelar = () => {
     const msg = orc
@@ -252,11 +262,23 @@ function Conteudo({
           </Bloco>
         )}
 
-        {ehDono && doc.vendedor_nome && (
+                {doc.vendedor_nome && (
           <Bloco titulo="Vendedor">
-            <p>{doc.vendedor_nome}</p>
+            <p className="font-semibold text-slate-900">{doc.vendedor_nome}</p>
+            {doc.orcamento_vendedor && doc.orcamento_vendedor !== doc.vendedor_nome && (
+              <p className="text-xs text-slate-500">
+                Orçamento feito por {doc.orcamento_vendedor}
+              </p>
+            )}
+            {doc.editado_por && (
+              <p className="text-xs text-slate-500">
+                Editado por {doc.editado_por}
+                {doc.editado_em ? ` em ${dataHora(doc.editado_em)}` : ''}
+              </p>
+            )}
           </Bloco>
         )}
+        
       </div>
 
       <div className="shrink-0 border-t border-slate-200 bg-slate-50">
@@ -297,6 +319,18 @@ function Conteudo({
               {orc ? 'Recusar' : 'Cancelar pedido'}
             </Button>
           )}
+          {aberto && orc && itens && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onEditar(doc, itens)}
+              disabled={agindo}
+              className="gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+            >
+              <Pencil className="size-4" />
+              Editar orçamento
+            </Button>
+          )}
 
           {aberto && orc && (
             <Button
@@ -327,7 +361,7 @@ function Conteudo({
             </Button>
           )}
 
-          {!aberto && ehDono && (
+          {!aberto && (ehDono || orc) && (
             <Button
               type="button"
               variant="outline"
@@ -340,6 +374,17 @@ function Conteudo({
           )}
         </div>
       </div>
+            {pedindoSenha && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4">
+          <SenhaVendedor
+  titulo="Digite a sua senha"
+  descricao={`O orçamento nº ${doc.numero} vai virar pedido no seu nome.`}
+  textoBotao="Converter em pedido"
+  onConfirmar={confirmarConversao}
+  onCancelar={() => setPedindoSenha(false)}
+/>
+        </div>
+      )}
     </>
   )
 }
@@ -349,17 +394,24 @@ export default function DocumentoDetalheDialog({
   ehDono,
   onClose,
   onMudou,
+  onEditar,
 }: {
   doc: DocumentoResumo | null
   ehDono: boolean
   onClose: () => void
   onMudou: (aviso?: Aviso) => void
+  onEditar: (doc: DocumentoResumo, itens: ItemDocumento[]) => void
 }) {
+  
   return (
     <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="top-[4%] flex max-h-[92dvh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[600px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100">
-        {doc && <Conteudo key={doc.id} doc={doc} ehDono={ehDono} onMudou={onMudou} />}
+        {doc && (
+  <Conteudo key={doc.id} doc={doc} ehDono={ehDono} onMudou={onMudou} onEditar={onEditar} />
+)}
+        
       </DialogContent>
+      
     </Dialog>
   )
 }
