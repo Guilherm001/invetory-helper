@@ -48,7 +48,7 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
 <html lang="pt-BR"><head><meta charset="utf-8">
 <title>${tituloDe(doc)} ${doc.numero}</title>
 <style>
-  @page { size: ${LARGURA_CUPOM_MM}mm auto; margin: 0; }
+  @page { margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
   body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm; color: #000;
