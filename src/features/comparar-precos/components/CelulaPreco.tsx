@@ -6,7 +6,8 @@ import { lerPreco } from '../utils/melhorPreco'
 
 interface Props {
   valor: number | undefined
-  destaque: boolean
+  destaque: boolean // menor preço do item (verde)
+  sozinho?: boolean // único preço do item, sem com quem comparar (amarelo claro)
   coluna: string // id do fornecedor, usado para o Enter pular para a linha de baixo
   rotulo: string // para leitores de tela: "Preço de X em Y"
   onSalvar: (valor: number | null) => Promise<void>
@@ -15,7 +16,14 @@ interface Props {
 const emTexto = (n: number | undefined) =>
   n === undefined ? '' : n.toFixed(2).replace('.', ',')
 
-export default function CelulaPreco({ valor, destaque, coluna, rotulo, onSalvar }: Props) {
+export default function CelulaPreco({
+  valor,
+  destaque,
+  sozinho = false,
+  coluna,
+  rotulo,
+  onSalvar,
+}: Props) {
   // null = não está editando: mostra o valor que vem de fora
   const [texto, setTexto] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -100,14 +108,16 @@ export default function CelulaPreco({ valor, destaque, coluna, rotulo, onSalvar 
         placeholder="—"
         aria-label={rotulo}
         aria-invalid={!!erro}
-        title={erro || undefined}
+        title={erro || (sozinho ? 'Único preço deste item: não há com quem comparar' : undefined)}
         disabled={saving}
         className={`w-full rounded-lg border py-2.5 pl-8 pr-2 text-right text-base outline-none transition placeholder:text-slate-300 focus:ring-2 disabled:opacity-60 md:py-2 md:text-sm ${
           erro
             ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400 focus:ring-red-200'
             : destaque
               ? 'border-emerald-300 bg-emerald-50 font-semibold text-emerald-700 focus:border-[#079C9C] focus:ring-[#079C9C]/20'
-              : 'border-slate-200 bg-white text-slate-800 focus:border-[#079C9C] focus:ring-[#079C9C]/20'
+              : sozinho
+                ? 'border-amber-200 bg-amber-50/70 text-slate-800 focus:border-[#079C9C] focus:ring-[#079C9C]/20'
+                : 'border-slate-200 bg-white text-slate-800 focus:border-[#079C9C] focus:ring-[#079C9C]/20'
         }`}
       />
       {saving && (

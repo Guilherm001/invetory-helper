@@ -327,6 +327,9 @@ export default function TabelaComparativa({
                     const preco = mapa.get(chave(item.id, f.id))
                     const destaque =
                       !!linha?.comparavel && preco !== undefined && linha.vencedores.includes(f.id)
+                    // único preço do item: não há com quem comparar
+                    const sozinho =
+                      fornecedores.length > 1 && preco !== undefined && linha?.cotacoes === 1
 
                     return (
                       <div key={f.id} className="flex items-start justify-between gap-3">
@@ -343,6 +346,7 @@ export default function TabelaComparativa({
                           <CelulaPreco
                             valor={preco}
                             destaque={destaque}
+                            sozinho={sozinho}
                             coluna={f.id}
                             rotulo={`Preço de ${item.name} em ${f.name}`}
                             onSalvar={(v) => onDefinirPreco(item.id, f.id, v)}
@@ -516,12 +520,16 @@ export default function TabelaComparativa({
                     const preco = mapa.get(chave(item.id, f.id))
                     const destaque =
                       !!linha?.comparavel && preco !== undefined && linha.vencedores.includes(f.id)
+                    // único preço do item: não há com quem comparar
+                    const sozinho =
+                      fornecedores.length > 1 && preco !== undefined && linha?.cotacoes === 1
 
                     return (
                       <td key={f.id} className="px-3 py-2.5 align-top">
                         <CelulaPreco
                           valor={preco}
                           destaque={destaque}
+                          sozinho={sozinho}
                           coluna={f.id}
                           rotulo={`Preço de ${item.name} em ${f.name}`}
                           onSalvar={(v) => onDefinirPreco(item.id, f.id, v)}

@@ -12,6 +12,7 @@ import ResumoEconomia from './ResumoEconomia'
 import FornecedorDialog from './FornecedorDialog'
 import { useReferencias } from '@/features/historico-precos/hooks/useReferencias'
 
+
 // "10 cimento" ou "10x cimento" -> quantidade 10
 function interpretar(texto: string): { name: string; quantity: number } {
   const t = texto.trim()
@@ -135,6 +136,7 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
       ) : (
         <>
           <TabelaComparativa
+            referencias={referencias}
             itens={c.itens}
             fornecedores={c.fornecedores}
             precos={c.precos}
@@ -145,6 +147,7 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
             onEditarFornecedor={(f) => setDialogFornecedor({ open: true, fornecedor: f })}
             onRemoverFornecedor={c.removerFornecedor}
             onAdicionarFornecedor={() => setDialogFornecedor({ open: true, fornecedor: null })}
+            
           />
 
           <ResumoEconomia

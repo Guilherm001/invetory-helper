@@ -54,8 +54,10 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
   const {
     ranking,
     melhorUnico,
+    melhorUnicoParcial,
     totalMisto,
     mistoCompleto,
+    itensComPreco,
     itensSemPreco,
     economia,
     economiaPercentual,
@@ -110,11 +112,14 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
               <p className="truncate text-sm text-slate-500" title={melhorUnico.fornecedor.name}>
                 {melhorUnico.fornecedor.name}
               </p>
+              {melhorUnicoParcial && (
+                <p className="text-xs text-amber-600">
+                  Estimativa: cobre {melhorUnico.cotados} de {itensComPreco} itens com preço
+                </p>
+              )}
             </>
           ) : (
-            <p className="mt-2 text-sm text-slate-400">
-              Nenhum fornecedor cotou todos os itens ainda.
-            </p>
+            <p className="mt-2 text-sm text-slate-400">Preencha alguns preços para ver.</p>
           )}
         </div>
 
@@ -166,6 +171,10 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
                 {economiaPercentual !== null &&
                   `${String(economiaPercentual).replace('.', ',')}% a menos `}
                 que comprar tudo de um só
+                {melhorUnicoParcial && melhorUnico
+                  ? ` · estimativa com os ${melhorUnico.cotados} itens que ${melhorUnico.fornecedor.name} cotou`
+                  : itensSemPreco > 0 &&
+                    ` · sem contar ${itensSemPreco} ${itensSemPreco === 1 ? 'item sem preço' : 'itens sem preço'}`}
               </p>
             </>
           ) : semDiferenca ? (
@@ -173,11 +182,7 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
               Sem diferença: o melhor fornecedor já tem o menor preço em tudo.
             </p>
           ) : (
-            <p className="mt-2 text-sm text-slate-400">
-              {itensSemPreco > 0
-                ? `Faltam preços em ${itensSemPreco} ${itensSemPreco === 1 ? 'item' : 'itens'} para calcular.`
-                : 'Nenhum fornecedor cotou todos os itens ainda.'}
-            </p>
+            <p className="mt-2 text-sm text-slate-400">Preencha alguns preços para ver.</p>
           )}
         </div>
       </div>

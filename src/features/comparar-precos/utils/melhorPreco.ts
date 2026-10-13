@@ -18,14 +18,15 @@ export interface LinhaItem {
   menor: number | null // menor preço desta linha
   vencedores: string[] // fornecedores com o menor preço (pode haver empate)
   comparavel: boolean // só destaca quando há pelo menos 2 preços para comparar
+  cotacoes: number // quantos fornecedores preencheram preço neste item
 }
 
 export interface TotalFornecedor {
   fornecedor: Fornecedor
   total: number // soma dos itens que ele cotou (quantidade x preço)
   cotados: number // quantos itens ele cotou
-  faltando: number // quantos itens ele não cotou
-  completo: boolean // cotou todos os itens
+  faltando: number // quantos itens COM PREÇO de outros fornecedores ele não cotou
+  completo: boolean // cotou todos os itens que têm preço
 }
 
 export interface PedidoSugerido {
@@ -37,10 +38,14 @@ export interface PedidoSugerido {
 export interface Analise {
   linhas: Map<string, LinhaItem> // por id do item
   ranking: TotalFornecedor[] // completos primeiro (do mais barato), depois os incompletos
-  melhorUnico: TotalFornecedor | null // fornecedor completo mais barato
+  // fornecedor completo mais barato; se ninguém for completo, o que cotou mais itens
+  // (empate: o mais barato). Nesse caso a análise é uma estimativa (melhorUnicoParcial).
+  melhorUnico: TotalFornecedor | null
+  melhorUnicoParcial: boolean // true = o melhor único não cotou todos os itens com preço
   totalMisto: number | null // comprando o menor preço de cada item
   mistoCompleto: boolean // todos os itens têm pelo menos um preço
-  itensSemPreco: number
+  itensComPreco: number // itens que pelo menos um fornecedor cotou
+  itensSemPreco: number // itens que ninguém cotou (ficam fora dos cálculos)
   economia: number | null // melhorUnico - totalMisto
   economiaPercentual: number | null
   pedidos: PedidoSugerido[] // como dividir a compra entre fornecedores
@@ -75,8 +80,12 @@ export function analisar(
       }
     }
 
-    linhas.set(item.id, { item, menor, vencedores, comparavel: cotacoes >= 2 })
+    linhas.set(item.id, { item, menor, vencedores, comparavel: cotacoes >= 2, cotacoes })
   }
+
+  // itens que ninguém cotou são ignorados em todos os cálculos abaixo
+  const itensComPreco = [...linhas.values()].filter((l) => l.menor !== null).length
+  const itensSemPreco = itens.length - itensComPreco
 
   // 2) total de cada fornecedor
   const totais: TotalFornecedor[] = fornecedores.map((fornecedor) => {
@@ -94,8 +103,8 @@ export function analisar(
       fornecedor,
       total: arredondar(total),
       cotados,
-      faltando: itens.length - cotados,
-      completo: itens.length > 0 && cotados === itens.length,
+      faltando: itensComPreco - cotados,
+      completo: itensComPreco > 0 && cotados === itensComPreco,
     }
   })
 
@@ -106,19 +115,16 @@ export function analisar(
     return a.faltando - b.faltando || a.total - b.total
   })
 
-  const melhorUnico = ranking.find((t) => t.completo) ?? null
+  // o ranking já põe os completos (mais baratos) primeiro e, depois deles, quem cotou mais itens
+  const melhorUnico = ranking.find((t) => t.cotados > 0) ?? null
 
   // 3) comprando o menor preço de cada item (empate fica com o primeiro da lista)
   const pedidosPorFornecedor = new Map<string, PedidoSugerido>()
   let totalMisto = 0
-  let itensSemPreco = 0
 
   for (const item of itens) {
     const linha = linhas.get(item.id)!
-    if (linha.menor === null) {
-      itensSemPreco++
-      continue
-    }
+    if (linha.menor === null) continue
 
     const fornecedor = fornecedores.find((f) => f.id === linha.vencedores[0])!
     const subtotal = arredondar(linha.menor * item.quantity)
@@ -138,13 +144,22 @@ export function analisar(
 
   const pedidos = [...pedidosPorFornecedor.values()].sort((a, b) => b.subtotal - a.subtotal)
 
-  // 4) economia: só é justa quando os dois lados cobrem todos os itens
+  // 4) economia: compara os dois lados só nos itens que o melhor fornecedor único cotou.
+  //    Itens que ninguém cotou, ou que ele não cotou, não entram em nenhum dos dois totais.
   const mistoCompleto = itens.length > 0 && itensSemPreco === 0
   let economia: number | null = null
   let economiaPercentual: number | null = null
 
-  if (mistoCompleto && melhorUnico) {
-    economia = arredondar(melhorUnico.total - totalMisto)
+  if (melhorUnico && itensComPreco > 0) {
+    let mistoDosDele = 0
+    for (const item of itens) {
+      if (mapa.get(chave(item.id, melhorUnico.fornecedor.id)) === undefined) continue
+      const menor = linhas.get(item.id)!.menor
+      if (menor !== null) mistoDosDele += menor * item.quantity
+    }
+    mistoDosDele = arredondar(mistoDosDele)
+
+    economia = arredondar(melhorUnico.total - mistoDosDele)
     economiaPercentual =
       melhorUnico.total > 0 ? Math.round((economia / melhorUnico.total) * 1000) / 10 : 0
   }
@@ -153,8 +168,10 @@ export function analisar(
     linhas,
     ranking,
     melhorUnico,
-    totalMisto: itens.length > 0 && itensSemPreco < itens.length ? totalMisto : null,
+    melhorUnicoParcial: melhorUnico !== null && !melhorUnico.completo,
+    totalMisto: itensComPreco > 0 ? totalMisto : null,
     mistoCompleto,
+    itensComPreco,
     itensSemPreco,
     economia,
     economiaPercentual,
