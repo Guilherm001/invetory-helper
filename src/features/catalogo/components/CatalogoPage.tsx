@@ -39,9 +39,12 @@ import CatalogItemDialog from './CatalogItemDialog'
 import EntradaDialog from './EntradaDialog'
 import ImportarCatalogo from './importarCatalogo'
 
-const COLUNAS = 'md:grid-cols-[2.5rem_6rem_minmax(0,1fr)_4rem_7rem_6.5rem_8.5rem]'
+// Tabela de colunas só a partir de xl (1280 px). Antes disso (tela de PC menor ou com o menu
+// lateral aberto) não sobra largura para 7 colunas, então cada item vira uma linha compacta:
+// seleção | nome + resumo | estoque | ações. No celular continua em dois andares.
+const COLUNAS = 'xl:grid-cols-[2.5rem_6rem_minmax(0,1fr)_4rem_7rem_6.5rem_8.5rem]'
 
-const GRID = `md:grid ${COLUNAS} md:items-center md:gap-4`
+const GRID = `md:flex md:items-center md:gap-4 xl:grid ${COLUNAS}`
 
 const thClass = 'text-xs font-semibold uppercase tracking-wide text-slate-400'
 
@@ -101,6 +104,9 @@ export default function CatalogoPage() {
       return novo
     })
 
+  const alternarTodos = () =>
+    setSelecionados(todosMarcados ? new Set() : new Set(c.items.map((i) => i.id)))
+
   const salvarItem = async (data: NovoCatalogItem) => {
     if (dialogItem.item) await updateCatalogItem(dialogItem.item.id, data)
     else await createCatalogItem(data)
@@ -127,10 +133,16 @@ export default function CatalogoPage() {
     }
   }
 
+  const classeCheckAll = `flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition ${
+    todosMarcados
+      ? 'border-[#079C9C] bg-[#079C9C] text-white'
+      : 'border-slate-300 bg-white text-transparent hover:border-[#079C9C]'
+  }`
+
   return (
     <div className="w-full pb-28">
       {/* Título e ações */}
-      <div className="mt-7 flex flex-col gap-4 py-4 md:flex-row md:items-end md:justify-between">
+      <div className="mt-7 flex flex-col gap-4 py-4 xl:flex-row xl:items-end xl:justify-between">
         <article>
           <h3 className="text-3xl font-bold">Catálogo</h3>
           <p className="text-sm text-gray-400">
@@ -217,21 +229,30 @@ export default function CatalogoPage() {
         </p>
       )}
 
-      {/* Cabeçalho da lista (desktop) */}
-      <div className={`hidden px-5 pb-3 md:grid ${COLUNAS} md:items-center md:gap-4`}>
+      {/* Selecionar todos (tela média: sem cabeçalho de colunas) */}
+      <div className="mb-2 hidden items-center gap-3 px-4 md:flex xl:hidden">
         <button
           type="button"
           role="checkbox"
           aria-checked={todosMarcados}
           aria-label="Selecionar todos desta página"
-          onClick={() =>
-            setSelecionados(todosMarcados ? new Set() : new Set(c.items.map((i) => i.id)))
-          }
-          className={`flex size-6 items-center justify-center rounded-full border-2 transition ${
-            todosMarcados
-              ? 'border-[#079C9C] bg-[#079C9C] text-white'
-              : 'border-slate-300 bg-white text-transparent hover:border-[#079C9C]'
-          }`}
+          onClick={alternarTodos}
+          className={classeCheckAll}
+        >
+          <Check className="size-4" strokeWidth={3} />
+        </button>
+        <span className="text-sm text-slate-500">Selecionar todos desta página</span>
+      </div>
+
+      {/* Cabeçalho da lista (tela grande) */}
+      <div className={`hidden px-5 pb-3 xl:grid ${COLUNAS} xl:items-center xl:gap-4`}>
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={todosMarcados}
+          aria-label="Selecionar todos desta página"
+          onClick={alternarTodos}
+          className={classeCheckAll}
         >
           <Check className="size-4" strokeWidth={3} />
         </button>
@@ -286,15 +307,15 @@ export default function CatalogoPage() {
                   <Check className="size-4" strokeWidth={3} />
                 </button>
 
-                {/* código: só no desktop */}
-                <span className="hidden truncate text-sm text-slate-500 md:block">
+                {/* código: só na tabela (xl) */}
+                <span className="hidden truncate text-sm text-slate-500 xl:block">
                   {item.code}
                 </span>
 
-                <div className="min-w-0 flex-1 md:flex-none">
+                <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-900 md:truncate">{item.name}</p>
-                  {/* resumo: só no celular */}
-                  <p className="mt-0.5 text-xs text-slate-500 md:hidden">
+                  {/* resumo: celular e tela média (some quando a tabela aparece) */}
+                  <p className="mt-0.5 text-xs text-slate-500 xl:hidden">
                     Cód. {item.code}
                     {item.unit ? ` · ${item.unit}` : ''} · {preco(item.price)}
                   </p>
@@ -305,20 +326,20 @@ export default function CatalogoPage() {
                   )}
                 </div>
 
-                <span className="hidden text-sm text-slate-600 md:block">
+                <span className="hidden text-sm text-slate-600 xl:block">
                   {item.unit ?? '—'}
                 </span>
-                <span className="hidden text-sm font-medium text-slate-700 md:block">
+                <span className="hidden text-sm font-medium text-slate-700 xl:block">
                   {preco(item.price)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-2 md:contents">
-                <div className="md:block">
+                <div className="md:shrink-0">
                   <Estoque valor={item.stock} />
                 </div>
 
-                <div className="flex justify-end gap-1">
+                <div className="flex justify-end gap-1 md:shrink-0">
                   <button
                     type="button"
                     aria-label={`Dar entrada em ${item.name}`}
@@ -355,7 +376,7 @@ export default function CatalogoPage() {
 
       {/* Paginação */}
       {c.total > 0 && (
-        <div className="mt-5 flex items-center justify-between text-sm text-slate-500">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
           <span>
             {c.total} {c.total === 1 ? 'item' : 'itens'}
           </span>

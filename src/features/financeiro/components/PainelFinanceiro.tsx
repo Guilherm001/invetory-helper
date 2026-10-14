@@ -69,13 +69,17 @@ function Cartao({
   className?: string
 }) {
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
+    <div className={`min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
       <div className="flex items-center gap-2 text-sm text-slate-500">
         {icone}
         {rotulo}
       </div>
-      <p className={`mt-1 text-xl font-bold md:text-2xl ${tom ?? 'text-slate-900'}`}>{valor}</p>
-      <div className="mt-0.5 space-y-0.5 text-xs text-slate-500">{children}</div>
+      <p
+        className={`mt-1 break-words text-xl font-bold tabular-nums xl:text-2xl ${tom ?? 'text-slate-900'}`}
+      >
+        {valor}
+      </p>
+      <div className="mt-0.5 space-y-0.5 break-words text-xs text-slate-500">{children}</div>
     </div>
   )
 }
@@ -309,12 +313,17 @@ export default function PainelFinanceiro({
             </div>
           )}
 
-          {/* Cartões */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {/*
+            Cartões. Celular (< md): 2 colunas, Fiado ocupa a linha toda.
+            Tela média e grande (md a xl): 3 em cima e 2 embaixo, com folga para os valores.
+            Tela muito larga (2xl): os 5 numa linha só.
+          */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6 2xl:grid-cols-5">
             <Cartao
-              icone={<ShoppingCart className="size-4 text-[#079C9C]" />}
+              icone={<ShoppingCart className="size-4 shrink-0 text-[#079C9C]" />}
               rotulo="Vendas"
               valor={formatarReais(resumo.vendas)}
+              className="md:col-span-2 2xl:col-span-1"
             >
               <p>
                 {resumo.diasComVenda} {resumo.diasComVenda === 1 ? 'dia' : 'dias'}
@@ -328,10 +337,11 @@ export default function PainelFinanceiro({
             </Cartao>
 
             <Cartao
-              icone={<TrendingUp className="size-4 text-[#079C9C]" />}
+              icone={<TrendingUp className="size-4 shrink-0 text-[#079C9C]" />}
               rotulo="Lucro bruto"
               valor={resumo.diasCompletos > 0 ? formatarReais(resumo.lucro) : '—'}
               tom={resumo.lucro >= 0 ? 'text-emerald-700' : 'text-red-600'}
+              className="md:col-span-2 2xl:col-span-1"
             >
               {resumo.margem !== null ? (
                 <p>
@@ -352,27 +362,29 @@ export default function PainelFinanceiro({
             </Cartao>
 
             <Cartao
-              icone={<Package className="size-4 text-[#079C9C]" />}
+              icone={<Package className="size-4 shrink-0 text-[#079C9C]" />}
               rotulo="Custo"
               valor={resumo.diasCompletos > 0 ? formatarReais(resumo.custo) : '—'}
+              className="md:col-span-2 2xl:col-span-1"
             >
               <p>das saídas, já sem devoluções</p>
             </Cartao>
 
             <Cartao
-              icone={<Banknote className="size-4 text-[#079C9C]" />}
+              icone={<Banknote className="size-4 shrink-0 text-[#079C9C]" />}
               rotulo="Recebido"
               valor={formatarReais(resumo.recebido)}
+              className="md:col-span-3 2xl:col-span-1"
             >
               <p>dinheiro + PIX + cartão</p>
             </Cartao>
 
             <Cartao
-              icone={<Receipt className="size-4 text-[#079C9C]" />}
+              icone={<Receipt className="size-4 shrink-0 text-[#079C9C]" />}
               rotulo="Fiado no mês"
               valor={`${fiadoVariacao >= 0 ? '+' : '−'}${formatarReais(Math.abs(fiadoVariacao))}`}
               tom={fiadoVariacao > 0 ? 'text-amber-600' : 'text-slate-900'}
-              className="col-span-2 lg:col-span-1"
+              className="col-span-2 md:col-span-3 2xl:col-span-1"
             >
               <p>
                 feito {formatarReais(resumo.fiadoFeito)} · recebido {formatarReais(resumo.fiadoPago)}

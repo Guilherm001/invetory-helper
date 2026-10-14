@@ -20,6 +20,11 @@ import type { ProdutoHistorico } from '../types'
 
 type Filtro = 'todos' | 'subiu' | 'menor'
 
+// Colunas só a partir de xl (1280 px). Em tela de PC menor, ou com o menu lateral aberto,
+// quatro colunas de largura fixa não deixam espaço para o nome do item, então abaixo disso
+// cada item usa o formato de dois andares (nome e preço em cima, variação e cotações embaixo).
+const COLUNAS = 'xl:grid-cols-[minmax(0,1fr)_8rem_9rem_7rem_2rem]'
+
 function Variacao({ valor }: { valor: number | null }) {
   if (valor === null) {
     return <span className="text-xs text-slate-400">sem comparação</span>
@@ -190,8 +195,10 @@ export default function HistoricoPage() {
         </p>
       ) : (
         <>
-          {/* Cabeçalho (desktop) */}
-          <div className="hidden grid-cols-[minmax(0,1fr)_8rem_9rem_7rem_2rem] items-center gap-4 px-5 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:grid">
+          {/* Cabeçalho (tela grande) */}
+          <div
+            className={`hidden items-center gap-4 px-5 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 xl:grid ${COLUNAS}`}
+          >
             <span>Item</span>
             <span className="text-right">Último preço</span>
             <span>Variação</span>
@@ -204,7 +211,7 @@ export default function HistoricoPage() {
               <li key={p.chave}>
                 <Link
                   href={`/historico-precos/${encodeURIComponent(p.chave)}`}
-                  className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:-translate-y-px hover:border-[#079C9C]/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#079C9C] md:grid-cols-[minmax(0,1fr)_8rem_9rem_7rem_2rem] md:px-5"
+                  className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:-translate-y-px hover:border-[#079C9C]/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#079C9C] md:px-5 ${COLUNAS}`}
                 >
                   {/* nome e selo */}
                   <div className="min-w-0">
@@ -224,16 +231,16 @@ export default function HistoricoPage() {
                   </div>
 
                   {/* variação */}
-                  <div className="col-span-1 md:col-span-1">
+                  <div>
                     <Variacao valor={p.variacao} />
                   </div>
 
                   {/* rodadas */}
-                  <p className="text-right text-xs text-slate-500 md:text-left md:text-sm">
+                  <p className="text-right text-xs text-slate-500 xl:text-left xl:text-sm">
                     {p.rodadas.length} {p.rodadas.length === 1 ? 'comparação' : 'comparações'}
                   </p>
 
-                  <ChevronRight className="hidden size-5 text-slate-300 transition group-hover:text-[#079C9C] md:block" />
+                  <ChevronRight className="hidden size-5 text-slate-300 transition group-hover:text-[#079C9C] xl:block" />
                 </Link>
               </li>
             ))}
