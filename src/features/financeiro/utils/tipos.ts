@@ -24,15 +24,18 @@ export interface ResultadoCaixa {
 export interface ItemMovimento {
   codigo: string
   descricao: string
-  entrada: number
-  saida: number
-  custoMedio: number
+  vendidos: number // quantidade vendida
+  icms: string
+  cst: string
+  substituicao: string
+  totalCusto: number // custo total dos vendidos
+  totalVendido: number // valor total vendido
 }
 
 export interface ResultadoMovimentacao {
   itens: ItemMovimento[]
-  custoSaidas: number // Σ saída × custo médio
-  custoEntradas: number // devoluções de clientes, a custo
-  unidadesSaidas: number
+  custoTotal: number // Σ TOTAL CUSTO
+  vendaTotal: number // Σ TOTAL VENDIDO
+  unidadesVendidas: number // Σ VENDIDOS
   avisos: string[]
 }

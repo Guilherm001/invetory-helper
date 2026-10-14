@@ -12,17 +12,11 @@ import {
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import { formatarReais } from '@/features/comparar-precos/utils/melhorPreco'
-import { lerRelatorioCaixa } from '../utils/lerRelatorioCaixa'
-import { lerMovimentacao } from '../utils/lerMovimentacao'
+import { lerArquivoImportacao } from '../utils/lerArquivoImportacao'
 import { calcularResumo } from '../utils/calcularDia'
 import type { DiaPendente } from '../utils/diasPendentes'
 import type { DiaCaixa, ResultadoCaixa, ResultadoMovimentacao } from '../utils/tipos'
-import {
-  gravarCaixa,
-  gravarItens,
-  precosDoCatalogo,
-  verificarDias,
-} from '../services/financeiroService'
+import { gravarCaixa, gravarItens, verificarDias } from '../services/financeiroService'
 
 interface ArquivoCaixa {
   id: number
@@ -123,7 +117,6 @@ export default function ImportarDia({
 }) {
   const [caixas, setCaixas] = useState<ArquivoCaixa[]>([])
   const [movs, setMovs] = useState<ArquivoMov[]>([])
-  const [precos, setPrecos] = useState<Map<string, number | null> | null>(null)
   const [existentes, setExistentes] = useState<{ caixa: string[]; itens: string[] }>({
     caixa: [],
     itens: [],
@@ -135,19 +128,12 @@ export default function ImportarDia({
   const [arrastando, setArrastando] = useState(false)
   const contador = useRef(0)
 
-  // preços do catálogo e dias que já existem (para avisar da substituição)
+  // dias que já existem (para avisar da substituição)
   const verificar = async (cx: ArquivoCaixa[], mv: ArquivoMov[]) => {
     try {
-      const codigos = mv.flatMap((m) => m.resultado.itens.map((i) => i.codigo))
       const diasCx = [...new Set(cx.flatMap((a) => a.resultado.dias.map((d) => d.dia)))]
       const diasIt = [...new Set(mv.map((m) => m.dia).filter(Boolean))]
-
-      const [p, ex] = await Promise.all([
-        codigos.length > 0 ? precosDoCatalogo(codigos) : Promise.resolve(null),
-        verificarDias(diasCx, diasIt),
-      ])
-      setPrecos(p)
-      setExistentes(ex)
+      setExistentes(await verificarDias(diasCx, diasIt))
     } catch (e) {
       setErros((prev) => [...prev, e instanceof Error ? e.message : 'Erro ao conferir os dados'])
     }
@@ -165,20 +151,20 @@ export default function ImportarDia({
     for (const f of arquivos) {
       try {
         const buffer = await f.arrayBuffer()
-        const nome = f.name.toLowerCase()
-        if (nome.endsWith('.csv')) {
+        // o tipo (caixa ou movimentação) é descoberto pelo formato e pelo conteúdo
+        const lido = await lerArquivoImportacao(f.name, buffer)
+
+        if (lido.tipo === 'movimentacao') {
           novosMovs.push({
             id: ++contador.current,
             nome: f.name,
-            resultado: lerMovimentacao(buffer),
+            resultado: lido.resultado,
             dia: '',
             sugerido: false,
             ordem: ordemDoArquivo(f),
           })
-        } else if (nome.endsWith('.txt')) {
-          cx = [...cx, { id: ++contador.current, nome: f.name, resultado: lerRelatorioCaixa(buffer) }]
         } else {
-          throw new Error('Use o .txt do caixa ou o .csv de movimentação.')
+          cx = [...cx, { id: ++contador.current, nome: f.name, resultado: lido.resultado }]
         }
       } catch (e) {
         novosErros.push(`${f.name}: ${e instanceof Error ? e.message : 'não consegui ler o arquivo'}`)
@@ -196,7 +182,6 @@ export default function ImportarDia({
   const limpar = () => {
     setCaixas([])
     setMovs([])
-    setPrecos(null)
     setExistentes({ caixa: [], itens: [] })
     setErros([])
   }
@@ -250,7 +235,7 @@ export default function ImportarDia({
     try {
       const diasCaixa = [...mapaCaixa.values()]
       if (diasCaixa.length > 0) await gravarCaixa(diasCaixa)
-      for (const m of movs) await gravarItens(m.dia, m.resultado.itens, precos ?? new Map())
+      for (const m of movs) await gravarItens(m.dia, m.resultado.itens)
 
       const partes: string[] = []
       if (diasCaixa.length > 0)
@@ -266,17 +251,6 @@ export default function ImportarDia({
       setSaving(false)
     }
   }
-
-  const naoEncontrados = precos
-    ? [
-        ...new Map(
-          movs
-            .flatMap((m) => m.resultado.itens)
-            .filter((i) => !precos.has(i.codigo))
-            .map((i) => [i.codigo, i])
-        ).values(),
-      ]
-    : []
 
   const avisos = [
     ...caixas.flatMap((a) => a.resultado.avisos),
@@ -294,8 +268,8 @@ export default function ImportarDia({
       <div>
         <h4 className="text-lg font-bold text-slate-900">Importar fechamentos</h4>
         <p className="text-sm text-slate-500">
-          Solte o relatório do caixa (.txt) e a movimentação de estoque (.csv). Para mais de um
-          dia, exporte um arquivo de cada dia e solte todos de uma vez.
+          Solte o relatório do caixa (.txt) e o relatório de vendas por item (.csv, .txt ou
+          .xlsx). Para mais de um dia, exporte um arquivo de cada dia e solte todos de uma vez.
         </p>
       </div>
 
@@ -325,10 +299,12 @@ export default function ImportarDia({
         <p className="text-sm font-semibold text-slate-700">
           {lendo ? 'Lendo os arquivos...' : 'Solte os arquivos aqui ou toque para escolher'}
         </p>
-        <p className="text-xs text-slate-400">Caixa (.txt) e movimentação (.csv), de um ou mais dias</p>
+        <p className="text-xs text-slate-400">
+          Caixa (.txt) e vendas por item (.csv, .txt ou .xlsx), de um ou mais dias
+        </p>
         <input
           type="file"
-          accept=".txt,.csv"
+          accept=".txt,.csv,.xlsx,.xls"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -395,7 +371,7 @@ export default function ImportarDia({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-800">{m.nome}</p>
                   <p className="text-xs text-slate-500">
-                    {m.resultado.itens.length} itens movimentados
+                    {m.resultado.itens.length} itens vendidos
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-0.5">
@@ -456,9 +432,8 @@ export default function ImportarDia({
             {diasLista.map((dia) => {
               const cx = mapaCaixa.get(dia) ?? null
               const mv = movs.find((m) => m.dia === dia) ?? null
-              const r = calcularResumo(cx, mv?.resultado ?? null, precos ?? new Map())
+              const r = calcularResumo(cx, mv?.resultado ?? null)
               const estranha = r.margem !== null && (r.margem < 10 || r.margem > 70)
-              const devolvidos = mv ? mv.resultado.itens.filter((i) => i.entrada > 0) : []
 
               return (
                 <div key={dia} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -500,7 +475,7 @@ export default function ImportarDia({
                     </p>
                   )}
 
-                  {(cx || devolvidos.length > 0) && (
+                  {(cx || mv) && (
                     <details className="mt-2 text-sm">
                       <summary className="cursor-pointer text-xs font-medium text-[#079C9C]">
                         Ver detalhes
@@ -524,12 +499,11 @@ export default function ImportarDia({
                           ))}
                         </dl>
                       )}
-                      {devolvidos.length > 0 && mv && (
+                      {mv && (
                         <p className="mt-2 text-xs text-slate-500">
-                          <strong className="text-slate-700">Devoluções:</strong>{' '}
-                          {devolvidos.length} {devolvidos.length === 1 ? 'item' : 'itens'} (custo{' '}
-                          {formatarReais(mv.resultado.custoEntradas)}, venda estimada em{' '}
-                          {reais(r.devolucoesVenda)}). Entram abatendo vendas e custo.
+                          <strong className="text-slate-700">Relatório de itens:</strong>{' '}
+                          vendido {formatarReais(mv.resultado.vendaTotal)} · custo{' '}
+                          {formatarReais(mv.resultado.custoTotal)}
                         </p>
                       )}
                     </details>
@@ -537,25 +511,6 @@ export default function ImportarDia({
                 </div>
               )
             })}
-
-            {naoEncontrados.length > 0 && (
-              <details className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                <summary className="cursor-pointer font-medium">
-                  {naoEncontrados.length}{' '}
-                  {naoEncontrados.length === 1 ? 'item não está' : 'itens não estão'} no catálogo
-                </summary>
-                <p className="mt-1 text-xs">
-                  Eles serão salvos mesmo assim, só ficam sem o preço do catálogo.
-                </p>
-                <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto text-xs">
-                  {naoEncontrados.map((i) => (
-                    <li key={i.codigo}>
-                      {i.codigo} · {i.descricao}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
 
             {avisos.length > 0 && (
               <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

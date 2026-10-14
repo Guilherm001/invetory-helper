@@ -127,25 +127,20 @@ export async function gravarCaixa(dias: DiaCaixa[]) {
   }
 }
 
+
 // troca todos os itens do dia de uma vez (apaga e grava na mesma transação)
-export async function gravarItens(
-  dia: string,
-  itens: ItemMovimento[],
-  precos: Map<string, number | null>
-) {
+export async function gravarItens(dia: string, itens: ItemMovimento[]) {
   const { error } = await supabase.rpc('fin_importar_itens', {
     p_dia: dia,
-    p_itens: itens.map((i) => {
-      const p = precos.get(i.codigo)
-      return {
-        codigo: i.codigo,
-        descricao: i.descricao,
-        entrada: i.entrada,
-        saida: i.saida,
-        custo_medio: i.custoMedio,
-        preco_catalogo: p != null && p > 0 ? p : null,
-      }
-    }),
+    p_itens: itens.map((i) => ({
+      codigo: i.codigo,
+      descricao: i.descricao,
+      entrada: 0, // sem devoluções
+      saida: i.vendidos,
+      // o banco ainda calcula saída × custo médio; estes valores reproduzem o total do arquivo
+      custo_medio: i.vendidos !== 0 ? i.totalCusto / i.vendidos : 0,
+      preco_catalogo: i.vendidos !== 0 && i.totalVendido > 0 ? i.totalVendido / i.vendidos : null,
+    })),
   })
   if (error) throw new Error(error.message)
 }
