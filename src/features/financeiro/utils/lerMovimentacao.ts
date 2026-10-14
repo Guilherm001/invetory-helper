@@ -1,7 +1,8 @@
 import { arredondar, decodificarWindows1252, lerNumero } from './decodificar'
 import type { ItemMovimento, ResultadoMovimentacao } from './tipos'
 
-// CSV com ";" e aspas ("" dentro de aspas = uma aspa)
+// CSV com ";" e aspas ("" dentro de aspas = uma aspa).
+// Aspa no meio de um campo sem aspas (ex.: TUBO 3/4") é só um caractere do texto.
 function dividirLinha(linha: string): string[] {
   const campos: string[] = []
   let atual = ''
@@ -9,19 +10,45 @@ function dividirLinha(linha: string): string[] {
   for (let i = 0; i < linha.length; i++) {
     const ch = linha[i]
     if (aspas) {
-      if (ch === '"' && linha[i + 1] === '"') {
-        atual += '"'
-        i++
-      } else if (ch === '"') aspas = false
-      else atual += ch
-    } else if (ch === '"') aspas = true
-    else if (ch === ';') {
+      if (ch === '"') {
+        const prox = linha[i + 1]
+        if (prox === '"') {
+          // "" dentro de aspas = uma aspa
+          atual += '"'
+          i++
+        } else if (prox === undefined || prox === ';') {
+          // aspa que fecha o campo
+          aspas = false
+        } else {
+          // aspa solta dentro do campo: é só texto
+          atual += '"'
+        }
+      } else atual += ch
+    } else if (ch === '"' && atual === '') {
+      // só abre campo entre aspas se a aspa estiver no começo do campo
+      aspas = true
+    } else if (ch === ';') {
       campos.push(atual)
       atual = ''
     } else atual += ch
   }
   campos.push(atual)
   return campos
+}
+
+// devolve o item se a linha tiver o formato esperado, senão null
+function interpretar(c: string[]): ItemMovimento | null {
+  if (c.length < 7) return null
+  const codigo = c[0].trim()
+  const [entrada, saida, , custoMedio] = [c[2], c[3], c[4], c[5]].map(lerNumero)
+  if (!codigo || [entrada, saida, custoMedio].some(Number.isNaN)) return null
+  return {
+    codigo,
+    descricao: c[1].trim(),
+    entrada,
+    saida,
+    custoMedio,
+  }
 }
 
 export function lerMovimentacao(buffer: ArrayBuffer): ResultadoMovimentacao {
@@ -36,17 +63,14 @@ export function lerMovimentacao(buffer: ArrayBuffer): ResultadoMovimentacao {
   const porCodigo = new Map<string, ItemMovimento>()
 
   for (const linha of linhas.slice(1)) {
-    const c = dividirLinha(linha)
-    if (c.length < 7) {
-      avisos.push(`Linha ignorada (formato inesperado): ${linha.slice(0, 50)}`)
+    // 1ª tentativa: leitura com aspas. 2ª: divisão simples por ";"
+    const lido = interpretar(dividirLinha(linha)) ?? interpretar(linha.split(';'))
+    if (!lido) {
+      avisos.push(`Linha ignorada (não consegui ler): ${linha.slice(0, 80)}`)
       continue
     }
-    const codigo = c[0].trim()
-    const [entrada, saida, , custoMedio] = [c[2], c[3], c[4], c[5]].map(lerNumero)
-    if (!codigo || [entrada, saida, custoMedio].some(Number.isNaN)) {
-      avisos.push(`Linha ignorada (valores inválidos): ${linha.slice(0, 50)}`)
-      continue
-    }
+
+    const { codigo, entrada, saida, custoMedio } = lido
     if (entrada === 0 && saida === 0) continue
 
     const existente = porCodigo.get(codigo)
@@ -55,13 +79,7 @@ export function lerMovimentacao(buffer: ArrayBuffer): ResultadoMovimentacao {
       existente.saida += saida
       avisos.push(`Código ${codigo} aparece mais de uma vez. As quantidades foram somadas.`)
     } else {
-      porCodigo.set(codigo, {
-        codigo,
-        descricao: c[1].trim(),
-        entrada,
-        saida,
-        custoMedio,
-      })
+      porCodigo.set(codigo, { codigo, descricao: lido.descricao, entrada, saida, custoMedio })
     }
   }
 
