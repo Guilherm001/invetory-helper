@@ -4,6 +4,7 @@ import {
   LineChart,
   Package,
   Scale,
+  Send,
   Store,
   Wallet,
   Users,
@@ -38,10 +39,11 @@ export const LINKS: NavLink[] = [
   { href: '/calculator', label: 'Calculadora', icon: Calculator, grupo: 'loja', principal: true, ordemBarra: 2 },
   { href: '/loja', label: 'Vendas', curto: 'Loja', icon: Store, grupo: 'loja', principal: true, ordemBarra: 3 },
   { href: '/orcamentos', label: 'Orçamentos', icon: FileText, grupo: 'loja', principal: false },
-{ href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: false },
+  { href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: false },
 
   // ---- Compras ----
-  { href: '/dashboard', label: 'Produtos', icon: Package, grupo: 'compras', principal: false, ordemBarra: 1, soDono: true},
+  { href: '/dashboard', label: 'Produtos', icon: Package, grupo: 'compras', principal: false, ordemBarra: 1, soDono: true },
+  { href: '/cotacoes', label: 'Cotações', icon: Send, grupo: 'compras', principal: false, soDono: true },
   { href: '/comparar-precos', label: 'Comparar preços', curto: 'Comparar', icon: Scale, grupo: 'compras', principal: false, soDono: true },
   { href: '/historico-precos', label: 'Histórico', icon: LineChart, grupo: 'compras', principal: false, soDono: true },
   { href: '/catalogo', label: 'Catálogo', icon: Library, grupo: 'compras', principal: true, ordemBarra: 4, soDono: true },

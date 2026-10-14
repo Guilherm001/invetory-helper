@@ -9,7 +9,7 @@ import Corpo from './corpo'
 import Resumo, { type Filtro } from './resumo'
 import ExcluirComprados from './excluirComprados'
 import QuantidadesCotacao from '@/features/cotacao/components/QuantidadesCotacao'
-import { gerarCotacao } from '@/features/cotacao/services/gerarCotacao'
+import { emitirCotacao } from '@/features/cotacao/services/emitirCotacao'
 
 // true: um produto já comprado (Concluído) não bloqueia adicionar o mesmo de novo
 // false: qualquer produto que já está na lista bloqueia
@@ -258,10 +258,18 @@ export function Body() {
           onConfirm={async (data) => {
             if (gerando) return
             setGerando(true)
+            // a ordem dos itens é a mesma dos produtos selecionados
+            const codigos = selecionados.map((p) => p.catalog_code ?? null)
             try {
-              await gerarCotacao(data)
+              // gera o PDF e guarda a cotação no histórico
+              const { avisoHistorico } = await emitirCotacao(data, codigos)
               setShowQtd(false)
               sel.cancel()
+              if (avisoHistorico) {
+                alert(
+                  `O PDF foi gerado, mas não consegui guardar no histórico: ${avisoHistorico}`
+                )
+              }
             } catch (err) {
               console.error(err)
               alert(
