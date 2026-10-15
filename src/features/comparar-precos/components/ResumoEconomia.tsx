@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   Check,
+  CheckCircle2,
   ClipboardCopy,
   FileDown,
+  FilePlus2,
   Loader2,
   PiggyBank,
   Scale,
@@ -14,12 +17,15 @@ import {
 import type { Fornecedor, ItemComparacao } from '../types'
 import { formatarReais, type Analise, type PedidoSugerido } from '../utils/melhorPreco'
 import { gerarPedidoPdf, precarregarPdf } from '../utils/gerarPedidoPdf'
+import { usePedidosDaComparacao } from '@/features/compras/hooks/usePedidosDaComparacao'
+import { STATUS_INFO, numeroPedido } from '@/features/compras/lib/compras'
 
 interface Props {
   itens: ItemComparacao[]
   fornecedores: Fornecedor[]
   analise: Analise
   nomeComparacao?: string
+  comparacaoId?: string
 }
 
 const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
@@ -39,10 +45,18 @@ function textoDoPedido(p: PedidoSugerido) {
   ].join('\n')
 }
 
-export default function ResumoEconomia({ itens, fornecedores, analise, nomeComparacao }: Props) {
+export default function ResumoEconomia({
+  itens,
+  fornecedores,
+  analise,
+  nomeComparacao,
+  comparacaoId,
+}: Props) {
   const [copiado, setCopiado] = useState<string | null>(null)
   const [gerandoPdf, setGerandoPdf] = useState<string | null>(null)
   const [erroAcao, setErroAcao] = useState('')
+
+  const compras = usePedidosDaComparacao(comparacaoId, nomeComparacao)
 
   // carrega a biblioteca do PDF antes do clique (necessário para compartilhar no iPhone)
   useEffect(() => {
@@ -66,6 +80,9 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
 
   const comPrecos = ranking.filter((t) => t.cotados > 0)
   const maiorTotal = Math.max(...comPrecos.map((t) => t.total), 1)
+
+  // fornecedores desta compra que ainda não viraram pedido
+  const semPedido = pedidos.filter((p) => !compras.criados.has(p.fornecedor.id))
 
   const copiar = async (p: PedidoSugerido) => {
     setErroAcao('')
@@ -240,117 +257,170 @@ export default function ResumoEconomia({ itens, fornecedores, analise, nomeCompa
       {/* Pedidos sugeridos */}
       {pedidos.length > 0 && (
         <div className="space-y-3">
-          <div>
-            <h4 className="text-sm font-semibold text-slate-700">Como comprar</h4>
-            <p className="text-xs text-slate-400">
-              Cada item vai para o fornecedor com o menor preço. Em caso de empate, vale o
-              primeiro da lista.
-              {!mistoCompleto && ' Itens sem preço ficam de fora.'}
-            </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-700">Como comprar</h4>
+              <p className="text-xs text-slate-400">
+                Cada item vai para o fornecedor com o menor preço. Em caso de empate, vale o
+                primeiro da lista.
+                {!mistoCompleto && ' Itens sem preço ficam de fora.'}
+              </p>
+            </div>
+
+            {compras.podeCriar && semPedido.length >= 2 && (
+              <button
+                type="button"
+                onClick={() => compras.criar(semPedido, 'todos')}
+                disabled={compras.criando !== null}
+                className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#079C9C] px-3 py-2 text-sm font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10 active:scale-95 disabled:opacity-60"
+              >
+                {compras.criando === 'todos' ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <FilePlus2 className="size-4" />
+                )}
+                Criar todos os pedidos ({semPedido.length})
+              </button>
+            )}
           </div>
 
-          {erroAcao && (
+          {(erroAcao || compras.erro) && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-              {erroAcao}
+              {erroAcao || compras.erro}
             </p>
           )}
 
           <div className="grid gap-3 lg:grid-cols-2">
-            {pedidos.map((p) => (
-              <div
-                key={p.fornecedor.id}
-                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-              >
-                <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-slate-900" title={p.fornecedor.name}>
-                      {p.fornecedor.name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {p.itens.length} {p.itens.length === 1 ? 'item' : 'itens'}
-                      {p.fornecedor.lead_time_days != null &&
-                        ` · prazo ${p.fornecedor.lead_time_days} ${p.fornecedor.lead_time_days === 1 ? 'dia' : 'dias'}`}
-                    </p>
-                  </div>
+            {pedidos.map((p) => {
+              const criado = compras.criados.get(p.fornecedor.id)
 
-                  <div className="flex gap-2 sm:shrink-0 sm:gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => copiar(p)}
-                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition active:scale-95 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs ${
-                        copiado === p.fornecedor.id
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                          : 'border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10'
-                      }`}
-                    >
-                      {copiado === p.fornecedor.id ? (
-                        <>
-                          <Check className="size-4 sm:size-3.5" />
-                          Copiado
-                        </>
-                      ) : (
-                        <>
-                          <ClipboardCopy className="size-4 sm:size-3.5" />
-                          Copiar pedido
-                        </>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => baixarPdf(p)}
-                      disabled={gerandoPdf !== null}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs"
-                    >
-                      {gerandoPdf === p.fornecedor.id ? (
-                        <>
-                          <Loader2 className="size-4 animate-spin sm:size-3.5" />
-                          Gerando...
-                        </>
-                      ) : (
-                        <>
-                          <Share2 className="size-4 sm:hidden" />
-                          <FileDown className="hidden size-3.5 sm:block" />
-                          <span className="sm:hidden">Compartilhar</span>
-                          <span className="hidden sm:inline">PDF</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <ul className="divide-y divide-slate-100 text-sm">
-                  {p.itens.map(({ item, preco, subtotal }) => (
-                    <li
-                      key={item.id}
-                      className="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-1.5"
-                    >
-                      <span
-                        className="min-w-0 break-words text-slate-700 sm:truncate"
-                        title={item.name}
+              return (
+                <div
+                  key={p.fornecedor.id}
+                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p
+                        className="truncate font-semibold text-slate-900"
+                        title={p.fornecedor.name}
                       >
-                        <span className="font-semibold text-[#079C9C]">
-                          {numero(item.quantity)}
-                          {item.unit ? ` ${item.unit}` : ''}
-                        </span>{' '}
-                        {item.name}
-                      </span>
-                      <span className="shrink-0 text-xs text-slate-500 sm:text-right sm:text-sm">
-                        {formatarReais(preco)}
-                        <span className="ml-2 text-sm font-medium text-slate-800">
-                          {formatarReais(subtotal)}
-                        </span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                        {p.fornecedor.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {p.itens.length} {p.itens.length === 1 ? 'item' : 'itens'}
+                        {p.fornecedor.lead_time_days != null &&
+                          ` · prazo ${p.fornecedor.lead_time_days} ${p.fornecedor.lead_time_days === 1 ? 'dia' : 'dias'}`}
+                      </p>
+                    </div>
 
-                <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-sm">
-                  <span className="font-semibold text-slate-600">Subtotal</span>
-                  <span className="font-bold text-slate-900">{formatarReais(p.subtotal)}</span>
+                    <div className="flex gap-2 sm:shrink-0 sm:gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => copiar(p)}
+                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition active:scale-95 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs ${
+                          copiado === p.fornecedor.id
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                            : 'border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10'
+                        }`}
+                      >
+                        {copiado === p.fornecedor.id ? (
+                          <>
+                            <Check className="size-4 sm:size-3.5" />
+                            Copiado
+                          </>
+                        ) : (
+                          <>
+                            <ClipboardCopy className="size-4 sm:size-3.5" />
+                            Copiar pedido
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => baixarPdf(p)}
+                        disabled={gerandoPdf !== null}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs"
+                      >
+                        {gerandoPdf === p.fornecedor.id ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin sm:size-3.5" />
+                            Gerando...
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="size-4 sm:hidden" />
+                            <FileDown className="hidden size-3.5 sm:block" />
+                            <span className="sm:hidden">Compartilhar</span>
+                            <span className="hidden sm:inline">PDF</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <ul className="divide-y divide-slate-100 text-sm">
+                    {p.itens.map(({ item, preco, subtotal }) => (
+                      <li
+                        key={item.id}
+                        className="flex flex-col gap-0.5 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-1.5"
+                      >
+                        <span
+                          className="min-w-0 break-words text-slate-700 sm:truncate"
+                          title={item.name}
+                        >
+                          <span className="font-semibold text-[#079C9C]">
+                            {numero(item.quantity)}
+                            {item.unit ? ` ${item.unit}` : ''}
+                          </span>{' '}
+                          {item.name}
+                        </span>
+                        <span className="shrink-0 text-xs text-slate-500 sm:text-right sm:text-sm">
+                          {formatarReais(preco)}
+                          <span className="ml-2 text-sm font-medium text-slate-800">
+                            {formatarReais(subtotal)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-sm">
+                    <span className="font-semibold text-slate-600">Subtotal</span>
+                    <span className="font-bold text-slate-900">{formatarReais(p.subtotal)}</span>
+                  </div>
+
+                  {compras.podeCriar && (
+                    <div className="mt-3">
+                      {criado ? (
+                        <Link
+                          href={`/pedidos-compra?abrir=${criado.id}`}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                        >
+                          <CheckCircle2 className="size-4" />
+                          Pedido {numeroPedido(criado.numero)} · {STATUS_INFO[criado.status].texto}
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => compras.criar([p], p.fornecedor.id)}
+                          disabled={compras.criando !== null}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#079C9C] px-3 py-2.5 text-sm font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10 active:scale-95 disabled:opacity-60"
+                        >
+                          {compras.criando === p.fornecedor.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <FilePlus2 className="size-4" />
+                          )}
+                          Criar pedido de compra
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
