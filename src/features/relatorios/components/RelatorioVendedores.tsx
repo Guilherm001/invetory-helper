@@ -4,7 +4,18 @@ import { Download } from 'lucide-react'
 import type { Intervalo } from '../lib/periodo'
 import { arred2, baixarCsv, pct, reais } from '../lib/relatorioUtils'
 import { vendasPorVendedor, type VendedorVenda } from '../services/relatoriosVendasService'
-import { Barra, Cartao, Estado, TD, TDD, TH, THD, useCarregar, Variacao } from './pecasRelatorio'
+import {
+  Barra,
+  Cartao,
+  Dado,
+  Estado,
+  TD,
+  TDD,
+  TH,
+  THD,
+  useCarregar,
+  Variacao,
+} from './pecasRelatorio'
 
 const soma = (l: VendedorVenda[], f: (v: VendedorVenda) => number) =>
   l.reduce((s, v) => s + f(v), 0)
@@ -63,7 +74,7 @@ export default function RelatorioVendedores({
 
       {pronto && (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Cartao rotulo="Faturamento" valor={reais(total)}>
               <Variacao atual={total} anterior={totalAnt} />
             </Cartao>
@@ -87,7 +98,45 @@ export default function RelatorioVendedores({
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* celular: um cartão por vendedor */}
+          <ul className="grid gap-2 md:grid-cols-2 xl:hidden">
+            {lista.map((v, i) => {
+              const parte = total ? (v.total / total) * 100 : 0
+              return (
+                <li
+                  key={v.vendedor}
+                  className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 font-semibold text-slate-900">
+                      <span className="mr-1.5 text-slate-400">{i + 1}º</span>
+                      {v.vendedor}
+                    </p>
+                    <p className="shrink-0 font-bold text-slate-900">{reais(v.total)}</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Barra valor={parte} />
+                    <p className="text-xs text-slate-400">{pct(parte)} do faturamento</p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <Dado rotulo="Pedidos" valor={String(v.pedidos)} />
+                    <Dado rotulo="Ticket médio" valor={reais(v.pedidos ? v.total / v.pedidos : 0)} />
+                    <Dado rotulo="Maior venda" valor={reais(v.maiorPedido)} />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs text-slate-500">
+                    <span>Entregas: {pct(v.pedidos ? (v.entregas / v.pedidos) * 100 : 0, 0)}</span>
+                    <Variacao atual={v.total} anterior={anteriorDe.get(v.vendedor)?.total ?? 0} />
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* PC e tablet: tabela */}
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm xl:block">
             <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>

@@ -9,10 +9,11 @@ import RelatorioItensVendidos from './RelatorioItensVendidos'
 
 type Aba = 'vendedores' | 'orcamentos' | 'itens'
 
-const ABAS: [Aba, string][] = [
-  ['vendedores', 'Vendas por vendedor'],
-  ['orcamentos', 'Orçamentos'],
-  ['itens', 'Itens mais vendidos'],
+// [id, nome no celular, nome no PC]
+const ABAS: [Aba, string, string][] = [
+  ['vendedores', 'Vendedores', 'Vendas por vendedor'],
+  ['orcamentos', 'Orçamentos', 'Orçamentos'],
+  ['itens', 'Itens', 'Itens mais vendidos'],
 ]
 
 export default function RelatoriosVendas() {
@@ -21,7 +22,7 @@ export default function RelatoriosVendas() {
   const { atual, anterior } = resolver(periodo)
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 md:p-5">
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4 md:p-5">
       <div>
         <h4 className="text-lg font-bold text-slate-900">Relatórios de vendas</h4>
         <p className="text-sm text-slate-500">
@@ -32,7 +33,7 @@ export default function RelatoriosVendas() {
       <SeletorPeriodo valor={periodo} onChange={setPeriodo} atual={atual} anterior={anterior} />
 
       <div className="grid grid-cols-3 border-b border-slate-200">
-        {ABAS.map(([id, rotulo]) => (
+        {ABAS.map(([id, curto, longo]) => (
           <button
             key={id}
             type="button"
@@ -43,7 +44,8 @@ export default function RelatoriosVendas() {
                 : 'border-b-2 border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
-            {rotulo}
+            <span className="sm:hidden">{curto}</span>
+            <span className="hidden sm:inline">{longo}</span>
           </button>
         ))}
       </div>

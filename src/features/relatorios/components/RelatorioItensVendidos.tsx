@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Download } from 'lucide-react'
 import type { Intervalo } from '../lib/periodo'
 import { arred2, baixarCsv, inteiro, pct, reais } from '../lib/relatorioUtils'
 import { itensMaisVendidos } from '../services/relatoriosVendasService'
-import { Barra, Cartao, Estado, TD, TDD, TH, THD, useCarregar } from './pecasRelatorio'
+import { Barra, Cartao, Dado, Estado, TD, TDD, TH, THD, useCarregar } from './pecasRelatorio'
 
 const COR_CLASSE = {
   A: 'bg-emerald-50 text-emerald-700',
@@ -13,7 +13,15 @@ const COR_CLASSE = {
   C: 'bg-slate-100 text-slate-600',
 } as const
 
-function Opcao({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+function Opcao({
+  ativo,
+  onClick,
+  children,
+}: {
+  ativo: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
   return (
     <button
       type="button"
@@ -30,7 +38,12 @@ function Opcao({ ativo, onClick, children }: { ativo: boolean; onClick: () => vo
   )
 }
 
-export default function RelatorioItensVendidos({ atual }: { atual: Intervalo; anterior: Intervalo }) {
+export default function RelatorioItensVendidos({
+  atual,
+}: {
+  atual: Intervalo
+  anterior: Intervalo
+}) {
   const [ordem, setOrdem] = useState<'valor' | 'quantidade'>('quantidade')
   const [limite, setLimite] = useState(30)
 
@@ -80,10 +93,14 @@ export default function RelatorioItensVendidos({ atual }: { atual: Intervalo; an
 
       {pronto && (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Cartao rotulo="Itens diferentes vendidos" valor={String(lista[0].itensDistintos)} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Cartao rotulo="Itens diferentes" valor={String(lista[0].itensDistintos)} />
             <Cartao rotulo="Unidades vendidas" valor={inteiro(lista[0].quantidadeGeral)} />
-            <Cartao rotulo="Vendido em itens" valor={reais(lista[0].totalGeral)} />
+            <Cartao
+              rotulo="Vendido em itens"
+              valor={reais(lista[0].totalGeral)}
+              className="col-span-2 sm:col-span-1"
+            />
           </div>
 
           <div className="flex justify-end">
@@ -97,7 +114,45 @@ export default function RelatorioItensVendidos({ atual }: { atual: Intervalo; an
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* celular: um cartão por item */}
+          <ul className="grid gap-2 md:grid-cols-2 xl:hidden">
+            {lista.map((i, idx) => (
+              <li
+                key={`${i.codigo}-${i.nome}`}
+                className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">
+                      <span className="mr-1.5 text-slate-400">{idx + 1}º</span>
+                      {i.nome}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {i.codigo ? `Cód. ${i.codigo}` : 'Sem código'}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${COR_CLASSE[i.classe]}`}
+                  >
+                    {i.classe}
+                  </span>
+                </div>
+
+                <Barra valor={base ? ((ordem === 'valor' ? i.valor : i.quantidade) / base) * 100 : 0} />
+
+                <div className="grid grid-cols-3 gap-2">
+                  <Dado rotulo="Quantidade" valor={`${inteiro(i.quantidade)}${i.unidade ? ` ${i.unidade}` : ''}`} />
+                  <Dado rotulo="Valor vendido" valor={reais(i.valor)} />
+                  <Dado rotulo="Pedidos" valor={String(i.pedidos)} />
+                  <Dado rotulo="Preço médio" valor={reais(i.precoMedio)} />
+                  <Dado rotulo="% do total" valor={pct(i.participacao)} />
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {/* PC e tablet: tabela */}
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm xl:block">
             <table className="w-full min-w-[820px] text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>

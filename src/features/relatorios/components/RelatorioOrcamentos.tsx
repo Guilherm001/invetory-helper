@@ -7,7 +7,7 @@ import {
   orcamentosPorVendedor,
   type OrcamentoVendedor,
 } from '../services/relatoriosVendasService'
-import { Barra, Cartao, Estado, TD, TDD, TH, THD, useCarregar } from './pecasRelatorio'
+import { Barra, Cartao, Dado, Estado, TD, TDD, TH, THD, useCarregar } from './pecasRelatorio'
 
 const soma = (l: OrcamentoVendedor[], f: (v: OrcamentoVendedor) => number) =>
   l.reduce((s, v) => s + f(v), 0)
@@ -93,11 +93,11 @@ export default function RelatorioOrcamentos({
 
       {pronto && (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
             <Cartao rotulo="Orçamentos feitos" valor={String(feitos)}>
               {reais(valorFeito)}
             </Cartao>
-            <Cartao rotulo="Convertidos em pedido" valor={String(convertidos)}>
+            <Cartao rotulo="Convertidos" valor={String(convertidos)}>
               {reais(valorConvertido)}
             </Cartao>
             <Cartao rotulo="Taxa de conversão" valor={pct(taxa)}>
@@ -113,7 +113,7 @@ export default function RelatorioOrcamentos({
               rotulo="Prazo médio p/ fechar"
               valor={dias === null ? '—' : `${dias.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dias`}
             />
-            <Cartao rotulo="Ainda na mesa" valor={reais(valorAberto)}>
+            <Cartao rotulo="Ainda na mesa" valor={reais(valorAberto)} className="col-span-2 lg:col-span-1">
               {emAberto} em aberto · {reais(valorVencido)} vencido
             </Cartao>
           </div>
@@ -156,7 +156,39 @@ export default function RelatorioOrcamentos({
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          {/* celular: um cartão por vendedor */}
+          <ul className="grid gap-2 md:grid-cols-2 xl:hidden">
+            {lista.map((v) => {
+              const t = v.feitos ? (v.convertidos / v.feitos) * 100 : 0
+              return (
+                <li
+                  key={v.vendedor}
+                  className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 font-semibold text-slate-900">{v.vendedor}</p>
+                    <p className="shrink-0 text-sm font-bold text-emerald-700">
+                      {pct(t)} <span className="font-normal text-slate-400">convertido</span>
+                    </p>
+                  </div>
+
+                  <Barra valor={t} cor="bg-emerald-500" />
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <Dado rotulo="Feitos" valor={String(v.feitos)} />
+                    <Dado rotulo="Convertidos" valor={String(v.convertidos)} />
+                    <Dado rotulo="Valor convertido" valor={reais(v.valorConvertido)} />
+                    <Dado rotulo="Em aberto" valor={String(v.emAberto)} />
+                    <Dado rotulo="Vencidos" valor={String(v.vencidos)} />
+                    <Dado rotulo="Recusados" valor={String(v.recusados)} />
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* PC e tablet: tabela */}
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm xl:block">
             <table className="w-full min-w-[820px] text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>
