@@ -8,7 +8,7 @@ import {
   ClipboardList,
   FileText,
   Loader2,
-  Pencil
+  Pencil,
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
@@ -107,7 +107,7 @@ function Conteudo({
       return aviso ? { texto: aviso } : undefined
     })
 
-    const converter = () => {
+  const converter = () => {
     if (
       vencido &&
       !window.confirm(
@@ -119,19 +119,22 @@ function Conteudo({
   }
 
   const confirmarConversao = async (pin: string) => {
-  const r = await converterOrcamento(doc.id, pin)
-  onMudou({
-    texto: `Orçamento nº ${doc.numero} virou o pedido nº ${r.numero}.`,
-    link: { href: '/pedidos', label: 'Ver pedidos' },
-  })
-}
+    const r = await converterOrcamento(doc.id, pin)
+    onMudou({
+      texto: `Orçamento nº ${doc.numero} virou o pedido nº ${r.numero}.`,
+      link: { href: '/pedidos', label: 'Ver pedidos' },
+    })
+  }
 
   const recusarOuCancelar = () => {
     const msg = orc
       ? `Recusar o orçamento nº ${doc.numero}?`
       : `Cancelar o pedido nº ${doc.numero}?`
     if (!window.confirm(msg)) return
-    mudarStatus('cancelada', orc ? `Orçamento nº ${doc.numero} recusado.` : `Pedido nº ${doc.numero} cancelado.`)
+    mudarStatus(
+      'cancelada',
+      orc ? `Orçamento nº ${doc.numero} recusado.` : `Pedido nº ${doc.numero} cancelado.`
+    )
   }
 
   const copiar = async () => {
@@ -181,9 +184,7 @@ function Conteudo({
             {doc.tipo === 'entrega' ? 'Entrega' : 'Retirada na loja'}
           </span>
           {orc && doc.validade && (
-            <span className="text-xs text-slate-500">
-              Válido até {dataCurta(doc.validade)}
-            </span>
+            <span className="text-xs text-slate-500">Válido até {dataCurta(doc.validade)}</span>
           )}
         </div>
 
@@ -195,9 +196,7 @@ function Conteudo({
         )}
 
         <Bloco titulo="Cliente">
-          <p className="font-semibold text-slate-900">
-            {doc.cliente_nome || 'Não informado'}
-          </p>
+          <p className="font-semibold text-slate-900">{doc.cliente_nome || 'Não informado'}</p>
           {doc.cliente_telefone && <p>{doc.cliente_telefone}</p>}
         </Bloco>
 
@@ -262,13 +261,11 @@ function Conteudo({
           </Bloco>
         )}
 
-                {doc.vendedor_nome && (
+        {doc.vendedor_nome && (
           <Bloco titulo="Vendedor">
             <p className="font-semibold text-slate-900">{doc.vendedor_nome}</p>
             {doc.orcamento_vendedor && doc.orcamento_vendedor !== doc.vendedor_nome && (
-              <p className="text-xs text-slate-500">
-                Orçamento feito por {doc.orcamento_vendedor}
-              </p>
+              <p className="text-xs text-slate-500">Orçamento feito por {doc.orcamento_vendedor}</p>
             )}
             {doc.editado_por && (
               <p className="text-xs text-slate-500">
@@ -278,7 +275,6 @@ function Conteudo({
             )}
           </Bloco>
         )}
-        
       </div>
 
       <div className="shrink-0 border-t border-slate-200 bg-slate-50">
@@ -293,10 +289,21 @@ function Conteudo({
         )}
 
         <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-3.5">
+          {/* pedido fechado: explica por que não dá para editar */}
+          {!aberto && !orc && (
+            <p className="basis-full text-xs text-slate-500 sm:mr-auto sm:basis-auto">
+              {doc.status === 'cancelada'
+                ? 'Pedido cancelado.'
+                : 'Pedido fechado: não pode mais ser alterado.'}{' '}
+              {ehDono ? 'Reabra para poder editar.' : 'Só o dono pode reabrir.'}
+            </p>
+          )}
+
           <BotoesImpressao
-  carregar={async () => ({ doc, itens: itens ?? [] })}
-  desabilitado={!itens || agindo}
-/>
+            carregar={async () => ({ doc, itens: itens ?? [] })}
+            desabilitado={!itens || agindo}
+          />
+
           <Button
             type="button"
             variant="outline"
@@ -319,7 +326,9 @@ function Conteudo({
               {orc ? 'Recusar' : 'Cancelar pedido'}
             </Button>
           )}
-          {aberto && orc && itens && (
+
+          {/* editar: pedido ou orçamento, só enquanto estiver em aberto */}
+          {aberto && itens && (
             <Button
               type="button"
               variant="outline"
@@ -328,7 +337,7 @@ function Conteudo({
               className="gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
             >
               <Pencil className="size-4" />
-              Editar orçamento
+              Editar {orc ? 'orçamento' : 'pedido'}
             </Button>
           )}
 
@@ -344,28 +353,13 @@ function Conteudo({
             </Button>
           )}
 
-          {aberto && !orc && (
-            <Button
-              type="button"
-              onClick={() =>
-                mudarStatus(
-                  'entregue',
-                  `Pedido nº ${doc.numero} ${doc.tipo === 'entrega' ? 'marcado como entregue' : 'marcado como retirado'}.`
-                )
-              }
-              disabled={agindo}
-              className="gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
-            >
-              {agindo && <Loader2 className="size-4 animate-spin" />}
-              {doc.tipo === 'entrega' ? 'Marcar como entregue' : 'Marcar como retirado'}
-            </Button>
-          )}
-
           {!aberto && (ehDono || orc) && (
             <Button
               type="button"
               variant="outline"
-              onClick={() => mudarStatus('aberta', `${orc ? 'Orçamento' : 'Pedido'} nº ${doc.numero} reaberto.`)}
+              onClick={() =>
+                mudarStatus('aberta', `${orc ? 'Orçamento' : 'Pedido'} nº ${doc.numero} reaberto.`)
+              }
               disabled={agindo}
               className="border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
             >
@@ -374,15 +368,16 @@ function Conteudo({
           )}
         </div>
       </div>
-            {pedindoSenha && (
+
+      {pedindoSenha && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4">
           <SenhaVendedor
-  titulo="Digite a sua senha"
-  descricao={`O orçamento nº ${doc.numero} vai virar pedido no seu nome.`}
-  textoBotao="Converter em pedido"
-  onConfirmar={confirmarConversao}
-  onCancelar={() => setPedindoSenha(false)}
-/>
+            titulo="Digite a sua senha"
+            descricao={`O orçamento nº ${doc.numero} vai virar pedido no seu nome.`}
+            textoBotao="Converter em pedido"
+            onConfirmar={confirmarConversao}
+            onCancelar={() => setPedindoSenha(false)}
+          />
         </div>
       )}
     </>
@@ -402,16 +397,13 @@ export default function DocumentoDetalheDialog({
   onMudou: (aviso?: Aviso) => void
   onEditar: (doc: DocumentoResumo, itens: ItemDocumento[]) => void
 }) {
-  
   return (
     <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="top-[4%] flex max-h-[92dvh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[600px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100">
         {doc && (
-  <Conteudo key={doc.id} doc={doc} ehDono={ehDono} onMudou={onMudou} onEditar={onEditar} />
-)}
-        
+          <Conteudo key={doc.id} doc={doc} ehDono={ehDono} onMudou={onMudou} onEditar={onEditar} />
+        )}
       </DialogContent>
-      
     </Dialog>
   )
 }

@@ -124,7 +124,7 @@ export default function DocumentosLista({
         <p className="text-sm text-gray-400">
           {orc
             ? 'Orçamentos feitos para os clientes. Toque em um para ver os detalhes ou transformar em pedido.'
-            : 'Pedidos registrados na loja. Toque em um para ver os detalhes e acompanhar a entrega.'}
+            : 'Pedidos registrados na loja. Toque em um para ver os detalhes ou editar enquanto estiver em aberto.'}
           {!ehDono && ' Você vê apenas os que criou.'}
         </p>
       </div>
@@ -296,16 +296,18 @@ export default function DocumentosLista({
   setEditando({ doc, itens })
 }}
       />
-            <NovaVendaDialog
-        open={editando !== null}
-        modo="orcamento"
-        edicao={editando ?? undefined}
-        onClose={() => setEditando(null)}
-        onSalvo={() => {
-          setVersao((v) => v + 1)
-          setAviso({ texto: `Orçamento nº ${editando?.doc.numero} atualizado.` })
-        }}
-      />
+        <NovaVendaDialog
+  open={editando !== null}
+  modo={editando?.doc.documento === 'orcamento' ? 'orcamento' : 'venda'}
+  edicao={editando ?? undefined}
+  onClose={() => setEditando(null)}
+  onSalvo={() => {
+    setVersao((v) => v + 1)
+    setAviso({
+      texto: `${editando?.doc.documento === 'orcamento' ? 'Orçamento' : 'Pedido'} nº ${editando?.doc.numero} atualizado.`,
+    })
+  }}
+/>
     </div>
   )
 }
