@@ -10,6 +10,7 @@ import {
   Users,
   FileText,
   ClipboardList,
+  Truck,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -47,6 +48,7 @@ export const LINKS: NavLink[] = [
   { href: '/comparar-precos', label: 'Comparar preços', curto: 'Comparar', icon: Scale, grupo: 'compras', principal: false, soDono: true },
   { href: '/historico-precos', label: 'Histórico', icon: LineChart, grupo: 'compras', principal: false, soDono: true },
   { href: '/catalogo', label: 'Catálogo', icon: Library, grupo: 'compras', principal: true, ordemBarra: 4, soDono: true },
+  { href: '/fornecedores', label: 'Fornecedores',grupo: 'compras', icon: Truck, principal: false, soDono: true },
 
   // ---- Gestão (só o dono) ----
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, grupo: 'gestao', principal: false, soDono: true },

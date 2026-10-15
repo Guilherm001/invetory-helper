@@ -13,6 +13,7 @@ const PROTEGIDAS = [
   "/pedidos",
   "/orcamentos",
   "/produtos",
+  "/fornecedores",
 ]
 
 // redireciona sem perder os cookies de sessão que o Supabase acabou de renovar

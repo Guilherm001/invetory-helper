@@ -28,7 +28,6 @@ export const viewport: Viewport = {
 
 // ideias para o futuro (ainda sem página)
 const EM_BREVE = [
-  { label: "Cotações", icon: FileText },
   { label: "Fornecedores", icon: Truck },
   { label: "Pedidos de compra", icon: ClipboardCheck },
   { label: "Obras", icon: HardHat },
