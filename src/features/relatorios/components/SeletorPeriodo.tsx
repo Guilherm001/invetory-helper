@@ -31,7 +31,7 @@ export default function SeletorPeriodo({
 }) {
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
         {OPCOES.map(([id, rotulo]) => (
           <button
             key={id}
@@ -44,7 +44,7 @@ export default function SeletorPeriodo({
                   : { ...valor, id }
               )
             }
-            className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+            className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
               valor.id === id
                 ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
                 : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'

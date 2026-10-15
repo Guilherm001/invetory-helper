@@ -42,15 +42,17 @@ export function Cartao({
   rotulo,
   valor,
   children,
+  className = '',
 }: {
   rotulo: string
   valor: string
   children?: ReactNode
+  className?: string
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className={`rounded-xl border border-slate-200 bg-white p-3 shadow-sm ${className}`}>
       <p className="text-[11px] uppercase tracking-wide text-slate-400">{rotulo}</p>
-      <p className="text-xl font-bold text-slate-900">{valor}</p>
+      <p className="text-lg font-bold text-slate-900 md:text-xl">{valor}</p>
       {children && <div className="mt-0.5 text-xs text-slate-500">{children}</div>}
     </div>
   )
@@ -120,4 +122,13 @@ export function Estado({
     )
   if (vazio) return <p className="py-10 text-center text-sm text-slate-400">{textoVazio}</p>
   return null
+}
+// par rótulo/valor pequeno, usado nos cartões do celular
+export function Dado({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wide text-slate-400">{rotulo}</p>
+      <p className="truncate text-sm font-semibold text-slate-800">{valor}</p>
+    </div>
+  )
 }
