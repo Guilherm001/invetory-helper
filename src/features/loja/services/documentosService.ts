@@ -30,6 +30,7 @@ export interface DocumentoResumo {
   editado_por: string | null
   editado_em: string | null
   criado_em: string
+  cliente_id: string | null
 }
 
 export interface ItemDocumento {
@@ -46,7 +47,7 @@ export interface ItemDocumento {
 export const TAMANHO_PAGINA = 20
 
 const COLUNAS =
-  'id, numero, documento, status, cliente_nome, cliente_telefone, tipo, endereco, bairro, cidade, complemento, pagamento, observacao, total, vendedor_nome, validade, orcamento_numero, orcamento_em, criado_em, orcamento_vendedor, editado_por, editado_em'
+  'id, numero, documento, status, cliente_nome, cliente_telefone, tipo, endereco, bairro, cidade, complemento, pagamento, observacao, total, vendedor_nome, validade, orcamento_numero, orcamento_em, criado_em, orcamento_vendedor, editado_por, editado_em, cliente_id'
 
 function traduz(message: string) {
   const m = message.toLowerCase()

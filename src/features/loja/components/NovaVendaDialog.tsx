@@ -28,19 +28,26 @@ import { useLojaCatalogo } from '../hooks/useLojaCatalogo'
 import type { ProdutoLoja } from '../services/lojaCatalogoService'
 import {
   criarVenda,
-  ErroSenha,
   editarOrcamento,
   type DadosVenda,
   type TipoEntrega,
 } from '../services/vendaService'
+import { ErroSenha } from '../services/vendedorService'
 import { dataCurta, hoje } from '../lib/formatar'
 import BotoesImpressao from './BotoesImpressao'
 import SenhaVendedor from './senhaVendedor'
+import SeletorCliente from '@/features/clientes/components/SeletorCliente'
 import {
   carregarDocumentoCompleto,
   type DocumentoResumo,
   type ItemDocumento,
 } from '../services/documentosService'
+import {
+  obterCliente,
+  type Cliente,
+  type ClienteResumo,
+} from '@/features/clientes/services/clientesService'
+import { formatarTelefone } from '@/features/clientes/lib/documentos'
 
 export type ModoDocumento = 'venda' | 'orcamento'
 
@@ -154,6 +161,10 @@ function VendaConteudo({
     }))
   )
 
+  // cliente cadastrado (opcional): quando escolhido, preenche os campos abaixo
+  const [clienteId, setClienteId] = useState<string | null>(d?.cliente_id ?? null)
+  const [vinculo, setVinculo] = useState<ClienteResumo | null>(null)
+
   const [cliente, setCliente] = useState(d?.cliente_nome ?? '')
   const [telefone, setTelefone] = useState(d?.cliente_telefone ?? '')
   const [tipo, setTipo] = useState<TipoEntrega>(d?.tipo ?? 'retirada')
@@ -184,9 +195,25 @@ function VendaConteudo({
 
   const total = arredonda(itens.reduce((soma, i) => soma + subtotalDe(i), 0))
 
+  // editando um orçamento que já tinha cliente cadastrado: carrega o cartão dele
+  const clienteOriginal = d?.cliente_id ?? null
+  useEffect(() => {
+    if (!clienteOriginal) return
+    let cancelado = false
+    obterCliente(clienteOriginal)
+      .then((cli) => {
+        if (!cancelado && cli) setVinculo(cli)
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [clienteOriginal])
+
   // na edição só pergunta antes de fechar se algo mudou
   const snapshot = JSON.stringify([
     itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.obs]),
+    clienteId,
     cliente,
     telefone,
     tipo,
@@ -274,6 +301,26 @@ function VendaConteudo({
     }
   }
 
+  // escolheu um cliente cadastrado: preenche nome, telefone e endereço
+  const escolherCliente = (cli: Cliente) => {
+    setClienteId(cli.id)
+    setVinculo(cli)
+    setCliente(cli.nome)
+    if (cli.telefone) setTelefone(formatarTelefone(cli.telefone))
+    if (cli.logradouro) {
+      setEndereco([cli.logradouro, cli.numero].filter(Boolean).join(', '))
+      setBairro(cli.bairro ?? '')
+      setCidade(cli.municipio ?? '')
+      setComplemento(cli.complemento ?? '')
+    }
+  }
+
+  // tira o vínculo, mas mantém o que já está digitado
+  const limparCliente = () => {
+    setClienteId(null)
+    setVinculo(null)
+  }
+
   const montarResumo = (numero: number, totalFinal: number, validade: string | null) => {
     const linhas: string[] = [`${ehOrc ? 'Orçamento' : 'Pedido'} nº ${numero}`]
     if (ehOrc && validade) linhas.push(`Válido até ${dataCurta(validade)}`)
@@ -343,6 +390,7 @@ function VendaConteudo({
       documento: ehOrc ? 'orcamento' : 'pedido',
       validade_dias: ehOrc ? (validadeDias ?? undefined) : undefined,
       pin,
+      cliente_id: clienteId,
       cliente_nome: cliente,
       cliente_telefone: telefone,
       tipo,
@@ -834,6 +882,14 @@ function VendaConteudo({
             {/* cliente */}
             <div className="space-y-3">
               <p className="text-sm font-semibold text-slate-700">Cliente</p>
+
+              <SeletorCliente
+                vinculo={vinculo}
+                carregando={clienteId !== null && vinculo === null}
+                onEscolher={escolherCliente}
+                onLimpar={limparCliente}
+              />
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <input
                   value={cliente}
@@ -853,6 +909,13 @@ function VendaConteudo({
                   className={inputClass}
                 />
               </div>
+
+              {!clienteId && (
+                <p className="text-xs text-slate-400">
+                  Sem cliente cadastrado, o pedido sai só com o nome digitado. Para emitir nota
+                  fiscal depois, escolha ou cadastre o cliente.
+                </p>
+              )}
             </div>
 
             {/* retirada / entrega */}

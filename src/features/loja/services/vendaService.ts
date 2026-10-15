@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Documento } from './documentosService'
+import { ErroSenha } from './vendedorService'
 
 export type TipoEntrega = 'retirada' | 'entrega'
 
@@ -14,7 +15,12 @@ export interface ItemVenda {
 
 export interface DadosVenda {
   documento: Documento
-  validade_dias?: number
+  // orçamento: dias de validade a partir de hoje (na edição, null mantém a validade atual)
+  validade_dias?: number | null
+  // opcional: se vier, a senha é conferida só contra esse vendedor; sem ele, a senha identifica o vendedor
+  vendedor_id?: string
+  pin: string
+  cliente_id: string | null // cliente cadastrado (opcional)
   cliente_nome: string
   cliente_telefone: string
   tipo: TipoEntrega
@@ -24,7 +30,6 @@ export interface DadosVenda {
   complemento: string
   pagamento: string
   observacao: string
-  pin: string // a senha do vendedor: o banco descobre quem é
 }
 
 export interface VendaCriada {
@@ -33,35 +38,38 @@ export interface VendaCriada {
   total: number
   documento: Documento
   validade: string | null
-  vendedor_nome: string
+  vendedor_nome: string | null
 }
 
-// senha errada, bloqueio ou senha repetida: a mensagem já vem pronta do banco
-export class ErroSenha extends Error {}
+type Resposta = ({ ok: true } & VendaCriada) | { ok: false; erro: string }
 
 function traduz(message: string) {
   const m = message.toLowerCase()
   if (m.includes('entrega_exige_endereco')) return 'Informe o endereço de entrega.'
-  if (m.includes('sem permissão')) return 'Você não tem permissão para registrar vendas.'
+  if (m.includes('cliente não encontrado')) return 'O cliente escolhido não foi encontrado. Escolha outro.'
+  if (m.includes('sem permissão')) return 'Você não tem permissão para fazer isso.'
   if (m.includes('could not find the function'))
-    return 'A função de vendas ainda não foi criada no banco. Rode o SQL de vendas.'
+    return 'As funções de vendas ainda não foram atualizadas no banco. Rode o SQL de clientes.'
   return message
 }
 
-// o banco responde { ok: false, erro } quando a senha não confere
-function conferir(data: unknown): VendaCriada {
-  const r = data as ({ ok?: boolean; erro?: string } & Partial<VendaCriada>) | null
-  if (!r || r.ok !== true) throw new ErroSenha(r?.erro || 'Não foi possível confirmar a senha.')
-  return r as VendaCriada
+// senha errada volta como resposta (e não como erro do banco) para o contador de tentativas valer
+function resultado(data: unknown): VendaCriada {
+  const r = data as Resposta
+  if (!r.ok) throw new ErroSenha(r.erro)
+  return r
 }
 
-export async function criarVenda(venda: DadosVenda, itens: ItemVenda[]): Promise<VendaCriada> {
+export async function criarVenda(
+  venda: DadosVenda,
+  itens: ItemVenda[]
+): Promise<VendaCriada> {
   const { data, error } = await supabase.rpc('criar_venda', {
     p_venda: venda,
     p_itens: itens,
   })
   if (error) throw new Error(traduz(error.message))
-  return conferir(data)
+  return resultado(data)
 }
 
 export async function editarOrcamento(
@@ -75,5 +83,5 @@ export async function editarOrcamento(
     p_itens: itens,
   })
   if (error) throw new Error(traduz(error.message))
-  return conferir(data)
+  return resultado(data)
 }

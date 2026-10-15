@@ -11,6 +11,7 @@ import {
   FileText,
   ClipboardList,
   Truck,
+  Contact,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -41,6 +42,7 @@ export const LINKS: NavLink[] = [
   { href: '/loja', label: 'Vendas', curto: 'Loja', icon: Store, grupo: 'loja', principal: true, ordemBarra: 3 },
   { href: '/orcamentos', label: 'Orçamentos', icon: FileText, grupo: 'loja', principal: false },
   { href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: false },
+  { href: '/clientes', label: 'Clientes', icon: Contact, grupo: 'loja', principal: false },
 
   // ---- Compras ----
   { href: '/dashboard', label: 'Produtos', icon: Package, grupo: 'compras', principal: false, ordemBarra: 1, soDono: true },
