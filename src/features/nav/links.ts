@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Calculator,
   Library,
   LineChart,
@@ -51,11 +52,12 @@ export const LINKS: NavLink[] = [
   { href: '/comparar-precos', label: 'Comparar preços', curto: 'Comparar', icon: Scale, grupo: 'compras', principal: false, soDono: true },
   { href: '/historico-precos', label: 'Histórico', icon: LineChart, grupo: 'compras', principal: false, soDono: true },
   { href: '/catalogo', label: 'Catálogo', icon: Library, grupo: 'compras', principal: true, ordemBarra: 4, soDono: true },
-  { href: '/fornecedores', label: 'Fornecedores',grupo: 'compras', icon: Truck, principal: false, soDono: true },
+  { href: '/fornecedores', label: 'Fornecedores', grupo: 'compras', icon: Truck, principal: false, soDono: true },
   { href: '/pedidos-compra', label: 'Pedidos de compra', curto: 'Compras', icon: ClipboardCheck, grupo: 'compras', principal: false, soDono: true },
 
   // ---- Gestão (só o dono) ----
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, grupo: 'gestao', principal: false, soDono: true },
+  { href: '/relatorios', label: 'Relatórios', icon: BarChart3, grupo: 'gestao', principal: false, soDono: true },
   { href: '/equipe', label: 'Equipe', icon: Users, grupo: 'gestao', principal: false, soDono: true },
 ]
 
