@@ -179,7 +179,8 @@ function Conteudo({
     return true
   }
 
-  const enviar = async (vendedorId: string | null, pin: string | null) => {
+  // pin null = o dono (já identificado); com pin = o balcão, e a senha identifica quem recebeu
+  const enviar = async (pin: string | null) => {
     const r = await receberPedido({
       pedidoId: pedido.id,
       itens: linhas
@@ -188,7 +189,7 @@ function Conteudo({
       estoque,
       encerrar: encerrar && aindaFalta > 0,
       observacao: obs.trim(),
-      vendedorId,
+      vendedorId: null,
       pin,
     })
     onRecebido(montarAviso(r))
@@ -205,7 +206,7 @@ function Conteudo({
 
     setSalvando(true)
     try {
-      await enviar(null, null)
+      await enviar(null)
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível registrar o recebimento')
       setSalvando(false)
@@ -426,10 +427,10 @@ function Conteudo({
         {pedindoSenha && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/40 p-4">
             <SenhaVendedor
-              titulo="Quem está recebendo?"
-              descricao="Escolha o vendedor e digite a senha para registrar o recebimento."
+              titulo="Digite a sua senha"
+              descricao="Para registrar o recebimento no seu nome."
               textoBotao="Confirmar"
-              onConfirmar={(vendedorId, pin) => enviar(vendedorId, pin)}
+              onConfirmar={(pin) => enviar(pin)}
               onCancelar={() => setPedindoSenha(false)}
             />
           </div>
