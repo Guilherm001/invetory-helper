@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase'
 import { hoje } from '@/features/loja/lib/formatar'
+import { ErroSenha } from '@/features/loja/services/vendedorService'
 import type { PedidoSugerido } from '@/features/comparar-precos/utils/melhorPreco'
-import { somarDias } from '../lib/compras'
+import type { Cotacao } from '@/features/historico-precos/types'
+import { numeroPedido, somarDias } from '../lib/compras'
 
 export type StatusCompra = 'rascunho' | 'enviado' | 'confirmado' | 'recebido' | 'cancelado'
 export type FiltroCompra =
@@ -16,6 +18,7 @@ export interface PedidoCompra {
   id: string
   numero: number
   status: StatusCompra
+  recebido_parcial: boolean
   fornecedor_ref: string | null
   fornecedor_nome: string
   fornecedor_contato: string | null
@@ -42,6 +45,7 @@ export interface ItemPedidoCompra {
   produto_nome: string
   unidade: string | null
   quantidade: number
+  quantidade_recebida: number
   preco_unitario: number
   subtotal: number
   observacao: string | null
@@ -90,13 +94,55 @@ export interface ResumoCompras {
   atrasados: { n: number; total: number }
 }
 
+// ---------- recebimento (nada aqui tem preço) ----------
+
+export interface PedidoAReceber {
+  id: string
+  numero: number
+  fornecedor_nome: string
+  previsao_entrega: string | null
+  status: StatusCompra
+  recebido_parcial: boolean
+  itens: number
+  criado_em: string
+}
+
+export interface ItemAReceber {
+  id: string
+  produto_codigo: string | null
+  produto_nome: string
+  unidade: string | null
+  quantidade: number
+  quantidade_recebida: number
+  observacao: string | null
+}
+
+export interface Recebimento {
+  id: string
+  recebido_em: string
+  recebido_por_nome: string | null
+  observacao: string | null
+  deu_entrada: boolean
+  encerrou: boolean
+  itens: { item_id: string; quantidade: number }[]
+}
+
+export interface ResultadoRecebimento {
+  numero: number
+  status: StatusCompra
+  completo: boolean
+  encerrou: boolean
+  sem_estoque: string[]
+  recebido_por: string
+}
+
 export const TAMANHO_PAGINA = 20
 
 const COLUNAS =
-  'id, numero, status, fornecedor_ref, fornecedor_nome, fornecedor_contato, prazo_dias, comparacao_ref, comparacao_nome, condicao_pagamento, previsao_entrega, frete, desconto, observacao, total, criado_por_nome, criado_em, enviado_em, confirmado_em, recebido_em, cancelado_em'
+  'id, numero, status, recebido_parcial, fornecedor_ref, fornecedor_nome, fornecedor_contato, prazo_dias, comparacao_ref, comparacao_nome, condicao_pagamento, previsao_entrega, frete, desconto, observacao, total, criado_por_nome, criado_em, enviado_em, confirmado_em, recebido_em, cancelado_em'
 
 const COL_ITEM =
-  'id, produto_codigo, produto_nome, unidade, quantidade, preco_unitario, subtotal, observacao'
+  'id, produto_codigo, produto_nome, unidade, quantidade, quantidade_recebida, preco_unitario, subtotal, observacao'
 
 function traduz(error: { message: string; code?: string }) {
   const m = error.message.toLowerCase()
@@ -104,7 +150,9 @@ function traduz(error: { message: string; code?: string }) {
   if (error.code === '23505' || m.includes('pedidos_compra_comparacao_unico'))
     return new Error('Já existe um pedido ativo para esse fornecedor nesta comparação.')
   if (m.includes('could not find the function') || error.code === '42P01' || m.includes('does not exist'))
-    return new Error('O módulo de pedidos de compra ainda não existe no banco. Rode o SQL de pedidos de compra.')
+    return new Error(
+      'O módulo de pedidos de compra ainda não foi atualizado no banco. Rode o SQL de recebimento.'
+    )
   if (m.includes('violates check constraint'))
     return new Error('Algum campo está fora do permitido (nome, quantidade, preço ou valores negativos).')
   return new Error(error.message)
@@ -116,6 +164,7 @@ function normalizarPedido(r: unknown): PedidoCompra {
   const p = r as Record<string, unknown>
   return {
     ...(p as unknown as PedidoCompra),
+    recebido_parcial: !!p.recebido_parcial,
     frete: num(p.frete),
     desconto: num(p.desconto),
     total: num(p.total),
@@ -127,6 +176,7 @@ function normalizarItem(r: unknown): ItemPedidoCompra {
   return {
     ...(i as unknown as ItemPedidoCompra),
     quantidade: num(i.quantidade),
+    quantidade_recebida: num(i.quantidade_recebida),
     preco_unitario: num(i.preco_unitario),
     subtotal: num(i.subtotal),
   }
@@ -281,6 +331,71 @@ export async function excluirPedido(id: string) {
   if (error) throw traduz(error)
 }
 
+// ---------- recebimento ----------
+
+export async function listarPedidosAReceber(): Promise<PedidoAReceber[]> {
+  const { data, error } = await supabase.rpc('pedidos_a_receber')
+  if (error) throw traduz(error)
+  return ((data ?? []) as PedidoAReceber[]).map((p) => ({
+    ...p,
+    recebido_parcial: !!p.recebido_parcial,
+    itens: Number(p.itens),
+  }))
+}
+
+export async function itensAReceber(pedidoId: string): Promise<ItemAReceber[]> {
+  const { data, error } = await supabase.rpc('itens_a_receber', { p_id: pedidoId })
+  if (error) throw traduz(error)
+  return ((data ?? []) as ItemAReceber[]).map((i) => ({
+    ...i,
+    quantidade: num(i.quantidade),
+    quantidade_recebida: num(i.quantidade_recebida),
+  }))
+}
+
+export async function receberPedido(opts: {
+  pedidoId: string
+  itens: { item_id: string; quantidade: number }[]
+  estoque: boolean
+  encerrar: boolean
+  observacao: string
+  vendedorId: string | null // só o balcão: quem está recebendo
+  pin: string | null
+}): Promise<ResultadoRecebimento> {
+  const { data, error } = await supabase.rpc('receber_pedido_compra', {
+    p_id: opts.pedidoId,
+    p_itens: opts.itens,
+    p_estoque: opts.estoque,
+    p_encerrar: opts.encerrar,
+    p_obs: opts.observacao,
+    p_vendedor: opts.vendedorId,
+    p_pin: opts.pin,
+  })
+  if (error) throw traduz(error)
+
+  // senha errada volta como resposta (e não como erro) para o contador de tentativas valer
+  const r = data as ({ ok: true } & ResultadoRecebimento) | { ok: false; erro: string }
+  if (!r.ok) throw new ErroSenha(r.erro)
+  return r
+}
+
+export async function listarRecebimentos(pedidoId: string): Promise<Recebimento[]> {
+  const { data, error } = await supabase
+    .from('pedido_compra_recebimentos')
+    .select(
+      'id, recebido_em, recebido_por_nome, observacao, deu_entrada, encerrou, itens:pedido_compra_recebimento_itens(item_id, quantidade)'
+    )
+    .eq('pedido_id', pedidoId)
+    .order('recebido_em')
+
+  if (error) throw traduz(error)
+
+  return ((data ?? []) as unknown as Recebimento[]).map((r) => ({
+    ...r,
+    itens: (r.itens ?? []).map((i) => ({ item_id: i.item_id, quantidade: num(i.quantidade) })),
+  }))
+}
+
 // ---------- alerta de variação de preço ----------
 
 interface LinhaUltimoPreco {
@@ -308,6 +423,55 @@ export async function ultimosPrecos(
       { preco: Number(r.preco), criado_em: r.criado_em, fornecedor: r.fornecedor },
     ])
   )
+}
+
+// ---------- preços pagos, no formato do Histórico de preços ----------
+
+interface LinhaCompraPaga {
+  produto_codigo: string | null
+  produto_nome: string
+  unidade: string | null
+  preco_unitario: number | string
+  pedidos_compra: {
+    id: string
+    numero: number
+    fornecedor_ref: string | null
+    fornecedor_nome: string
+    comparacao_ref: string | null
+    comparacao_nome: string | null
+    recebido_em: string | null
+    criado_em: string
+  } | null
+}
+
+// itens de pedidos recebidos viram "cotações". Se o pedido veio de uma comparação, entra na
+// mesma rodada dela; se foi um pedido direto, vira uma rodada própria.
+export async function comprasComoCotacoes(): Promise<Cotacao[]> {
+  const { data, error } = await supabase
+    .from('pedido_compra_itens')
+    .select(
+      'produto_codigo, produto_nome, unidade, preco_unitario, pedidos_compra!inner(id, numero, fornecedor_ref, fornecedor_nome, comparacao_ref, comparacao_nome, recebido_em, criado_em)'
+    )
+    .eq('pedidos_compra.status', 'recebido')
+
+  if (error) throw traduz(error)
+
+  return ((data ?? []) as unknown as LinhaCompraPaga[])
+    .filter((r) => r.pedidos_compra)
+    .map((r) => {
+      const p = r.pedidos_compra!
+      return {
+        codigo: r.produto_codigo,
+        itemNome: r.produto_nome,
+        unidade: r.unidade,
+        preco: Number(r.preco_unitario),
+        data: p.recebido_em ?? p.criado_em,
+        comparacaoId: p.comparacao_ref ?? `pc:${p.id}`,
+        comparacaoNome: p.comparacao_nome ?? `Pedido ${numeroPedido(p.numero)}`,
+        fornecedorId: p.fornecedor_ref ?? `nome:${p.fornecedor_nome}`,
+        fornecedorNome: p.fornecedor_nome,
+      } as Cotacao
+    })
 }
 
 // ---------- vindo do Comparar preços ----------

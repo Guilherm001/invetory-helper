@@ -23,6 +23,13 @@ export const STATUS_INFO: Record<StatusCompra, { texto: string; classe: string }
   cancelado: { texto: 'Cancelado', classe: 'bg-red-50 text-red-700' },
 }
 
+// a situação que aparece na tela: pedido com entrega parcial ganha o próprio selo
+export function infoStatus(p: Pick<PedidoCompra, 'status' | 'recebido_parcial'>) {
+  if (p.recebido_parcial && (p.status === 'enviado' || p.status === 'confirmado'))
+    return { texto: 'Recebido parcial', classe: 'bg-orange-50 text-orange-700' }
+  return STATUS_INFO[p.status]
+}
+
 export function atrasado(p: Pick<PedidoCompra, 'status' | 'previsao_entrega'>) {
   return (
     (p.status === 'enviado' || p.status === 'confirmado') &&

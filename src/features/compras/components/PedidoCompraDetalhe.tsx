@@ -10,6 +10,7 @@ import {
   Copy,
   FileDown,
   Loader2,
+  PackageCheck,
   Pencil,
   Trash2,
 } from 'lucide-react'
@@ -21,21 +22,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../../components/ui/dialog'
-import { dataCurta, dataHora, numeroTexto, reais } from '@/features/loja/lib/formatar'
+import { dataCurta, dataHora, hoje, numeroTexto, reais } from '@/features/loja/lib/formatar'
 import {
   alterarStatus,
   excluirPedido,
+  listarRecebimentos,
   nomeDaEmpresa,
   obterPedido,
   type ItemPedidoCompra,
   type PedidoCompra,
+  type Recebimento,
   type StatusCompra,
 } from '../services/comprasService'
 import {
-  STATUS_INFO,
   atrasado,
   dadosDoPedido,
   diasDeAtraso,
+  infoStatus,
   itemParaEntrada,
   numeroPedido,
   somarDias,
@@ -43,6 +46,7 @@ import {
 } from '../lib/compras'
 import { gerarPdfCompra, precarregarPdfCompra } from '../utils/gerarPdfCompra'
 import type { PedidoInicial } from './PedidoCompraDialog'
+import ReceberPedidoDialog from './ReceberPedidoDialog'
 
 interface Acao {
   status: StatusCompra
@@ -52,24 +56,23 @@ interface Acao {
   aviso: string
 }
 
+// "recebido" não está aqui: ele só vem da conferência (botão Receber mercadoria)
 const ACOES: Record<StatusCompra, Acao[]> = {
   rascunho: [
     { status: 'enviado', rotulo: 'Marcar como enviado', tipo: 'principal', aviso: 'marcado como enviado' },
     { status: 'cancelado', rotulo: 'Cancelar pedido', tipo: 'perigo', confirmar: 'Cancelar este pedido?', aviso: 'cancelado' },
   ],
   enviado: [
-    { status: 'confirmado', rotulo: 'Fornecedor confirmou', tipo: 'principal', aviso: 'confirmado pelo fornecedor' },
-    { status: 'recebido', rotulo: 'Marcar como recebido', tipo: 'normal', aviso: 'marcado como recebido' },
+    { status: 'confirmado', rotulo: 'Fornecedor confirmou', tipo: 'normal', aviso: 'confirmado pelo fornecedor' },
     { status: 'rascunho', rotulo: 'Voltar para rascunho', tipo: 'normal', aviso: 'voltou para rascunho' },
     { status: 'cancelado', rotulo: 'Cancelar pedido', tipo: 'perigo', confirmar: 'Cancelar este pedido?', aviso: 'cancelado' },
   ],
   confirmado: [
-    { status: 'recebido', rotulo: 'Marcar como recebido', tipo: 'principal', aviso: 'marcado como recebido' },
     { status: 'enviado', rotulo: 'Voltar para enviado', tipo: 'normal', aviso: 'voltou para enviado' },
     { status: 'cancelado', rotulo: 'Cancelar pedido', tipo: 'perigo', confirmar: 'Cancelar este pedido?', aviso: 'cancelado' },
   ],
   recebido: [
-    { status: 'confirmado', rotulo: 'Reabrir pedido', tipo: 'normal', confirmar: 'Reabrir este pedido recebido?', aviso: 'reaberto' },
+    { status: 'confirmado', rotulo: 'Reabrir pedido', tipo: 'normal', confirmar: 'Reabrir este pedido para receber o que faltou?', aviso: 'reaberto' },
   ],
   cancelado: [
     { status: 'rascunho', rotulo: 'Reabrir como rascunho', tipo: 'normal', aviso: 'reaberto como rascunho' },
@@ -97,16 +100,34 @@ function Conteudo({
   onDuplicar: (inicial: PedidoInicial) => void
 }) {
   const [itens, setItens] = useState<ItemPedidoCompra[] | null>(null)
+  const [recebimentos, setRecebimentos] = useState<Recebimento[] | null>(null)
   const [empresa, setEmpresa] = useState('')
   const [erro, setErro] = useState('')
   const [agindo, setAgindo] = useState(false)
   const [gerandoPdf, setGerandoPdf] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [recebendo, setRecebendo] = useState(false)
 
-  const info = STATUS_INFO[pedido.status]
+  const info = infoStatus(pedido)
   const atrasoEntrega = atrasado(pedido)
-  const podeEditar = ['rascunho', 'enviado', 'confirmado'].includes(pedido.status)
-  const podeExcluir = pedido.status === 'rascunho' || pedido.status === 'cancelado'
+  const temRecebimento = (recebimentos?.length ?? 0) > 0
+  const podeReceber = pedido.status === 'enviado' || pedido.status === 'confirmado'
+  const podeEditar =
+    ['rascunho', 'enviado', 'confirmado'].includes(pedido.status) &&
+    recebimentos !== null &&
+    !temRecebimento
+  const podeExcluir =
+    (pedido.status === 'rascunho' || pedido.status === 'cancelado') && !temRecebimento
+  const recebidoCompleto =
+    !!itens && itens.length > 0 && itens.every((i) => i.quantidade_recebida >= i.quantidade)
+
+  const acoes = ACOES[pedido.status].filter((a) => {
+    // depois do primeiro recebimento não dá para voltar nem cancelar
+    if (temRecebimento && (a.status === 'rascunho' || a.status === 'cancelado')) return false
+    // recebido por completo não reabre
+    if (pedido.status === 'recebido' && recebidoCompleto) return false
+    return true
+  })
 
   useEffect(() => {
     precarregarPdfCompra()
@@ -117,6 +138,13 @@ function Conteudo({
       })
       .catch((e) => {
         if (!cancelado) setErro(e instanceof Error ? e.message : 'Erro ao carregar os itens')
+      })
+    listarRecebimentos(pedido.id)
+      .then((r) => {
+        if (!cancelado) setRecebimentos(r)
+      })
+      .catch(() => {
+        if (!cancelado) setRecebimentos([])
       })
     nomeDaEmpresa()
       .then((n) => {
@@ -191,16 +219,16 @@ function Conteudo({
         ...dados,
         comparacao_ref: null, // é um pedido novo, sem ligação com a comparação
         comparacao_nome: null,
-        previsao_entrega:
-          pedido.prazo_dias != null
-            ? somarDias(new Date().toISOString().slice(0, 10), pedido.prazo_dias)
-            : null,
+        previsao_entrega: pedido.prazo_dias != null ? somarDias(hoje(), pedido.prazo_dias) : null,
       },
       itens: (itens ?? []).map(itemParaEntrada),
     })
   }
 
   const soma = (itens ?? []).reduce((s, i) => s + i.subtotal, 0)
+  const valorRecebido = (itens ?? []).reduce((s, i) => s + i.quantidade_recebida * i.preco_unitario, 0)
+  const pctRecebido = soma > 0 ? Math.round((valorRecebido / soma) * 100) : 0
+  const itemPorId = new Map((itens ?? []).map((i) => [i.id, i]))
 
   const eventos: [string, string | null][] = [
     [`Criado${pedido.criado_por_nome ? ` por ${pedido.criado_por_nome}` : ''}`, pedido.criado_em],
@@ -297,6 +325,18 @@ function Conteudo({
                       {reais(i.preco_unitario)} cada
                       {i.produto_codigo ? ` · Cód. ${i.produto_codigo}` : ''}
                     </p>
+                    {i.quantidade_recebida > 0 && (
+                      <p
+                        className={`mt-0.5 text-xs font-semibold ${
+                          i.quantidade_recebida >= i.quantidade
+                            ? 'text-emerald-600'
+                            : 'text-amber-600'
+                        }`}
+                      >
+                        Recebido {numeroTexto(i.quantidade_recebida)} de {numeroTexto(i.quantidade)}
+                        {i.quantidade_recebida > i.quantidade ? ' (a mais)' : ''}
+                      </p>
+                    )}
                     {i.observacao?.trim() && (
                       <p className="mt-0.5 text-xs italic text-slate-500">
                         obs: {i.observacao.trim()}
@@ -321,6 +361,14 @@ function Conteudo({
               <span className="text-sm font-semibold text-slate-700">Total</span>
               <span className="text-2xl font-bold text-[#079C9C]">{reais(pedido.total)}</span>
             </div>
+            {valorRecebido > 0 && (
+              <div className="flex items-baseline justify-between border-t border-[#079C9C]/20 pt-1.5 text-sm">
+                <span className="text-slate-600">Recebido até agora (em itens)</span>
+                <span className="font-semibold text-slate-800">
+                  {reais(valorRecebido)} · {pctRecebido}%
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -330,6 +378,42 @@ function Conteudo({
               Observações
             </p>
             <p className="whitespace-pre-wrap text-sm text-slate-700">{pedido.observacao.trim()}</p>
+          </div>
+        )}
+
+        {recebimentos && recebimentos.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Recebimentos
+            </p>
+            <ul className="space-y-2">
+              {recebimentos.map((r) => (
+                <li key={r.id} className="rounded-xl border border-slate-200 p-3 text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-semibold text-slate-800">{dataHora(r.recebido_em)}</span>
+                    <span className="text-slate-500">{r.recebido_por_nome ?? '—'}</span>
+                  </div>
+                  <ul className="mt-1 space-y-0.5 text-slate-600">
+                    {r.itens.map((x) => {
+                      const it = itemPorId.get(x.item_id)
+                      return (
+                        <li key={x.item_id}>
+                          {numeroTexto(x.quantidade)}
+                          {it?.unidade ? ` ${it.unidade}` : ''} · {it?.produto_nome ?? 'Item removido'}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {r.deu_entrada ? 'Entrou no estoque' : 'Sem entrada no estoque'}
+                    {r.encerrou ? ' · encerrou o pedido' : ''}
+                  </p>
+                  {r.observacao?.trim() && (
+                    <p className="mt-1 text-xs italic text-slate-500">{r.observacao.trim()}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -348,13 +432,6 @@ function Conteudo({
               ))}
           </ul>
         </div>
-
-        {(pedido.status === 'enviado' || pedido.status === 'confirmado') && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            Ao receber, a entrada no estoque ainda é feita à mão, pelo botão de entrada no
-            Catálogo. A conferência automática vem na próxima etapa.
-          </p>
-        )}
       </div>
 
       <div className="shrink-0 border-t border-slate-200 bg-slate-50">
@@ -428,7 +505,7 @@ function Conteudo({
             </Button>
           )}
 
-          {ACOES[pedido.status].map((a) => (
+          {acoes.map((a) => (
             <Button
               key={a.status}
               type="button"
@@ -447,8 +524,34 @@ function Conteudo({
               {a.rotulo}
             </Button>
           ))}
+
+          {podeReceber && (
+            <Button
+              type="button"
+              onClick={() => setRecebendo(true)}
+              disabled={agindo}
+              className="gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
+            >
+              <PackageCheck className="size-4" />
+              Receber mercadoria
+            </Button>
+          )}
         </div>
       </div>
+
+      <ReceberPedidoDialog
+        pedido={
+          recebendo
+            ? { id: pedido.id, numero: pedido.numero, fornecedor_nome: pedido.fornecedor_nome }
+            : null
+        }
+        ehDono
+        onClose={() => setRecebendo(false)}
+        onRecebido={(aviso) => {
+          setRecebendo(false)
+          onMudou(aviso)
+        }}
+      />
     </>
   )
 }

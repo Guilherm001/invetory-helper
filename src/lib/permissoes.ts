@@ -7,7 +7,7 @@ export const ROTA_INICIAL = '/dashboard'
 
 // o funcionário só acessa o que estiver aqui; o dono acessa tudo.
 // Página nova que não entrar nesta lista fica só para o dono.
-const ROTAS_FUNCIONARIO = ['/dashboard', '/calculator', '/loja', '/orcamentos', '/pedidos','/clientes']
+const ROTAS_FUNCIONARIO = ['/dashboard', '/calculator', '/loja', '/orcamentos', '/pedidos', '/clientes', '/recebimento']
 
 export function podeAcessar(papel: Papel | null, pathname: string) {
   if (papel === 'dono') return true
