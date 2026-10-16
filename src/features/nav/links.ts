@@ -1,32 +1,35 @@
 import {
   BarChart3,
+  Banknote,
   Calculator,
+  ClipboardCheck,
+  ClipboardList,
+  Contact,
+  FileText,
+  LayoutDashboard,
   Library,
+  Lightbulb,
   LineChart,
   Package,
+  PackageCheck,
   Scale,
   Send,
   Store,
-  Wallet,
-  Users,
-  FileText,
-  ClipboardList,
   Truck,
-  Contact,
-  ClipboardCheck,
-  PackageCheck,
+  Users,
+  Wallet,
   type LucideIcon,
-  Banknote,
-  LayoutDashboard,
 } from 'lucide-react'
 
-export type GrupoId = 'loja' | 'compras' | 'gestao'
+export type GrupoId = 'loja' | 'estoque' | 'compras' | 'gestao' | 'sistema'
 
-// ordem em que os grupos aparecem no menu
+// ordem em que os grupos aparecem no menu (do dia a dia para o mais raro)
 export const GRUPOS: { id: GrupoId; label: string }[] = [
   { id: 'loja', label: 'Loja' },
+  { id: 'estoque', label: 'Estoque' },
   { id: 'compras', label: 'Compras' },
   { id: 'gestao', label: 'Gestão' },
+  { id: 'sistema', label: 'Sistema' },
 ]
 
 export interface NavLink {
@@ -35,37 +38,41 @@ export interface NavLink {
   curto?: string // rótulo menor para a barra do celular
   icon: LucideIcon
   grupo: GrupoId // em qual seção do menu aparece
-  principal: boolean // true = barra de baixo | false = dentro do "Mais"
+  principal: boolean // true = barra de baixo (máx. 4) | false = dentro do "Mais"
   ordemBarra?: number // posição na barra de baixo do celular (menor = mais à esquerda)
   soDono?: boolean // true = só o dono vê
   soFuncionario?: boolean // true = só o funcionário vê
 }
 
 export const LINKS: NavLink[] = [
-  // ---- Loja ----
-  { href: '/calculator', label: 'Calculadora', icon: Calculator, grupo: 'loja', principal: true, ordemBarra: 2 },
-  { href: '/loja', label: 'Vendas', curto: 'Loja', icon: Store, grupo: 'loja', principal: true, ordemBarra: 3 },
+  // ---- Loja: o balcão, do atendimento ao caixa ----
+  { href: '/loja', label: 'Vendas', curto: 'Loja', icon: Store, grupo: 'loja', principal: true, ordemBarra: 2 },
   { href: '/orcamentos', label: 'Orçamentos', icon: FileText, grupo: 'loja', principal: false },
-  { href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: false },
-  { href: '/clientes', label: 'Clientes', icon: Contact, grupo: 'loja', principal: false },
+  { href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: true, ordemBarra: 3 },
   { href: '/caixa', label: 'Caixa', icon: Banknote, grupo: 'loja', principal: false },
+  { href: '/clientes', label: 'Clientes', icon: Contact, grupo: 'loja', principal: false },
+  { href: '/calculator', label: 'Calculadora', icon: Calculator, grupo: 'loja', principal: true, ordemBarra: 1 },
 
-  // ---- Compras ----
-  { href: '/dashboard', label: 'Produtos em falta', icon: Package, grupo: 'compras', principal: false, ordemBarra: 1, soDono: true },
+  // ---- Estoque: o que tem na prateleira e o que chega ----
+  { href: '/catalogo', label: 'Catálogo', icon: Library, grupo: 'estoque', principal: true, ordemBarra: 4, soDono: true },
+  { href: '/recebimento', label: 'Recebimento', icon: PackageCheck, grupo: 'estoque', principal: false },
+
+  // ---- Compras: o que falta, quanto custa e de quem comprar ----
+  { href: '/compras', label: 'Painel de compras', curto: 'Painel', icon: LayoutDashboard, grupo: 'compras', principal: false, soDono: true },
+  { href: '/dashboard', label: 'Produtos em falta', icon: Package, grupo: 'compras', principal: false, soDono: true },
   { href: '/cotacoes', label: 'Cotações', icon: Send, grupo: 'compras', principal: false, soDono: true },
   { href: '/comparar-precos', label: 'Comparar preços', curto: 'Comparar', icon: Scale, grupo: 'compras', principal: false, soDono: true },
-  { href: '/historico-precos', label: 'Histórico', icon: LineChart, grupo: 'compras', principal: false, soDono: true },
-  { href: '/catalogo', label: 'Catálogo', icon: Library, grupo: 'compras', principal: true, ordemBarra: 4, soDono: true },
-  { href: '/fornecedores', label: 'Fornecedores', grupo: 'compras', icon: Truck, principal: false, soDono: true },
+  { href: '/historico-precos', label: 'Histórico de preços', curto: 'Histórico', icon: LineChart, grupo: 'compras', principal: false, soDono: true },
   { href: '/pedidos-compra', label: 'Pedidos de compra', curto: 'Compras', icon: ClipboardCheck, grupo: 'compras', principal: false, soDono: true },
-  { href: '/recebimento', label: 'Recebimento', icon: PackageCheck, grupo: 'compras', principal: false },
-  { href: '/ideias', label: 'Ideias', icon: PackageCheck, grupo: 'compras', principal: false, soDono: true },
-  { href: '/compras', label: 'Painel de compras', curto: 'Painel', icon: LayoutDashboard, grupo: 'compras', principal: false, soDono: true },
+  { href: '/fornecedores', label: 'Fornecedores', icon: Truck, grupo: 'compras', principal: false, soDono: true },
 
   // ---- Gestão (só o dono) ----
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, grupo: 'gestao', principal: false, soDono: true },
   { href: '/relatorios', label: 'Relatórios', icon: BarChart3, grupo: 'gestao', principal: false, soDono: true },
   { href: '/equipe', label: 'Equipe', icon: Users, grupo: 'gestao', principal: false, soDono: true },
+
+  // ---- Sistema ----
+  { href: '/ideias', label: 'Ideias', icon: Lightbulb, grupo: 'sistema', principal: false, soDono: true },
 ]
 
 // links que a pessoa pode ver

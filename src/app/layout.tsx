@@ -142,7 +142,7 @@ export default async function RootLayout({
           </div>
 
           {/* só no celular: barra de baixo com o "Mais" */}
-          {user && <MobileNav ehDono={ehDono} logout={<LogoutButton />} />}
+          {user && <MobileNav ehDono={ehDono}  logout={<LogoutButton />} />}
         </main>
       </body>
     </html>
