@@ -74,7 +74,7 @@ export default async function RootLayout({
           <header className="sticky top-0 z-20 border-b border-gray-200 bg-white pt-[env(safe-area-inset-top)]">
             <div className="flex items-center justify-between">
               <Link
-                href={user ? "/dashboard" : "/"}
+                href={user ? "/loja" : "/"}
                 className="px-4 py-2 md:px-0 md:py-0"
               >
                 <img
