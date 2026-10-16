@@ -39,6 +39,8 @@ const FILTROS: [FiltroCompra, string][] = [
   ['cancelado', 'Cancelados'],
 ]
 
+const COLUNAS = 'lg:grid-cols-[5.5rem_5.5rem_9rem_minmax(0,1fr)_7.5rem]'
+
 export default function PedidosCompraLista({ abrirId }: { abrirId: string | null }) {
   const [termo, setTermo] = useState('')
   const [termoBusca, setTermoBusca] = useState('')
@@ -302,53 +304,79 @@ export default function PedidosCompraLista({ abrirId }: { abrirId: string | null
             Crie um pedido novo ou importe os pedidos de uma comparação de preços.
           </p>
         </div>
-      ) : (
-        <ul className={`mt-4 space-y-2 ${atualizando ? 'opacity-60' : ''}`}>
-          {itens.map((p) => {
-            const info = infoStatus(p)
-            const atraso = atrasado(p)
-            return (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => setDetalhe(p)}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-px hover:border-[#079C9C]/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#079C9C]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-bold text-[#079C9C]">
-                          {numeroPedido(p.numero)}
-                        </span>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${info.classe}`}
-                        >
-                          {info.texto}
-                        </span>
-                        {atraso && p.previsao_entrega && (
-                          <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
-                            Atrasado {diasDeAtraso(p.previsao_entrega)}d
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 truncate font-semibold text-slate-900">
-                        {p.fornecedor_nome}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {new Date(p.criado_em).toLocaleDateString('pt-BR')}
-                        {p.previsao_entrega ? ` · entrega ${dataCurta(p.previsao_entrega)}` : ''}
-                        {p.condicao_pagamento ? ` · ${p.condicao_pagamento}` : ''}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-lg font-bold text-slate-900">{reais(p.total)}</p>
-                  </div>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
+            ) : (
+        <div className={`mt-4 ${atualizando ? 'opacity-60' : ''}`}>
+          {/* cabeçalho das colunas (só no PC) */}
+          <div
+            className={`mb-1 hidden gap-x-3 px-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400 lg:grid ${COLUNAS}`}
+          >
+            <span>Pedido</span>
+            <span>Data</span>
+            <span>Status</span>
+            <span>Fornecedor</span>
+            <span className="text-right">Valor</span>
+          </div>
 
+          <ul className="space-y-2">
+            {itens.map((p) => {
+              const info = infoStatus(p)
+              const atraso = atrasado(p)
+              const detalhes = [
+                p.previsao_entrega ? `Entrega ${dataCurta(p.previsao_entrega)}` : '',
+                p.condicao_pagamento ?? '',
+              ]
+                .filter(Boolean)
+                .join(' · ')
+
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => setDetalhe(p)}
+                    title={detalhes || undefined}
+                    className={`grid w-full grid-cols-2 items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-px hover:border-[#079C9C]/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#079C9C] ${COLUNAS}`}
+                  >
+                    {/* pedido */}
+                    <span className="order-1 text-sm font-bold text-[#079C9C] lg:order-none">
+                      {numeroPedido(p.numero)}
+                    </span>
+
+                    {/* data */}
+                    <span className="order-4 text-xs text-slate-500 lg:order-none lg:text-sm">
+                      {new Date(p.criado_em).toLocaleDateString('pt-BR')}
+                    </span>
+
+                    {/* status */}
+                    <span className="order-5 flex flex-wrap items-center justify-end gap-1 lg:order-none lg:justify-start">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${info.classe}`}
+                      >
+                        {info.texto}
+                      </span>
+                      {atraso && p.previsao_entrega && (
+                        <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                          Atrasado {diasDeAtraso(p.previsao_entrega)}d
+                        </span>
+                      )}
+                    </span>
+
+                    {/* fornecedor */}
+                    <span className="order-3 col-span-2 truncate font-semibold text-slate-900 lg:order-none lg:col-span-1">
+                      {p.fornecedor_nome}
+                    </span>
+
+                    {/* valor */}
+                    <span className="order-2 justify-self-end text-base font-bold tabular-nums text-slate-900 lg:order-none lg:justify-self-auto lg:text-right">
+                      {reais(p.total)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+      
       {temMais && (
         <div className="mt-4 flex justify-center">
           <button
