@@ -18,7 +18,7 @@ import {
   type PedidoCompra,
   type ResumoCompras,
 } from '../services/comprasService'
-import { PEDIDO_VAZIO, STATUS_INFO, atrasado, diasDeAtraso, numeroPedido } from '../lib/compras'
+import { PEDIDO_VAZIO, infoStatus, atrasado, diasDeAtraso, numeroPedido } from '../lib/compras'
 import PedidoCompraDialog, { type PedidoInicial } from './PedidoCompraDialog'
 import PedidoCompraDetalhe from './PedidoCompraDetalhe'
 import ImportarComparacaoDialog from './ImportarComparacaoDialog'
@@ -305,7 +305,7 @@ export default function PedidosCompraLista({ abrirId }: { abrirId: string | null
       ) : (
         <ul className={`mt-4 space-y-2 ${atualizando ? 'opacity-60' : ''}`}>
           {itens.map((p) => {
-            const info = STATUS_INFO[p.status]
+            const info = infoStatus(p)
             const atraso = atrasado(p)
             return (
               <li key={p.id}>

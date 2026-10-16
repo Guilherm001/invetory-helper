@@ -14,6 +14,7 @@ import {
   Truck,
   Contact,
   ClipboardCheck,
+  PackageCheck,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -54,6 +55,7 @@ export const LINKS: NavLink[] = [
   { href: '/catalogo', label: 'Catálogo', icon: Library, grupo: 'compras', principal: true, ordemBarra: 4, soDono: true },
   { href: '/fornecedores', label: 'Fornecedores', grupo: 'compras', icon: Truck, principal: false, soDono: true },
   { href: '/pedidos-compra', label: 'Pedidos de compra', curto: 'Compras', icon: ClipboardCheck, grupo: 'compras', principal: false, soDono: true },
+  { href: '/recebimento', label: 'Recebimento', icon: PackageCheck, grupo: 'compras', principal: false },
 
   // ---- Gestão (só o dono) ----
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, grupo: 'gestao', principal: false, soDono: true },
