@@ -155,7 +155,7 @@ function Conteudo({
       nome: i.nome,
       unidade: i.unidade,
       qtd: qtdTexto(i.quantidade),
-      preco: precoTexto(i.preco),
+      preco: i.preco > 0 ? precoTexto(i.preco) : '',
       obs: i.observacao,
       obsAberta: false,
     }))

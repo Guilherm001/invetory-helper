@@ -17,6 +17,7 @@ import {
   PackageCheck,
   type LucideIcon,
   Banknote,
+  LayoutDashboard,
 } from 'lucide-react'
 
 export type GrupoId = 'loja' | 'compras' | 'gestao'
@@ -59,6 +60,7 @@ export const LINKS: NavLink[] = [
   { href: '/pedidos-compra', label: 'Pedidos de compra', curto: 'Compras', icon: ClipboardCheck, grupo: 'compras', principal: false, soDono: true },
   { href: '/recebimento', label: 'Recebimento', icon: PackageCheck, grupo: 'compras', principal: false },
   { href: '/ideias', label: 'Ideias', icon: PackageCheck, grupo: 'compras', principal: false, soDono: true },
+  { href: '/compras', label: 'Painel de compras', curto: 'Painel', icon: LayoutDashboard, grupo: 'compras', principal: false, soDono: true },
 
   // ---- Gestão (só o dono) ----
   { href: '/financeiro', label: 'Financeiro', icon: Wallet, grupo: 'gestao', principal: false, soDono: true },

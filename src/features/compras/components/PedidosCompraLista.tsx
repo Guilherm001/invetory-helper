@@ -41,10 +41,16 @@ const FILTROS: [FiltroCompra, string][] = [
 
 const COLUNAS = 'lg:grid-cols-[5.5rem_5.5rem_9rem_minmax(0,1fr)_7.5rem]'
 
-export default function PedidosCompraLista({ abrirId }: { abrirId: string | null }) {
+export default function PedidosCompraLista({
+  abrirId,
+  filtroInicial,
+}: {
+  abrirId: string | null
+  filtroInicial?: FiltroCompra
+}) {
   const [termo, setTermo] = useState('')
   const [termoBusca, setTermoBusca] = useState('')
-  const [filtro, setFiltro] = useState<FiltroCompra>('todos')
+  const [filtro, setFiltro] = useState<FiltroCompra>(filtroInicial ?? 'todos')
   const [versao, setVersao] = useState(0)
   const [res, setRes] = useState<Resultado | null>(null)
   const [resumo, setResumo] = useState<ResumoCompras | null>(null)
