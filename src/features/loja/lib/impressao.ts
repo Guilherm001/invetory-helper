@@ -31,6 +31,7 @@ const qtdTexto = (i: ItemDocumento) =>
 export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string {
   const orc = doc.documento === 'orcamento'
   const end = enderecoDe(doc)
+  const desconto = Number(doc.desconto ?? 0)
 
   const linhasItens = itens
     .map(
@@ -48,7 +49,7 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
 <html lang="pt-BR"><head><meta charset="utf-8">
 <title>${tituloDe(doc)} ${doc.numero}</title>
 <style>
-  @page { size: 80mm size: 80mm 297mm; margin: 0; }
+  @page { size: 80mm 297mm; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
     body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm 5mm; color: #000;
@@ -83,7 +84,8 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
   <div class="b">ITENS (${itens.length})</div>
   ${linhasItens}
   <hr>
-  <div class="linha total"><span>TOTAL</span><span>${reais(doc.total)}</span></div>
+    ${desconto > 0 ? `<div class="linha"><span>Subtotal</span><span>${reais(doc.total)}</span></div><div class="linha"><span>Desconto</span><span>- ${reais(desconto)}</span></div>` : ''}
+  <div class="linha total"><span>TOTAL</span><span>${reais(doc.total - desconto)}</span></div>
   ${doc.pagamento ? `<div style="margin-top:4px"><span class="b">Pagamento:</span> ${esc(doc.pagamento)}</div>` : ''}
   ${doc.observacao?.trim() ? `<div style="margin-top:4px"><span class="b">Obs:</span> <span class="txt">${esc(doc.observacao.trim())}</span></div>` : ''}
   <hr>
@@ -97,6 +99,7 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
 export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
   const orc = doc.documento === 'orcamento'
   const end = enderecoDe(doc)
+  const desconto = Number(doc.desconto ?? 0) // ← novo
 
   const linhas = itens
     .map(
@@ -184,7 +187,8 @@ export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
     <tbody>${linhas}</tbody>
   </table>
 
-  <div class="total"><span>Total</span><span class="v">${reais(doc.total)}</span></div>
+    ${desconto > 0 ? `<div style="text-align:right;margin-top:12px;color:#64748b">Subtotal: ${reais(doc.total)}<br>Desconto: - ${reais(desconto)}</div>` : ''}
+  <div class="total"><span>Total</span><span class="v">${reais(doc.total - desconto)}</span></div>
 
   ${doc.pagamento ? `<div class="caixa"><div class="rotulo">Pagamento</div><div>${esc(doc.pagamento)}</div></div>` : ''}
   ${doc.observacao?.trim() ? `<div class="caixa"><div class="rotulo">Observação</div><div class="txt">${esc(doc.observacao.trim())}</div></div>` : ''}

@@ -166,6 +166,15 @@ async function montarPdf(doc: DocumentoResumo, itens: ItemDocumento[]) {
     pdf.setDrawColor(...LINHA)
     pdf.line(M, y, W - M, y)
   }
+    const desconto = Number(doc.desconto ?? 0)
+  if (desconto > 0) {
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.setTextColor(...CINZA)
+    pdf.text(`Subtotal: ${reais(doc.total - desconto)}`, W - M, y + 5, { align: 'right' })
+    pdf.text(`Desconto: - ${reais(desconto)}`, W - M, y + 10, { align: 'right' })
+    y += 12
+  }
 
   // ---------- total ----------
   if (y + 20 > H - 22) {

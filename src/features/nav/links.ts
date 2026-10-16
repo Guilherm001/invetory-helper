@@ -15,6 +15,7 @@ import {
   Contact,
   ClipboardCheck,
   type LucideIcon,
+  Banknote,
 } from 'lucide-react'
 
 export type GrupoId = 'loja' | 'compras' | 'gestao'
@@ -45,6 +46,7 @@ export const LINKS: NavLink[] = [
   { href: '/orcamentos', label: 'Orçamentos', icon: FileText, grupo: 'loja', principal: false },
   { href: '/pedidos', label: 'Pedidos', icon: ClipboardList, grupo: 'loja', principal: false },
   { href: '/clientes', label: 'Clientes', icon: Contact, grupo: 'loja', principal: false },
+  { href: '/caixa', label: 'Caixa', icon: Banknote, grupo: 'loja', principal: false },
 
   // ---- Compras ----
   { href: '/dashboard', label: 'Produtos', icon: Package, grupo: 'compras', principal: false, ordemBarra: 1, soDono: true },

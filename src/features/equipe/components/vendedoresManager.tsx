@@ -10,6 +10,7 @@ import {
   trocarPinVendedor,
   type Vendedor,
 } from '@/features/loja/services/vendedorService'
+import VendedoresCaixa from '@/features/caixa/components/VendedoresCaixa'
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
@@ -211,6 +212,7 @@ export function VendedoresManager() {
           </div>
         ))}
       </div>
+      <VendedoresCaixa />
     </div>
   )
 }
