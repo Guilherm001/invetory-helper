@@ -5,6 +5,18 @@ import { Search, Store, Truck, X } from 'lucide-react'
 import type { PedidoAberto } from '../types'
 import { hora, normalizar, reais } from '../lib/formatar'
 
+// o banco pode devolver o desconto e o valor final junto do pedido
+type PedidoComDesconto = PedidoAberto & {
+  desconto?: number | null
+  total_liquido?: number | null
+}
+
+const descontoDe = (p: PedidoComDesconto) => Number(p.desconto ?? 0)
+
+// valor que o cliente realmente paga: total dos itens menos o desconto
+const valorFinal = (p: PedidoComDesconto) =>
+  p.total_liquido != null ? Number(p.total_liquido) : Number(p.total) - descontoDe(p)
+
 export default function ListaPedidosCaixa({
   pedidos,
   selecionado,
@@ -76,6 +88,7 @@ export default function ListaPedidosCaixa({
         <ul className="min-h-0 space-y-2 overflow-y-auto pb-2">
           {visiveis.map((p) => {
             const ativo = p.id === selecionado
+            const desconto = descontoDe(p)
             return (
               <li key={p.id}>
                 <button
@@ -109,7 +122,14 @@ export default function ListaPedidosCaixa({
                         {p.vendedor_nome ? ` · ${p.vendedor_nome}` : ''}
                       </p>
                     </div>
-                    <p className="shrink-0 text-lg font-bold text-slate-900">{reais(p.total)}</p>
+                    <div className="shrink-0 text-right">
+                      <p className="text-lg font-bold text-slate-900">{reais(valorFinal(p))}</p>
+                      {desconto > 0 && (
+                        <p className="text-[11px] font-medium text-emerald-700">
+                          desc. {reais(desconto)}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </button>
               </li>

@@ -48,9 +48,6 @@ const FORMAS: { id: Forma; rotulo: string; icone: LucideIcon }[] = [
   { id: 'credito', rotulo: 'Crédito', icone: CreditCard },
 ]
 
-const inputClass =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
-
 function sugestoesDinheiro(valor: number) {
   const s = new Set<number>()
   for (const nota of [10, 20, 50, 100, 200]) {
@@ -237,7 +234,16 @@ export default function PainelRecebimento({
     let cancelado = false
     pedidoDoCaixa(pedidoId)
       .then((d) => {
-        if (!cancelado) setDados(d)
+        if (cancelado) return
+        setDados(d)
+
+        // desconto que o vendedor já deu na venda: começa aplicado (o caixa pode ajustar)
+        const dado = Number(d.doc.desconto ?? 0)
+        if (dado > 0) {
+          setTipoDesc('valor')
+          setDescTxt(virgula(dado))
+          setDescontoAberto(true)
+        }
       })
       .catch((e) => {
         if (!cancelado) setErroCarga(e instanceof Error ? e.message : 'Erro ao carregar o pedido')
@@ -248,6 +254,7 @@ export default function PainelRecebimento({
   }, [pedidoId])
 
   const total = dados?.doc.total ?? 0
+  const descontoDaVenda = Number(dados?.doc.desconto ?? 0)
   const desc = calcularDesconto(total, tipoDesc, descTxt)
   const liquido = arredonda(total - desc.desconto)
 
@@ -434,6 +441,12 @@ export default function PainelRecebimento({
               )}
 
               {desc.erro && <p className="text-sm text-red-600">{desc.erro}</p>}
+
+              {descontoDaVenda > 0 && (
+                <p className="text-xs text-slate-500">
+                  Desconto dado na venda: {reais(descontoDaVenda)}. Você pode ajustar ou remover.
+                </p>
+              )}
             </div>
           )}
 

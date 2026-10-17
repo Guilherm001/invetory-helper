@@ -12,6 +12,8 @@ const CINZA: Cor = [100, 116, 139]
 const CINZA_CLARO: Cor = [241, 245, 249]
 const LINHA: Cor = [226, 232, 240]
 
+const arred = (n: number) => Math.round(n * 100) / 100
+
 async function montarPdf(doc: DocumentoResumo, itens: ItemDocumento[]) {
   const { jsPDF } = await import('jspdf')
 
@@ -21,6 +23,10 @@ async function montarPdf(doc: DocumentoResumo, itens: ItemDocumento[]) {
   const M = 15
   const orc = doc.documento === 'orcamento'
   const titulo = orc ? 'ORÇAMENTO' : 'PEDIDO'
+
+  // total dos itens (subtotal), desconto e valor final
+  const desconto = Number(doc.desconto ?? 0)
+  const totalFinal = arred(doc.total - desconto)
 
   // ---------- cabeçalho ----------
   pdf.setFont('helvetica', 'bold')
@@ -166,31 +172,35 @@ async function montarPdf(doc: DocumentoResumo, itens: ItemDocumento[]) {
     pdf.setDrawColor(...LINHA)
     pdf.line(M, y, W - M, y)
   }
-    const desconto = Number(doc.desconto ?? 0)
-  if (desconto > 0) {
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(10)
-    pdf.setTextColor(...CINZA)
-    pdf.text(`Subtotal: ${reais(doc.total - desconto)}`, W - M, y + 5, { align: 'right' })
-    pdf.text(`Desconto: - ${reais(desconto)}`, W - M, y + 10, { align: 'right' })
-    y += 12
-  }
 
-  // ---------- total ----------
-  if (y + 20 > H - 22) {
+  // ---------- subtotal, desconto e total ----------
+  if (y + 20 + (desconto > 0 ? 13 : 0) > H - 22) {
     pdf.addPage()
     y = M
   }
   y += 8
+
+  const xCaixa = W - M - 80 // mesma coluna da caixa verde do total
+  if (desconto > 0) {
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.setTextColor(...CINZA)
+    pdf.text('Subtotal', xCaixa + 4, y + 3)
+    pdf.text(reais(doc.total), W - M - 4, y + 3, { align: 'right' })
+    pdf.text('Desconto', xCaixa + 4, y + 8)
+    pdf.text(`- ${reais(desconto)}`, W - M - 4, y + 8, { align: 'right' })
+    y += 13
+  }
+
   pdf.setFillColor(...TEAL)
-  pdf.roundedRect(W - M - 80, y, 80, 12, 2, 2, 'F')
+  pdf.roundedRect(xCaixa, y, 80, 12, 2, 2, 'F')
   pdf.setTextColor(255, 255, 255)
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(10)
-  pdf.text('Total', W - M - 76, y + 7.8)
+  pdf.text('Total', xCaixa + 4, y + 7.8)
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(12)
-  pdf.text(reais(doc.total), W - M - 4, y + 8, { align: 'right' })
+  pdf.text(reais(totalFinal), W - M - 4, y + 8, { align: 'right' })
   y += 12 + 8
 
   // ---------- pagamento e observação ----------
