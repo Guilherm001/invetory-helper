@@ -12,13 +12,16 @@ import {
   Plus,
   QrCode,
   Tag,
+  UserPlus,
   Wallet,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import type { DocumentoResumo, ItemDocumento } from '@/features/loja/services/documentosService'
-import { fecharPedido, pedidoDoCaixa } from '../services/caixaService'
-import type { ResultadoFechamento } from '../types'
+import SeletorCliente from '@/features/clientes/components/SeletorCliente'
+import type { Cliente } from '@/features/clientes/services/clientesService'
+import { clienteInfo, fecharPedido, pedidoDoCaixa } from '../services/caixaService'
+import type { ClienteInfo, ResultadoFechamento } from '../types'
 import {
   arredonda,
   calcularDesconto,
@@ -41,12 +44,22 @@ interface LinhaUI {
 
 const linhaVazia = (): LinhaUI => ({ forma: null, valor: '', recebido: '', parcelas: 1 })
 
+interface Extras {
+  credito: { saldo: number; motivo: string | null }
+  pendencia: { disponivel: number; dias: number; motivo: string | null }
+}
+
 const FORMAS: { id: Forma; rotulo: string; icone: LucideIcon }[] = [
   { id: 'dinheiro', rotulo: 'Dinheiro', icone: Banknote },
   { id: 'pix', rotulo: 'PIX', icone: QrCode },
   { id: 'debito', rotulo: 'Débito', icone: CreditCard },
   { id: 'credito', rotulo: 'Crédito', icone: CreditCard },
+  { id: 'credito_cliente', rotulo: 'Crédito do cliente', icone: Wallet },
+  { id: 'pendencia', rotulo: 'A prazo', icone: Clock },
 ]
+
+const inputClass =
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
 
 function sugestoesDinheiro(valor: number) {
   const s = new Set<number>()
@@ -57,6 +70,12 @@ function sugestoesDinheiro(valor: number) {
   return [...s].sort((a, b) => a - b).slice(0, 4)
 }
 
+function dataDaqui(dias: number) {
+  const d = new Date()
+  d.setDate(d.getDate() + dias)
+  return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+}
+
 // ---------- um bloco de pagamento (uma forma) ----------
 
 function BlocoPagamento({
@@ -64,12 +83,14 @@ function BlocoPagamento({
   linha,
   valorNumero,
   valorEditavel,
+  extras,
   onMudar,
 }: {
   rotulo: string
   linha: LinhaUI
   valorNumero: number // quanto esta forma vai pagar
   valorEditavel: boolean
+  extras: Extras
   onMudar: (p: Partial<LinhaUI>) => void
 }) {
   const recebido = linha.recebido.trim() === '' ? valorNumero : paraNumero(linha.recebido)
@@ -97,16 +118,23 @@ function BlocoPagamento({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {FORMAS.map(({ id, rotulo: nome, icone: Icone }) => {
           const ativo = linha.forma === id
+          const bloqueio =
+            id === 'credito_cliente'
+              ? extras.credito.motivo
+              : id === 'pendencia'
+                ? extras.pendencia.motivo
+                : null
           return (
             <button
               key={id}
               type="button"
               aria-pressed={ativo}
+              disabled={!!bloqueio}
               onClick={() => onMudar({ forma: id, recebido: '', parcelas: 1 })}
-              className={`flex flex-col items-center gap-1 rounded-xl border-2 px-2 py-3 text-sm font-semibold transition active:scale-95 ${
+              className={`flex flex-col items-center gap-1 rounded-xl border-2 px-2 py-3 text-center text-sm font-semibold transition active:scale-95 disabled:cursor-not-allowed disabled:border-dashed disabled:bg-slate-50 disabled:text-slate-400 disabled:active:scale-100 ${
                 ativo
                   ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
                   : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
@@ -114,26 +142,12 @@ function BlocoPagamento({
             >
               <Icone className="size-6" />
               {nome}
+              {bloqueio && (
+                <span className="text-[10px] font-normal leading-tight">{bloqueio}</span>
+              )}
             </button>
           )
         })}
-      </div>
-
-      {/* prontos no banco, ligam quando existir o cadastro de clientes */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { rotulo: 'Crédito de cliente', icone: Wallet },
-          { rotulo: 'A prazo (pendência)', icone: Clock },
-        ].map(({ rotulo: nome, icone: Icone }) => (
-          <span
-            key={nome}
-            title="Disponível quando existir o cadastro de clientes"
-            className="flex cursor-not-allowed items-center gap-1.5 rounded-full border border-dashed border-slate-200 px-3 py-1 text-xs text-slate-400"
-          >
-            <Icone className="size-3.5" />
-            {nome} · em breve
-          </span>
-        ))}
       </div>
 
       {linha.forma === 'dinheiro' && valorNumero > 0 && (
@@ -168,9 +182,7 @@ function BlocoPagamento({
               </button>
             ))}
           </div>
-          {troco > 0 && (
-            <p className="text-lg font-bold text-emerald-700">Troco: {reais(troco)}</p>
-          )}
+          {troco > 0 && <p className="text-lg font-bold text-emerald-700">Troco: {reais(troco)}</p>}
         </div>
       )}
 
@@ -202,6 +214,34 @@ function BlocoPagamento({
           )}
         </div>
       )}
+
+      {linha.forma === 'credito_cliente' && valorNumero > 0 && (
+        <p
+          className={`rounded-lg px-3 py-2 text-sm ${
+            valorNumero > extras.credito.saldo
+              ? 'bg-red-50 text-red-600'
+              : 'bg-slate-50 text-slate-600'
+          }`}
+        >
+          Crédito do cliente: <strong>{reais(extras.credito.saldo)}</strong>
+          {valorNumero <= extras.credito.saldo &&
+            ` · sobra ${reais(arredonda(extras.credito.saldo - valorNumero))}`}
+        </p>
+      )}
+
+      {linha.forma === 'pendencia' && valorNumero > 0 && (
+        <p
+          className={`rounded-lg px-3 py-2 text-sm ${
+            valorNumero > extras.pendencia.disponivel
+              ? 'bg-red-50 text-red-600'
+              : 'bg-amber-50 text-amber-800'
+          }`}
+        >
+          Fica a prazo: vence em <strong>{dataDaqui(extras.pendencia.dias)}</strong> (
+          {extras.pendencia.dias} dias). Disponível para pendência:{' '}
+          <strong>{reais(extras.pendencia.disponivel)}</strong>
+        </p>
+      )}
     </div>
   )
 }
@@ -227,6 +267,11 @@ export default function PainelRecebimento({
   const [dividir, setDividir] = useState(false)
   const [linhas, setLinhas] = useState<LinhaUI[]>([linhaVazia(), linhaVazia()])
 
+  // cliente escolhido agora no caixa (o pedido pode não ter cliente cadastrado)
+  const [clienteEscolhido, setClienteEscolhido] = useState<Cliente | null>(null)
+  const [vinculando, setVinculando] = useState(false)
+  const [infoSt, setInfoSt] = useState<{ id: string; info: ClienteInfo | null; erro: string } | null>(null)
+
   const [fechando, setFechando] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -234,16 +279,7 @@ export default function PainelRecebimento({
     let cancelado = false
     pedidoDoCaixa(pedidoId)
       .then((d) => {
-        if (cancelado) return
-        setDados(d)
-
-        // desconto que o vendedor já deu na venda: começa aplicado (o caixa pode ajustar)
-        const dado = Number(d.doc.desconto ?? 0)
-        if (dado > 0) {
-          setTipoDesc('valor')
-          setDescTxt(virgula(dado))
-          setDescontoAberto(true)
-        }
+        if (!cancelado) setDados(d)
       })
       .catch((e) => {
         if (!cancelado) setErroCarga(e instanceof Error ? e.message : 'Erro ao carregar o pedido')
@@ -253,11 +289,71 @@ export default function PainelRecebimento({
     }
   }, [pedidoId])
 
+  const docCliente =
+    (dados?.doc as unknown as { cliente_id?: string | null } | undefined)?.cliente_id ?? null
+  const clienteId = docCliente ?? clienteEscolhido?.id ?? null
+
+  // saldo de crédito e regras de pendência do cliente
+  useEffect(() => {
+    if (!clienteId) return
+    let cancelado = false
+    clienteInfo(clienteId)
+      .then((info) => {
+        if (!cancelado) setInfoSt({ id: clienteId, info, erro: '' })
+      })
+      .catch((e) => {
+        if (!cancelado)
+          setInfoSt({
+            id: clienteId,
+            info: null,
+            erro: e instanceof Error ? e.message : 'Erro ao carregar o cliente',
+          })
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [clienteId])
+
   const total = dados?.doc.total ?? 0
-  const descontoDaVenda = Number(dados?.doc.desconto ?? 0)
   const desc = calcularDesconto(total, tipoDesc, descTxt)
   const liquido = arredonda(total - desc.desconto)
 
+  // ---------- o que o cliente pode usar ----------
+  const info = infoSt && infoSt.id === clienteId ? infoSt.info : null
+  const erroInfo = infoSt && infoSt.id === clienteId ? infoSt.erro : ''
+  const carregandoInfo = !!clienteId && (!infoSt || infoSt.id !== clienteId)
+
+  const credito = info?.credito ?? 0
+  const pendDisp =
+    info && info.ativo && info.pendencia.permitida && info.vencido <= 0
+      ? Math.max(0, arredonda(info.pendencia.limite - info.devendo))
+      : 0
+
+  const semCliente = !clienteId ? 'Vincule um cliente' : carregandoInfo ? 'Carregando...' : !info ? 'Indisponível' : null
+
+  const extras: Extras = {
+    credito: {
+      saldo: credito,
+      motivo: semCliente ?? (credito <= 0 ? 'Sem crédito' : null),
+    },
+    pendencia: {
+      disponivel: pendDisp,
+      dias: info?.pendencia.dias ?? 25,
+      motivo:
+        semCliente ??
+        (!info!.ativo
+          ? 'Cliente desativado'
+          : !info!.pendencia.permitida
+            ? 'Bloqueada'
+            : info!.vencido > 0
+              ? 'Tem pendência vencida'
+              : pendDisp <= 0
+                ? 'Limite esgotado'
+                : null),
+    },
+  }
+
+  // ---------- pagamento ----------
   const [l0, l1] = linhas
   const valorL0 = dividir ? l0.valor : virgula(liquido)
   const valorL1 = dividir ? virgula(restanteDaSegunda(liquido, l0.valor)) : ''
@@ -267,13 +363,30 @@ export default function PainelRecebimento({
   if (dividir && l1.forma)
     efetivas.push({ forma: l1.forma, valor: valorL1, recebido: l1.recebido, parcelas: l1.parcelas })
 
-  const res = resolverPagamentos(liquido, efetivas)
+  const res = resolverPagamentos(liquido, efetivas, {
+    credito_cliente: credito,
+    pendencia: pendDisp,
+  })
   const faltaForma = liquido > 0 && (!l0.forma || (dividir && !l1.forma))
   const podeFechar =
     !!dados && !desc.erro && !fechando && (liquido === 0 || (!faltaForma && !res.erro))
 
+  const usandoCredito = linhas.some((l) => l.forma === 'credito_cliente')
+
   const mudar = (i: number, p: Partial<LinhaUI>) =>
     setLinhas((prev) => prev.map((l, n) => (n === i ? { ...l, ...p } : l)))
+
+  // atalho: gasta o crédito do cliente primeiro e deixa o resto para outra forma
+  const usarCredito = () => {
+    const usar = Math.min(credito, liquido)
+    if (usar >= liquido) {
+      setDividir(false)
+      setLinhas([{ ...linhaVazia(), forma: 'credito_cliente' }, linhaVazia()])
+    } else {
+      setDividir(true)
+      setLinhas([{ ...linhaVazia(), forma: 'credito_cliente', valor: virgula(usar) }, linhaVazia()])
+    }
+  }
 
   const fechar = async () => {
     if (!dados || !podeFechar) return
@@ -291,7 +404,8 @@ export default function PainelRecebimento({
               valor: p.valor,
               recebido: p.recebido,
               parcelas: p.parcelas,
-            }))
+            })),
+        clienteId
       )
       onFechado(r)
     } catch (e) {
@@ -362,6 +476,114 @@ export default function PainelRecebimento({
             ))}
           </ul>
         </details>
+
+        {/* cliente cadastrado: crédito e prazo dependem dele */}
+        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-700">Cliente cadastrado</p>
+            {!clienteId && !vinculando && (
+              <button
+                type="button"
+                onClick={() => setVinculando(true)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-[#079C9C] hover:underline"
+              >
+                <UserPlus className="size-4" />
+                Vincular
+              </button>
+            )}
+          </div>
+
+          {clienteId ? (
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-semibold text-slate-900">
+                  {info?.nome ?? clienteEscolhido?.nome ?? doc.cliente_nome ?? 'Cliente'}
+                </p>
+                {docCliente === null && (
+                  <button
+                    type="button"
+                    aria-label="Tirar o cliente"
+                    onClick={() => {
+                      setClienteEscolhido(null)
+                      setLinhas((prev) =>
+                        prev.map((l) =>
+                          l.forma === 'credito_cliente' || l.forma === 'pendencia'
+                            ? { ...l, forma: null }
+                            : l
+                        )
+                      )
+                    }}
+                    className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
+
+              {carregandoInfo ? (
+                <p className="flex items-center gap-2 text-xs text-slate-400">
+                  <Loader2 className="size-3 animate-spin" />
+                  Carregando saldos...
+                </p>
+              ) : erroInfo ? (
+                <p className="text-xs text-red-600">{erroInfo}</p>
+              ) : info ? (
+                <div className="flex flex-wrap gap-1.5 text-xs">
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 font-semibold text-emerald-700">
+                    Crédito {reais(info.credito)}
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 font-semibold ${
+                      info.devendo > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    Deve {reais(info.devendo)}
+                  </span>
+                  {info.vencido > 0 && (
+                    <span className="rounded-full bg-red-50 px-2.5 py-0.5 font-semibold text-red-700">
+                      Vencido {reais(info.vencido)}
+                    </span>
+                  )}
+                </div>
+              ) : null}
+
+              {credito > 0 && liquido > 0 && !usandoCredito && (
+                <button
+                  type="button"
+                  onClick={usarCredito}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <Wallet className="size-4" />
+                  Usar crédito de {reais(Math.min(credito, liquido))}
+                </button>
+              )}
+            </div>
+          ) : vinculando ? (
+            <div className="space-y-2">
+              <SeletorCliente
+                vinculo={null}
+                carregando={false}
+                onEscolher={(c) => {
+                  setClienteEscolhido(c)
+                  setVinculando(false)
+                }}
+                onLimpar={() => setClienteEscolhido(null)}
+              />
+              <button
+                type="button"
+                onClick={() => setVinculando(false)}
+                className="text-sm font-medium text-slate-500 hover:text-slate-700"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              {doc.cliente_nome ? `${doc.cliente_nome} não tem cadastro.` : 'Sem cliente cadastrado.'}{' '}
+              Para usar crédito ou vender a prazo, vincule um cliente.
+            </p>
+          )}
+        </div>
 
         {/* totais e desconto */}
         <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -441,12 +663,6 @@ export default function PainelRecebimento({
               )}
 
               {desc.erro && <p className="text-sm text-red-600">{desc.erro}</p>}
-
-              {descontoDaVenda > 0 && (
-                <p className="text-xs text-slate-500">
-                  Desconto dado na venda: {reais(descontoDaVenda)}. Você pode ajustar ou remover.
-                </p>
-              )}
             </div>
           )}
 
@@ -471,6 +687,7 @@ export default function PainelRecebimento({
               linha={l0}
               valorNumero={dividir ? Math.max(0, paraNumero(l0.valor) || 0) : liquido}
               valorEditavel={dividir}
+              extras={extras}
               onMudar={(p) => mudar(0, p)}
             />
 
@@ -481,6 +698,7 @@ export default function PainelRecebimento({
                   linha={l1}
                   valorNumero={restanteDaSegunda(liquido, l0.valor)}
                   valorEditavel={false}
+                  extras={extras}
                   onMudar={(p) => mudar(1, p)}
                 />
                 <button

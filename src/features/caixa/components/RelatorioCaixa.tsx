@@ -64,7 +64,7 @@ export function RelatorioConteudo({ rel, parcial }: { rel: Relatorio; parcial: b
       <Secao titulo={`Vendas · ${rel.vendas.quantidade} pedidos`}>
         <Linha a="Total dos pedidos" b={reais(rel.vendas.bruto)} />
         <Linha a="Descontos" b={`- ${reais(rel.vendas.descontos)}`} />
-        <Linha a="Total recebido" b={reais(rel.vendas.liquido)} forte />
+        <Linha a="Total vendido" b={reais(rel.vendas.liquido)} forte />
       </Secao>
 
       <Secao titulo="Formas de pagamento">
@@ -84,6 +84,20 @@ export function RelatorioConteudo({ rel, parcial }: { rel: Relatorio; parcial: b
           </div>
         ))}
       </Secao>
+            {rel.pendencias_recebidas.total > 0 && (
+        <Secao titulo="Pendências recebidas">
+          {Object.entries(rel.pendencias_recebidas.formas).map(([f, v]) => (
+            <Linha key={f} a={FORMA_ROTULO[f] ?? f} b={reais(v)} />
+          ))}
+          <Linha a="Total" b={reais(rel.pendencias_recebidas.total)} forte />
+        </Secao>
+      )}
+
+      {rel.devolucoes.quantidade > 0 && (
+        <Secao titulo="Devoluções">
+          <Linha a={`Crédito lançado (${rel.devolucoes.quantidade})`} b={reais(rel.devolucoes.total)} />
+        </Secao>
+      )}
 
       <Secao titulo="Dinheiro em caixa">
         <Linha a="Troco inicial" b={reais(rel.sessao.troco_inicial)} />

@@ -87,7 +87,9 @@ export function htmlRelatorioCupom(rel: Relatorio, parcial: boolean): string {
   <hr>
   <div class="t">FORMAS DE PAGAMENTO</div>
   ${formas}
-  ${parcelas ? `<div class="p">Crédito parcelado:</div>${parcelas}` : ''}
+    ${parcelas ? `<div class="p">Crédito parcelado:</div>${parcelas}` : ''}
+  ${rel.pendencias_recebidas.total > 0 ? `<hr><div class="t">PENDÊNCIAS RECEBIDAS</div>${Object.entries(rel.pendencias_recebidas.formas).map(([f, v]) => par(FORMA_ROTULO[f] ?? f, reais(v))).join('')}${par('Total', reais(rel.pendencias_recebidas.total))}` : ''}
+  ${rel.devolucoes.quantidade > 0 ? `<hr><div class="t">DEVOLUÇÕES</div>${par(`Crédito lançado (${rel.devolucoes.quantidade})`, reais(rel.devolucoes.total))}` : ''}
   <hr>
   <div class="t">DINHEIRO EM CAIXA</div>
   ${quadroDinheiro(rel, parcial).map(([a, b]) => par(a, b)).join('')}
@@ -184,13 +186,15 @@ export function htmlRelatorioA4(rel: Relatorio, parcial: boolean): string {
       <div class="card"><div class="k">Pedidos fechados</div><div class="v">${rel.vendas.quantidade}</div></div>
       <div class="card"><div class="k">Total dos pedidos</div><div class="v">${reais(rel.vendas.bruto)}</div></div>
       <div class="card"><div class="k">Descontos</div><div class="v">- ${reais(rel.vendas.descontos)}</div></div>
-      <div class="card"><div class="k">Total recebido</div><div class="v">${reais(rel.vendas.liquido)}</div></div>
+      <div class="card"><div class="k">Total vendido</div><div class="v">${reais(rel.vendas.liquido)}</div></div>
     </div>
 
     <h3>Formas de pagamento</h3>
     <table class="tab"><thead><tr><th>Forma</th><th class="r">Pedidos</th><th class="r">Valor</th></tr></thead>
       <tbody>${formas}${parcelas}</tbody></table>
 
+          ${rel.pendencias_recebidas.total > 0 ? `<h3>Pendências recebidas</h3><table class="tab"><tbody>${Object.entries(rel.pendencias_recebidas.formas).map(([f, v]) => `<tr><td>${esc(FORMA_ROTULO[f] ?? f)}</td><td class="r">${reais(v)}</td></tr>`).join('')}<tr class="forte"><td>Total</td><td class="r">${reais(rel.pendencias_recebidas.total)}</td></tr></tbody></table>` : ''}
+    ${rel.devolucoes.quantidade > 0 ? `<h3>Devoluções</h3><table class="tab"><tbody><tr><td>Crédito lançado (${rel.devolucoes.quantidade})</td><td class="r">${reais(rel.devolucoes.total)}</td></tr></tbody></table>` : ''}
     <h3>Dinheiro em caixa</h3>
     <table class="tab"><tbody>${dinheiro}</tbody></table>
     ${!parcial && dif !== null ? `<p class="${dif === 0 ? 'ok' : 'ruim'}" style="font-weight:700;margin:8px 0 0">${dif === 0 ? 'Caixa conferido, sem diferença.' : dif > 0 ? `Sobra de ${reais(dif)} no caixa.` : `Falta de ${reais(Math.abs(dif))} no caixa.`}</p>` : ''}

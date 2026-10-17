@@ -24,6 +24,9 @@ import MovimentoDialog from './MovimentoDialog'
 import PainelRecebimento from './PainelRecebimento'
 import PedidoFechado from './PedidoFechado'
 import RelatorioDialog from './RelatorioCaixa'
+import { Undo2, Wallet } from 'lucide-react'   // junto dos ícones que já existem
+import DevolucaoDialog from './DevolucaoDialog'
+import ReceberPendenciaDialog from './ReceberPendenciaDialog'
 
 type Relatorio_ = { rel: Relatorio; parcial: boolean }
 
@@ -89,6 +92,8 @@ export default function CaixaPage() {
   const [relatorio, setRelatorio] = useState<Relatorio_ | null>(null)
   const [carregandoRel, setCarregandoRel] = useState(false)
   const [erroAcao, setErroAcao] = useState('')
+  const [pendenciaAberta, setPendenciaAberta] = useState(false)
+const [devolucaoAberta, setDevolucaoAberta] = useState(false)
 
   const verRelatorio = async (id: string, parcial: boolean) => {
     setCarregandoRel(true)
@@ -165,6 +170,14 @@ export default function CaixaPage() {
                 <ArrowDownToLine className="size-4" />
                 Suprimento
               </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setPendenciaAberta(true)} className="gap-1.5">
+  <Wallet className="size-4" />
+  Pendência
+</Button>
+<Button type="button" variant="outline" size="sm" onClick={() => setDevolucaoAberta(true)} className="gap-1.5">
+  <Undo2 className="size-4" />
+  Devolução
+</Button>
               <Button
                 type="button"
                 variant="outline"
@@ -231,6 +244,17 @@ export default function CaixaPage() {
           </div>
         </>
       )}
+
+      <ReceberPendenciaDialog
+  aberto={pendenciaAberta}
+  onClose={() => setPendenciaAberta(false)}
+  onFeito={c.recarregar}
+/>
+<DevolucaoDialog
+  aberto={devolucaoAberta}
+  onClose={() => setDevolucaoAberta(false)}
+  onFeito={c.recarregar}
+/>
 
       <MovimentoDialog tipo={movimento} onClose={() => setMovimento(null)} onFeito={c.recarregar} />
 

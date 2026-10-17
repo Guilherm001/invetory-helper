@@ -1,10 +1,12 @@
-// Contas do caixa: desconto, divisão do pagamento, troco e parcelas.
+// Contas do caixa: desconto, divisão do pagamento, troco, parcelas, crédito e pendência.
 // Fica separado da tela para ser testado sozinho.
 
-export type Forma = 'dinheiro' | 'pix' | 'debito' | 'credito'
+export type Forma = 'dinheiro' | 'pix' | 'debito' | 'credito' | 'credito_cliente' | 'pendencia'
 export type TipoDesconto = 'valor' | 'percentual'
 
 export const arredonda = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+const virgula = (n: number) => n.toFixed(2).replace('.', ',')
 
 // "1.234,56" ou "1234.56" -> número | vazio -> NaN
 export function paraNumero(v: string): number {
@@ -65,9 +67,21 @@ export interface ResultadoPagamento {
 
 export const MAX_PARCELAS = 12
 
-export function resolverPagamentos(totalLiquido: number, linhas: LinhaPagamento[]): ResultadoPagamento {
+// quanto o cliente pode usar de crédito e de pendência neste pedido
+export interface Limites {
+  credito_cliente?: number
+  pendencia?: number
+}
+
+export function resolverPagamentos(
+  totalLiquido: number,
+  linhas: LinhaPagamento[],
+  limites: Limites = {}
+): ResultadoPagamento {
   const pagamentos: PagamentoCalculado[] = []
   let erro: string | null = null
+  let usadoCredito = 0
+  let usadoPendencia = 0
 
   for (const l of linhas) {
     const valor = arredonda(paraNumero(l.valor))
@@ -91,6 +105,17 @@ export function resolverPagamentos(totalLiquido: number, linhas: LinhaPagamento[
       troco = arredonda(recebido - valor)
     }
 
+    if (l.forma === 'credito_cliente') {
+      usadoCredito = arredonda(usadoCredito + valor)
+      const max = limites.credito_cliente ?? 0
+      if (usadoCredito > max) erro ??= `O crédito do cliente cobre só R$ ${virgula(max)}.`
+    }
+    if (l.forma === 'pendencia') {
+      usadoPendencia = arredonda(usadoPendencia + valor)
+      const max = limites.pendencia ?? 0
+      if (usadoPendencia > max) erro ??= `A pendência disponível do cliente é de R$ ${virgula(max)}.`
+    }
+
     const parcelas =
       l.forma === 'credito' ? Math.min(MAX_PARCELAS, Math.max(1, Math.trunc(l.parcelas) || 1)) : null
 
@@ -101,8 +126,8 @@ export function resolverPagamentos(totalLiquido: number, linhas: LinhaPagamento[
   const restante = arredonda(totalLiquido - soma)
   const troco = arredonda(pagamentos.reduce((s, p) => s + p.troco, 0))
 
-  if (!erro && restante > 0) erro = `Faltam ${restante.toFixed(2).replace('.', ',')} para fechar.`
-  if (!erro && restante < 0) erro = `Passou ${Math.abs(restante).toFixed(2).replace('.', ',')} do total.`
+  if (!erro && restante > 0) erro = `Faltam ${virgula(restante)} para fechar.`
+  if (!erro && restante < 0) erro = `Passou ${virgula(Math.abs(restante))} do total.`
 
   return { pagamentos, restante, troco, erro }
 }

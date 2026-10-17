@@ -1,6 +1,7 @@
 export interface PedidoAberto {
   id: string
   numero: number
+  cliente_id: string | null
   cliente_nome: string | null
   cliente_telefone: string | null
   tipo: 'retirada' | 'entrega'
@@ -48,7 +49,7 @@ export interface Relatorio {
     quantidade: number
     bruto: number
     descontos: number
-    liquido: number
+    liquido: number // total vendido (inclui o que foi a prazo ou pago com crédito)
     fiscal_emitidos: number
     sem_fiscal: number
   }
@@ -58,6 +59,8 @@ export interface Relatorio {
   sangrias: number
   suprimentos: number
   pendencias_dinheiro: number
+  pendencias_recebidas: { total: number; formas: Record<string, number> }
+  devolucoes: { quantidade: number; total: number }
   dinheiro_esperado: number
   movimentos: MovimentoCaixa[]
   pedidos: PedidoRelatorio[]
@@ -82,10 +85,24 @@ export interface ResultadoFechamento {
   total_liquido: number
   desconto: number
   troco: number
+  a_prazo: number
+  vencimento: string | null
+  credito_usado: number
 }
 
 export interface VendedorCaixa {
   id: string
   nome: string
   caixa: boolean
+}
+
+// o que o caixa precisa saber do cliente para aceitar crédito e prazo
+export interface ClienteInfo {
+  id: string
+  nome: string
+  ativo: boolean
+  credito: number
+  devendo: number
+  vencido: number
+  pendencia: { permitida: boolean; dias: number; limite: number }
 }

@@ -4,7 +4,7 @@ import { Check, FileCheck2 } from 'lucide-react'
 import BotoesImpressao from '@/features/loja/components/BotoesImpressao'
 import type { ResultadoFechamento } from '../types'
 import { pedidoDoCaixa } from '../services/caixaService'
-import { reais } from '../lib/formatar'
+import { dataCurta, reais } from '../lib/formatar'
 
 export default function PedidoFechado({
   resultado,
@@ -25,12 +25,27 @@ export default function PedidoFechado({
         {resultado.desconto > 0 && (
           <p className="text-sm text-slate-500">com desconto de {reais(resultado.desconto)}</p>
         )}
+        {resultado.credito_usado > 0 && (
+          <p className="text-sm text-slate-500">
+            crédito do cliente usado: {reais(resultado.credito_usado)}
+          </p>
+        )}
       </div>
 
       {resultado.troco > 0 && (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-8 py-4">
           <p className="text-sm text-emerald-700">Devolver de troco</p>
           <p className="text-4xl font-bold text-emerald-700">{reais(resultado.troco)}</p>
+        </div>
+      )}
+
+      {resultado.a_prazo > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-8 py-4">
+          <p className="text-sm text-amber-700">Ficou a prazo</p>
+          <p className="text-3xl font-bold text-amber-700">{reais(resultado.a_prazo)}</p>
+          {resultado.vencimento && (
+            <p className="text-sm text-amber-700">vence em {dataCurta(resultado.vencimento)}</p>
+          )}
         </div>
       )}
 

@@ -22,3 +22,8 @@ export const FORMA_ROTULO: Record<string, string> = {
 
 export const normalizar = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+// "2026-10-18" -> "18/10/2026" (sem converter fuso, para não voltar um dia)
+export const dataCurta = (d: string) => {
+  const [a, m, dia] = d.slice(0, 10).split('-')
+  return `${dia}/${m}/${a}`
+}
