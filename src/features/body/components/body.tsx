@@ -23,6 +23,7 @@ import {
   type EtapaDaFalta,
   type EtapaFalta,
 } from '@/features/compras/services/painelService'
+import { EtapasFaltasProvider } from './etapasFaltas'
 
 // true: um produto já comprado (Concluído) não bloqueia adicionar o mesmo de novo
 // false: qualquer produto que já está na lista bloqueia
@@ -438,17 +439,19 @@ export function Body() {
                 Limpar busca
               </button>
             </div>
-          ) : (
-            <Corpo
-              products={produtosVisiveis}
-              loading={loading}
-              error={error}
-              deleteProduct={deleteProduct}
-              updateProduct={updateProduct}
-              selecting={sel.selecting}
-              selectedIds={sel.ids}
-              onSelect={sel.toggle}
-            />
+                    ) : (
+            <EtapasFaltasProvider value={mostrarEtapas ? etapas : null}>
+              <Corpo
+                products={produtosVisiveis}
+                loading={loading}
+                error={error}
+                deleteProduct={deleteProduct}
+                updateProduct={updateProduct}
+                selecting={sel.selecting}
+                selectedIds={sel.ids}
+                onSelect={sel.toggle}
+              />
+            </EtapasFaltasProvider>
           )}
         </div>
       </div>

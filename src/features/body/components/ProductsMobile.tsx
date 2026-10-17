@@ -1,8 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, ChevronDown, Pencil, Trash2, StickyNote } from 'lucide-react'
+import Link from 'next/link'
+import { Check, ChevronDown, ChevronRight, Pencil, Trash2, StickyNote } from 'lucide-react'
 import { Product } from "../services/listService"
+import { numeroPedido } from '@/features/compras/lib/compras'
+import { useEtapasDasFaltas } from './etapasFaltas'
+import SeloEtapa from './SeloEtapa'
 import {
     AlertDialog,
     AlertDialogAction,
@@ -61,6 +65,9 @@ export function ProductsMobile({
     // só um card expandido por vez
     const [expandido, setExpandido] = useState<string | null>(null)
 
+    // etapa de cada falta (cotação, pedido, recebido): só o dono recebe esse mapa
+    const etapas = useEtapasDasFaltas()
+
     const handleDelete = (id: string | undefined) => {
         if (!id) {
             alert('Erro: ID do produto não encontrado.');
@@ -76,6 +83,10 @@ export function ProductsMobile({
                 const comprado = product.status === 'Concluído'
                 const marcado = selecting ? selectedIds.has(id) : comprado
                 const aberto = !selecting && expandido === id
+                const etapa = etapas?.get(id)
+                const temSelo = !!etapa && etapa.etapa !== 'pendente'
+                const temPedido =
+                    !!etapa?.pedido_id && (etapa.etapa === 'em_pedido' || etapa.etapa === 'recebido')
 
                 const aoTocarNoCard = () => {
                     if (selecting) {
@@ -157,6 +168,7 @@ export function ProductsMobile({
                                         >
                                             {product.status}
                                         </span>
+                                        {temSelo && etapa && <SeloEtapa etapa={etapa} />}
                                     </div>
                                 </div>
 
@@ -185,6 +197,29 @@ export function ProductsMobile({
                                                 {product.notes?.trim() ? product.notes : 'Sem observações.'}
                                             </p>
                                         </div>
+
+                                        {etapa?.etapa === 'em_cotacao' && etapa.cotacao_em && (
+                                            <p className="text-sm text-sky-700">
+                                                Cotado em{' '}
+                                                {new Date(etapa.cotacao_em).toLocaleDateString('pt-BR')}.
+                                            </p>
+                                        )}
+
+                                        {temPedido && etapa && (
+                                            <Link
+                                                href={`/pedidos-compra?abrir=${etapa.pedido_id}`}
+                                                tabIndex={aberto ? 0 : -1}
+                                                className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-[#079C9C] transition active:scale-[0.98] active:bg-[#079C9C]/10"
+                                            >
+                                                <span>
+                                                    Abrir pedido{' '}
+                                                    {etapa.pedido_numero != null
+                                                        ? numeroPedido(etapa.pedido_numero)
+                                                        : 'de compra'}
+                                                </span>
+                                                <ChevronRight className="size-4" />
+                                            </Link>
+                                        )}
 
                                         <div className="flex gap-2">
                                             <button

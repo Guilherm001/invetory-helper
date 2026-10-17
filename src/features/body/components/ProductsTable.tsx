@@ -3,6 +3,8 @@
 import { Check, Pencil, Trash2 } from 'lucide-react'
 import { Product } from "../services/listService"
 import { ProductsMobile } from './ProductsMobile';
+import { useEtapasDasFaltas } from './etapasFaltas'
+import SeloEtapa from './SeloEtapa'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +61,9 @@ export function ProductsTable({
     selectedIds,
     onSelect,
 }: ProductsTableProps) {
+    // etapa de cada falta (cotação, pedido, recebido): só o dono recebe esse mapa
+    const etapas = useEtapasDasFaltas()
+
     const handleDelete = (id: string | undefined) => {
         if (!id) {
             alert('Erro: ID do produto não encontrado.');
@@ -91,6 +96,8 @@ export function ProductsTable({
                         const marcado = selecting ? selectedIds.has(id) : comprado
                         const notas = product.notes?.trim() ?? ''
                         const pilula = PILULA_STATUS[product.status] ?? PILULA_STATUS.Pendente
+                        const etapa = etapas?.get(id)
+                        const temSelo = !!etapa && etapa.etapa !== 'pendente'
 
                         return (
                             <div
@@ -132,7 +139,7 @@ export function ProductsTable({
                                     </button>
                                 </div>
 
-                                {/* Produto + notas embaixo */}
+                                {/* Produto + etapa e notas embaixo */}
                                 <div
                                     role="cell"
                                     className={`min-w-0 ${!selecting && comprado ? 'opacity-50' : ''}`}
@@ -144,13 +151,18 @@ export function ProductsTable({
                                     >
                                         {product.name}
                                     </p>
-                                    {notas && (
-                                        <p
-                                            className="mt-0.5 truncate text-sm text-slate-500"
-                                            title={notas}
-                                        >
-                                            {notas}
-                                        </p>
+                                    {(temSelo || notas) && (
+                                        <div className="mt-1 flex min-w-0 items-center gap-2">
+                                            {temSelo && etapa && <SeloEtapa etapa={etapa} link />}
+                                            {notas && (
+                                                <p
+                                                    className="min-w-0 truncate text-sm text-slate-500"
+                                                    title={notas}
+                                                >
+                                                    {notas}
+                                                </p>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
 

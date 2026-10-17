@@ -180,6 +180,7 @@ export async function listFornecedores(): Promise<Fornecedor[]> {
   const { data, error } = await supabase
     .from('suppliers')
     .select(COL_FORNECEDOR)
+    .or('ativo.is.null,ativo.eq.true')
     .order('name')
   if (error) throw erro(error)
   return (data ?? []) as Fornecedor[]
