@@ -47,6 +47,7 @@ import {
 import { gerarPdfCompra, precarregarPdfCompra } from '../utils/gerarPdfCompra'
 import type { PedidoInicial } from './PedidoCompraDialog'
 import ReceberPedidoDialog from './ReceberPedidoDialog'
+import NotasDoPedido from './NotasDoPedido'
 
 interface Acao {
   status: StatusCompra
@@ -416,7 +417,8 @@ function Conteudo({
             </ul>
           </div>
         )}
-
+        
+        <NotasDoPedido pedido={pedido} itens={itens} />
         <div>
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Histórico
