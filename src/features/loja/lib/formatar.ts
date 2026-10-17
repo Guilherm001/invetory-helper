@@ -58,7 +58,12 @@ export function resumoDocumento(v: DocumentoResumo, itens: ItemDocumento[]) {
     L.push('Retirada na loja')
   }
 
-  L.push('', 'Itens:')
+    L.push('')
+  if ((v.desconto ?? 0) > 0) {
+    L.push(`Subtotal: ${reais(v.total)}`, `Desconto: -${reais(v.desconto ?? 0)}`)
+  }
+  L.push(`Total: ${reais(totalFinal(v))}`)
+  
   for (const i of itens) {
     L.push(
       `• ${numeroTexto(i.quantidade)}${i.unidade ? ` ${i.unidade}` : ''} ${i.produto_nome} — ${reais(i.subtotal)}`
@@ -71,3 +76,9 @@ export function resumoDocumento(v: DocumentoResumo, itens: ItemDocumento[]) {
   if (v.observacao?.trim()) L.push(`Obs: ${v.observacao.trim()}`)
   return L.join('\n')
 }
+// valor final do documento: total dos itens menos o desconto
+export const totalFinal = (d: {
+  total: number
+  desconto?: number | null
+  total_liquido?: number | null
+}) => d.total_liquido ?? d.total - (d.desconto ?? 0)

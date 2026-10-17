@@ -30,6 +30,7 @@ export interface DadosVenda {
   complemento: string
   pagamento: string
   observacao: string
+  desconto?: number // valor em reais abatido do total (0 = sem desconto)
 }
 
 export interface VendaCriada {
@@ -39,6 +40,8 @@ export interface VendaCriada {
   documento: Documento
   validade: string | null
   vendedor_nome: string | null
+    desconto?: number
+  total_liquido?: number
 }
 
 type Resposta = ({ ok: true } & VendaCriada) | { ok: false; erro: string }

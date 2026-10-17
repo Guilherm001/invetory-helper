@@ -47,6 +47,7 @@ import {
   type Cliente,
   type ClienteResumo,
 } from '@/features/clientes/services/clientesService'
+import { listarEnderecos, type EnderecoCliente } from '@/features/clientes/services/fichaService'
 import { formatarTelefone } from '@/features/clientes/lib/documentos'
 
 export type ModoDocumento = 'venda' | 'orcamento'
@@ -69,6 +70,8 @@ const emTexto = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', 
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 md:text-sm'
+
+const inputCurto = inputClass.replace('w-full', 'w-36')
 
 const labelClass = 'mb-1.5 block text-sm font-semibold text-slate-700'
 
@@ -98,6 +101,35 @@ function subtotalDe(i: ItemCarrinho) {
     ? arredonda(q * p)
     : 0
 }
+
+// endereço do cadastro do cliente (principal ou extra) que pode ser usado na entrega
+interface OpcaoEndereco {
+  chave: string
+  rotulo: string
+  endereco: string
+  bairro: string
+  cidade: string
+  complemento: string
+}
+
+interface FonteEndereco {
+  logradouro?: string | null
+  numero?: string | null
+  complemento?: string | null
+  bairro?: string | null
+  municipio?: string | null
+  observacao?: string | null
+}
+
+const dadosEndereco = (e: FonteEndereco) => ({
+  endereco: [e.logradouro, e.numero].filter(Boolean).join(', '),
+  bairro: e.bairro ?? '',
+  cidade: e.municipio ?? '',
+  // observação do endereço (ponto de referência, quem recebe...) entra junto do complemento
+  complemento: [e.complemento, e.observacao].filter(Boolean).join(' · '),
+})
+
+const resumoEndereco = (o: OpcaoEndereco) => [o.endereco, o.bairro].filter(Boolean).join(' · ')
 
 function Chip({
   ativo,
@@ -164,6 +196,11 @@ function VendaConteudo({
   // cliente cadastrado (opcional): quando escolhido, preenche os campos abaixo
   const [clienteId, setClienteId] = useState<string | null>(d?.cliente_id ?? null)
   const [vinculo, setVinculo] = useState<ClienteResumo | null>(null)
+  const [clienteCad, setClienteCad] = useState<Cliente | null>(null)
+  // endereços extras do cliente (guarda de qual cliente vieram, para não misturar)
+  const [extras, setExtras] = useState<{ id: string; lista: EnderecoCliente[] } | null>(null)
+  // qual endereço do cadastro foi escolhido para a entrega ('' = nenhum)
+  const [enderecoEscolhido, setEnderecoEscolhido] = useState('')
 
   const [cliente, setCliente] = useState(d?.cliente_nome ?? '')
   const [telefone, setTelefone] = useState(d?.cliente_telefone ?? '')
@@ -176,6 +213,10 @@ function VendaConteudo({
   const [observacao, setObservacao] = useState(d?.observacao ?? '')
   // null (só na edição) = manter a validade que o orçamento já tinha
   const [validadeDias, setValidadeDias] = useState<number | null>(edicao ? null : 7)
+
+  // desconto: digitado em R$ ou em %, enviado sempre em reais
+  const [descontoTexto, setDescontoTexto] = useState(d?.desconto ? emTexto(d.desconto) : '')
+  const [descontoTipo, setDescontoTipo] = useState<'valor' | 'percentual'>('valor')
 
   const [confirmando, setConfirmando] = useState(false)
   const [erro, setErro] = useState('')
@@ -193,7 +234,18 @@ function VendaConteudo({
   const enterOcupado = useRef(false)
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
 
-  const total = arredonda(itens.reduce((soma, i) => soma + subtotalDe(i), 0))
+  // subtotal (soma dos produtos), desconto e total final
+  const subtotal = arredonda(itens.reduce((soma, i) => soma + subtotalDe(i), 0))
+  const descontoNum = paraNumero(descontoTexto)
+  const descontoInformado = descontoTexto.trim() !== ''
+  const descontoInvalido = descontoInformado && (!Number.isFinite(descontoNum) || descontoNum < 0)
+  const descontoBruto =
+    descontoInformado && !descontoInvalido
+      ? arredonda(descontoTipo === 'percentual' ? (subtotal * descontoNum) / 100 : descontoNum)
+      : 0
+  const excedeTotal = descontoBruto > subtotal
+  const descontoValor = excedeTotal ? subtotal : descontoBruto
+  const totalLiquido = arredonda(subtotal - descontoValor)
 
   // editando um orçamento que já tinha cliente cadastrado: carrega o cartão dele
   const clienteOriginal = d?.cliente_id ?? null
@@ -202,13 +254,64 @@ function VendaConteudo({
     let cancelado = false
     obterCliente(clienteOriginal)
       .then((cli) => {
-        if (!cancelado && cli) setVinculo(cli)
+        if (!cancelado && cli) {
+          setVinculo(cli)
+          setClienteCad(cli)
+        }
       })
       .catch(() => {})
     return () => {
       cancelado = true
     }
   }, [clienteOriginal])
+
+  // endereços extras do cliente vinculado
+  useEffect(() => {
+    if (!clienteId) return
+    let cancelado = false
+    listarEnderecos(clienteId)
+      .then((lista) => {
+        if (!cancelado) setExtras({ id: clienteId, lista: lista.filter((e) => e.ativo) })
+      })
+      .catch(() => {
+        // sem os extras, a tela funciona como antes (só o endereço principal)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [clienteId])
+
+  const listaExtras = extras && extras.id === clienteId ? extras.lista : []
+
+  const opcoesEndereco: OpcaoEndereco[] = [
+    ...(clienteCad && clienteCad.logradouro
+      ? [
+          {
+            chave: 'principal',
+            rotulo: 'Endereço principal',
+            ...dadosEndereco({
+              logradouro: clienteCad.logradouro,
+              numero: clienteCad.numero,
+              complemento: clienteCad.complemento,
+              bairro: clienteCad.bairro,
+              municipio: clienteCad.municipio,
+            }),
+          },
+        ]
+      : []),
+    ...listaExtras.map((e) => ({
+      chave: e.id,
+      rotulo: e.apelido,
+      ...dadosEndereco({
+        logradouro: e.logradouro,
+        numero: e.numero,
+        complemento: e.complemento,
+        bairro: e.bairro,
+        municipio: e.municipio,
+        observacao: e.observacao,
+      }),
+    })),
+  ]
 
   // na edição só pergunta antes de fechar se algo mudou
   const snapshot = JSON.stringify([
@@ -224,6 +327,8 @@ function VendaConteudo({
     pagamento,
     observacao,
     validadeDias,
+    descontoTexto,
+    descontoTipo,
   ])
   const [inicial] = useState(snapshot)
   const sujo = edicao ? snapshot !== inicial : itens.length > 0
@@ -301,10 +406,11 @@ function VendaConteudo({
     }
   }
 
-  // escolheu um cliente cadastrado: preenche nome, telefone e endereço
+  // escolheu um cliente cadastrado: preenche nome, telefone e endereço principal
   const escolherCliente = (cli: Cliente) => {
     setClienteId(cli.id)
     setVinculo(cli)
+    setClienteCad(cli)
     setCliente(cli.nome)
     if (cli.telefone) setTelefone(formatarTelefone(cli.telefone))
     if (cli.logradouro) {
@@ -312,6 +418,9 @@ function VendaConteudo({
       setBairro(cli.bairro ?? '')
       setCidade(cli.municipio ?? '')
       setComplemento(cli.complemento ?? '')
+      setEnderecoEscolhido('principal')
+    } else {
+      setEnderecoEscolhido('')
     }
   }
 
@@ -319,9 +428,22 @@ function VendaConteudo({
   const limparCliente = () => {
     setClienteId(null)
     setVinculo(null)
+    setClienteCad(null)
+    setEnderecoEscolhido('')
   }
 
-  const montarResumo = (numero: number, totalFinal: number, validade: string | null) => {
+  // escolheu outro endereço do cadastro para esta entrega
+  const escolherEndereco = (chave: string) => {
+    setEnderecoEscolhido(chave)
+    const o = opcoesEndereco.find((x) => x.chave === chave)
+    if (!o) return
+    setEndereco(o.endereco)
+    setBairro(o.bairro)
+    setCidade(o.cidade)
+    setComplemento(o.complemento)
+  }
+
+  const montarResumo = (numero: number, validade: string | null) => {
     const linhas: string[] = [`${ehOrc ? 'Orçamento' : 'Pedido'} nº ${numero}`]
     if (ehOrc && validade) linhas.push(`Válido até ${dataCurta(validade)}`)
     if (cliente.trim())
@@ -342,7 +464,11 @@ function VendaConteudo({
       )
       if (i.obs.trim()) linhas.push(`   obs: ${i.obs.trim()}`)
     }
-    linhas.push('', `Total: ${reais(totalFinal)}`)
+    linhas.push('')
+    if (descontoValor > 0) {
+      linhas.push(`Subtotal: ${reais(subtotal)}`, `Desconto: -${reais(descontoValor)}`)
+    }
+    linhas.push(`Total: ${reais(totalLiquido)}`)
     if (pagamento) linhas.push(`Pagamento: ${pagamento}`)
     if (observacao.trim()) linhas.push(`Obs: ${observacao.trim()}`)
     return linhas.join('\n')
@@ -370,6 +496,16 @@ function VendaConteudo({
         setAba('pedido')
         return false
       }
+    }
+    if (descontoInvalido) {
+      setErro('Informe um desconto válido.')
+      setAba('pedido')
+      return false
+    }
+    if (excedeTotal) {
+      setErro('O desconto não pode ser maior que o total.')
+      setAba('pedido')
+      return false
     }
     if (tipo === 'entrega' && !endereco.trim()) {
       setErro('Informe o endereço de entrega.')
@@ -400,6 +536,7 @@ function VendaConteudo({
       complemento: tipo === 'entrega' ? complemento : '',
       pagamento,
       observacao,
+      desconto: descontoValor,
     }
     const lista = itens.map((i) => ({
       codigo: i.codigo,
@@ -418,9 +555,10 @@ function VendaConteudo({
       setFeito({
         id: r.id,
         numero: r.numero,
-        total: r.total,
+        // mostra o total que o vendedor viu na tela (já com o desconto)
+        total: r.total_liquido ?? totalLiquido,
         vendedor: r.vendedor_nome,
-        resumo: montarResumo(r.numero, r.total, r.validade),
+        resumo: montarResumo(r.numero, r.validade),
       })
       setConfirmando(false)
       if (edicao) onSalvo?.()
@@ -850,6 +988,54 @@ function VendaConteudo({
               )}
             </div>
 
+            {/* desconto */}
+            {itens.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-700">Desconto</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Chip ativo={descontoTipo === 'valor'} onClick={() => setDescontoTipo('valor')}>
+                    R$
+                  </Chip>
+                  <Chip
+                    ativo={descontoTipo === 'percentual'}
+                    onClick={() => setDescontoTipo('percentual')}
+                  >
+                    %
+                  </Chip>
+                  <input
+                    value={descontoTexto}
+                    onChange={(e) => setDescontoTexto(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={descontoTipo === 'percentual' ? 'Ex: 5' : 'Ex: 20,00'}
+                    aria-label={
+                      descontoTipo === 'percentual' ? 'Desconto em porcentagem' : 'Desconto em reais'
+                    }
+                    className={inputCurto}
+                  />
+                  {descontoValor > 0 && (
+                    <span className="text-sm font-medium text-slate-600">
+                      = −{reais(descontoValor)}
+                    </span>
+                  )}
+                  {descontoInformado && (
+                    <button
+                      type="button"
+                      onClick={() => setDescontoTexto('')}
+                      className="text-xs font-medium text-slate-400 hover:text-slate-600"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+                {descontoInvalido && (
+                  <p className="text-xs text-red-600">Informe um valor de desconto válido.</p>
+                )}
+                {excedeTotal && (
+                  <p className="text-xs text-red-600">O desconto não pode ser maior que o total.</p>
+                )}
+              </div>
+            )}
+
             {/* validade (só orçamento) */}
             {ehOrc && (
               <div className="space-y-3">
@@ -929,6 +1115,31 @@ function VendaConteudo({
                   Entrega
                 </Chip>
               </div>
+
+              {/* cliente com mais de um endereço: escolhe onde entregar */}
+              {tipo === 'entrega' && clienteId && listaExtras.length > 0 && (
+                <div>
+                  <label htmlFor="endereco-cadastro" className={labelClass}>
+                    Entregar em qual endereço do cliente?
+                  </label>
+                  <select
+                    id="endereco-cadastro"
+                    value={enderecoEscolhido}
+                    onChange={(e) => escolherEndereco(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Escolha um endereço do cadastro</option>
+                    {opcoesEndereco.map((o) => (
+                      <option key={o.chave} value={o.chave}>
+                        {o.rotulo} — {resumoEndereco(o)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Os campos abaixo são preenchidos e ainda podem ser ajustados.
+                  </p>
+                </div>
+              )}
 
               {tipo === 'entrega' && (
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1022,9 +1233,11 @@ function VendaConteudo({
         <div className="flex items-center justify-between gap-3 px-5 py-3.5">
           <div>
             <p className="text-xs text-slate-500">
-              Total · {itens.length} {itens.length === 1 ? 'produto' : 'produtos'}
+              {descontoValor > 0
+                ? `Subtotal ${reais(subtotal)} · desconto −${reais(descontoValor)}`
+                : `Total · ${itens.length} ${itens.length === 1 ? 'produto' : 'produtos'}`}
             </p>
-            <p className="text-2xl font-bold text-[#079C9C]">{reais(total)}</p>
+            <p className="text-2xl font-bold text-[#079C9C]">{reais(totalLiquido)}</p>
           </div>
 
           <div className="flex gap-2">

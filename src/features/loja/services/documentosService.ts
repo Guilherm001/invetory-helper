@@ -32,6 +32,7 @@ export interface DocumentoResumo {
   criado_em: string
   cliente_id: string | null
   desconto?: number | null
+  total_liquido?: number | null
 }
 
 export interface ItemDocumento {
@@ -48,7 +49,7 @@ export interface ItemDocumento {
 export const TAMANHO_PAGINA = 20
 
 const COLUNAS =
-  'id, numero, documento, status, cliente_nome, cliente_telefone, tipo, endereco, bairro, cidade, complemento, pagamento, observacao, total, vendedor_nome, validade, orcamento_numero, orcamento_em, criado_em, orcamento_vendedor, editado_por, editado_em, cliente_id, desconto'
+  'id, numero, documento, status, cliente_nome, cliente_telefone, tipo, endereco, bairro, cidade, complemento, pagamento, observacao, total, vendedor_nome, validade, orcamento_numero, orcamento_em, criado_em, orcamento_vendedor, editado_por, editado_em, cliente_id, desconto, total_liquido'
 
 function traduz(message: string) {
   const m = message.toLowerCase()
@@ -99,8 +100,13 @@ export async function listarDocumentos(opts: {
 
   if (error) throw new Error(traduz(error.message))
 
-  return {
-    itens: (data ?? []).map((r) => ({ ...r, total: Number(r.total) })) as DocumentoResumo[],
+    return {
+    itens: (data ?? []).map((r) => ({
+      ...r,
+      total: Number(r.total),
+      desconto: Number(r.desconto ?? 0),
+      total_liquido: r.total_liquido == null ? null : Number(r.total_liquido),
+    })) as DocumentoResumo[],
     total: count ?? 0,
   }
 }
@@ -151,7 +157,12 @@ export async function buscarDocumento(id: string): Promise<DocumentoResumo> {
 
   if (error) throw new Error(traduz(error.message))
   if (!data) throw new Error('Documento não encontrado.')
-  return { ...data, total: Number(data.total) } as unknown as DocumentoResumo
+    return {
+    ...data,
+    total: Number(data.total),
+    desconto: Number(data.desconto ?? 0),
+    total_liquido: data.total_liquido == null ? null : Number(data.total_liquido),
+  } as unknown as DocumentoResumo
 }
 
 export async function carregarDocumentoCompleto(id: string) {

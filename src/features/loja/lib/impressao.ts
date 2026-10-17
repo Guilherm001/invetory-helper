@@ -32,6 +32,7 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
   const orc = doc.documento === 'orcamento'
   const end = enderecoDe(doc)
   const desconto = Number(doc.desconto ?? 0)
+  const totalFinal = doc.total - desconto
 
   const linhasItens = itens
     .map(
@@ -52,9 +53,9 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
   @page { size: 80mm 297mm; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
-    body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm 5mm; color: #000;
-      font-family: "Courier New", Courier, monospace; font-size: 12px; font-weight: 700;
-      line-height: 1.3; }
+  body { width: ${AREA_CUPOM_MM}mm; padding: 3mm 2mm 14mm 5mm; color: #000;
+    font-family: "Courier New", Courier, monospace; font-size: 12px; font-weight: 700;
+    line-height: 1.3; }
   .c { text-align: center; }
   .b { font-weight: 700; }
   .marca { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
@@ -84,8 +85,8 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
   <div class="b">ITENS (${itens.length})</div>
   ${linhasItens}
   <hr>
-    ${desconto > 0 ? `<div class="linha"><span>Subtotal</span><span>${reais(doc.total)}</span></div><div class="linha"><span>Desconto</span><span>- ${reais(desconto)}</span></div>` : ''}
-  <div class="linha total"><span>TOTAL</span><span>${reais(doc.total - desconto)}</span></div>
+  ${desconto > 0 ? `<div class="linha"><span>Subtotal</span><span>${reais(doc.total)}</span></div><div class="linha"><span>Desconto</span><span>- ${reais(desconto)}</span></div>` : ''}
+  <div class="linha total"><span>TOTAL</span><span>${reais(totalFinal)}</span></div>
   ${doc.pagamento ? `<div style="margin-top:4px"><span class="b">Pagamento:</span> ${esc(doc.pagamento)}</div>` : ''}
   ${doc.observacao?.trim() ? `<div style="margin-top:4px"><span class="b">Obs:</span> <span class="txt">${esc(doc.observacao.trim())}</span></div>` : ''}
   <hr>
@@ -99,7 +100,8 @@ export function htmlCupom(doc: DocumentoResumo, itens: ItemDocumento[]): string 
 export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
   const orc = doc.documento === 'orcamento'
   const end = enderecoDe(doc)
-  const desconto = Number(doc.desconto ?? 0) // ← novo
+  const desconto = Number(doc.desconto ?? 0)
+  const totalFinal = doc.total - desconto
 
   const linhas = itens
     .map(
@@ -144,6 +146,8 @@ export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
   .r { text-align: right; }
   .cod { margin-top: 2px; font-size: 10px; color: #94a3b8; }
   .obsi { margin-top: 2px; font-size: 11px; font-style: italic; color: #64748b; }
+  .subtot { display: flex; justify-content: space-between; width: 270px;
+            margin: 6px 0 0 auto; padding: 0 14px; color: #475569; page-break-inside: avoid; }
   .total { display: flex; justify-content: space-between; align-items: center; width: 270px;
            margin: 14px 0 0 auto; padding: 10px 14px; border-radius: 6px;
            background: #079C9C; color: #fff; page-break-inside: avoid; }
@@ -187,8 +191,8 @@ export function htmlA4(doc: DocumentoResumo, itens: ItemDocumento[]): string {
     <tbody>${linhas}</tbody>
   </table>
 
-    ${desconto > 0 ? `<div style="text-align:right;margin-top:12px;color:#64748b">Subtotal: ${reais(doc.total)}<br>Desconto: - ${reais(desconto)}</div>` : ''}
-  <div class="total"><span>Total</span><span class="v">${reais(doc.total - desconto)}</span></div>
+  ${desconto > 0 ? `<div class="subtot"><span>Subtotal</span><span>${reais(doc.total)}</span></div><div class="subtot"><span>Desconto</span><span>- ${reais(desconto)}</span></div>` : ''}
+  <div class="total"><span>Total</span><span class="v">${reais(totalFinal)}</span></div>
 
   ${doc.pagamento ? `<div class="caixa"><div class="rotulo">Pagamento</div><div>${esc(doc.pagamento)}</div></div>` : ''}
   ${doc.observacao?.trim() ? `<div class="caixa"><div class="rotulo">Observação</div><div class="txt">${esc(doc.observacao.trim())}</div></div>` : ''}

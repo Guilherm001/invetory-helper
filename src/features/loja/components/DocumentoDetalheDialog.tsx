@@ -76,6 +76,10 @@ function Conteudo({
   const info = statusInfo(doc)
   const vencido = orc && aberto && !!doc.validade && doc.validade < hoje()
 
+  // total dos itens, desconto e valor final
+  const desconto = Number(doc.desconto ?? 0)
+  const totalFinal = doc.total - desconto
+
   useEffect(() => {
     let cancelado = false
     listarItensDocumento(doc.id)
@@ -243,9 +247,23 @@ function Conteudo({
             </ul>
           )}
 
-          <div className="mt-3 flex items-center justify-between rounded-xl border border-[#079C9C]/20 bg-[#079C9C]/5 px-4 py-3">
-            <span className="text-sm font-semibold text-slate-700">Total</span>
-            <span className="text-2xl font-bold text-[#079C9C]">{reais(doc.total)}</span>
+          <div className="mt-3 space-y-1 rounded-xl border border-[#079C9C]/20 bg-[#079C9C]/5 px-4 py-3">
+            {desconto > 0 && (
+              <>
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>Subtotal</span>
+                  <span>{reais(doc.total)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>Desconto</span>
+                  <span>−{reais(desconto)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-700">Total</span>
+              <span className="text-2xl font-bold text-[#079C9C]">{reais(totalFinal)}</span>
+            </div>
           </div>
         </div>
 
