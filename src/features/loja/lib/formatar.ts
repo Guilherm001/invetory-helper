@@ -19,6 +19,13 @@ export const dataCurta = (d: string) => {
 export const hoje = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 
+// valor final do documento: total dos itens menos o desconto
+export const totalFinal = (d: {
+  total: number
+  desconto?: number | null
+  total_liquido?: number | null
+}) => d.total_liquido ?? d.total - (d.desconto ?? 0)
+
 export function statusInfo(
   v: Pick<DocumentoResumo, 'documento' | 'status' | 'tipo' | 'validade'>
 ) {
@@ -40,6 +47,7 @@ export function statusInfo(
 // texto pronto para colar no WhatsApp
 export function resumoDocumento(v: DocumentoResumo, itens: ItemDocumento[]) {
   const orc = v.documento === 'orcamento'
+  const desconto = Number(v.desconto ?? 0)
   const L: string[] = [`${orc ? 'Orçamento' : 'Pedido'} nº ${v.numero}`]
 
   if (orc && v.validade) L.push(`Válido até ${dataCurta(v.validade)}`)
@@ -58,12 +66,7 @@ export function resumoDocumento(v: DocumentoResumo, itens: ItemDocumento[]) {
     L.push('Retirada na loja')
   }
 
-    L.push('')
-  if ((v.desconto ?? 0) > 0) {
-    L.push(`Subtotal: ${reais(v.total)}`, `Desconto: -${reais(v.desconto ?? 0)}`)
-  }
-  L.push(`Total: ${reais(totalFinal(v))}`)
-  
+  L.push('', 'Itens:')
   for (const i of itens) {
     L.push(
       `• ${numeroTexto(i.quantidade)}${i.unidade ? ` ${i.unidade}` : ''} ${i.produto_nome} — ${reais(i.subtotal)}`
@@ -71,14 +74,13 @@ export function resumoDocumento(v: DocumentoResumo, itens: ItemDocumento[]) {
     if (i.observacao?.trim()) L.push(`   obs: ${i.observacao.trim()}`)
   }
 
-  L.push('', `Total: ${reais(v.total)}`)
+  L.push('')
+  if (desconto > 0) {
+    L.push(`Subtotal: ${reais(v.total)}`, `Desconto: -${reais(desconto)}`)
+  }
+  L.push(`Total: ${reais(totalFinal(v))}`)
+
   if (v.pagamento) L.push(`Pagamento: ${v.pagamento}`)
   if (v.observacao?.trim()) L.push(`Obs: ${v.observacao.trim()}`)
   return L.join('\n')
 }
-// valor final do documento: total dos itens menos o desconto
-export const totalFinal = (d: {
-  total: number
-  desconto?: number | null
-  total_liquido?: number | null
-}) => d.total_liquido ?? d.total - (d.desconto ?? 0)
