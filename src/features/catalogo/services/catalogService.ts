@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import type { SituacaoTributaria } from '../lib/fiscal'
 
 export interface CatalogItem {
   id: string
@@ -10,8 +11,25 @@ export interface CatalogItem {
   stock: number | null
 }
 
+// dados fiscais, de venda e de organização do produto (só carregados na edição)
+export interface CatalogExtras {
+  group_id: string | null
+  ncm: string | null
+  cest: string | null
+  origem: number | null
+  cst_icms: string | null
+  situacao_trib: SituacaoTributaria | null
+  aliq_icms: number | null
+  aliq_ipi: number | null
+  aliq_st: number | null
+  comissao: number | null
+  multiplo: number // de quanto em quanto pode vender (1 = inteiro, 0.5 = meio em meio...)
+}
+
+export type CatalogItemDetalhe = CatalogItem & CatalogExtras
+
 // code é opcional: na criação o banco gera sozinho
-export type NovoCatalogItem = Omit<CatalogItem, 'id' | 'code'> & { code?: string }
+export type NovoCatalogItem = Omit<CatalogItem, 'id' | 'code'> & { code?: string } & Partial<CatalogExtras>
 
 export interface CatalogMovement {
   id: string
@@ -22,11 +40,37 @@ export interface CatalogMovement {
   created_at: string
 }
 
+export interface GrupoCatalogo {
+  id: string
+  name: string
+}
+
+export interface FornecedorBasico {
+  id: string
+  name: string
+}
+
+export interface FornecedorDoItem {
+  supplier_id: string
+  principal: boolean
+  custo: number | null
+  codigo_fornecedor: string | null
+}
+
 const COLUNAS = 'id, code, barcode, name, unit, price, stock'
+const COLUNAS_DETALHE = `${COLUNAS}, group_id, ncm, cest, origem, cst_icms, situacao_trib, aliq_icms, aliq_ipi, aliq_st, comissao, multiplo`
 const LIMITE_BUSCA = 15
 
 function traduzErro(error: { message: string; code?: string }) {
   if (error.code === '23505') return new Error('Já existe um item com esse código.')
+  if (error.code === '23514')
+    return new Error(
+      'Algum campo fiscal está em formato inválido (NCM com 8 números, CEST com 7, alíquotas de 0 a 100, múltiplo maior que zero).'
+    )
+  if (error.code === '42703' || error.message.includes('does not exist'))
+    return new Error(
+      'O banco ainda não tem os campos novos do catálogo. Rode o SQL do catálogo completo.'
+    )
   return new Error(error.message)
 }
 
@@ -50,6 +94,9 @@ function juntar(listas: (CatalogItem[] | null)[], limite: number): CatalogItem[]
   }
   return saida
 }
+
+const numeroOuNull = (v: unknown): number | null =>
+  v === null || v === undefined ? null : Number(v)
 
 // ---------- busca usada na lista de produtos ----------
 
@@ -199,6 +246,39 @@ export async function getCatalogStats(): Promise<{ total: number; semEstoque: nu
   return { total: todos.count ?? 0, semEstoque: sem.count ?? 0 }
 }
 
+// o item com todos os dados fiscais e de venda (usado na janela de edição)
+export async function getCatalogItemDetalhe(id: string): Promise<CatalogItemDetalhe> {
+  const { data, error } = await supabase
+    .from('catalog_items')
+    .select(COLUNAS_DETALHE)
+    .eq('id', id)
+    .single()
+
+  if (error) throw traduzErro(error)
+
+  const r = data as unknown as Record<string, unknown>
+  return {
+    id: r.id as string,
+    code: r.code as string,
+    barcode: (r.barcode as string | null) ?? null,
+    name: r.name as string,
+    unit: (r.unit as string | null) ?? null,
+    price: numeroOuNull(r.price),
+    stock: numeroOuNull(r.stock),
+    group_id: (r.group_id as string | null) ?? null,
+    ncm: (r.ncm as string | null) ?? null,
+    cest: (r.cest as string | null) ?? null,
+    origem: numeroOuNull(r.origem),
+    cst_icms: (r.cst_icms as string | null) ?? null,
+    situacao_trib: (r.situacao_trib as SituacaoTributaria | null) ?? null,
+    aliq_icms: numeroOuNull(r.aliq_icms),
+    aliq_ipi: numeroOuNull(r.aliq_ipi),
+    aliq_st: numeroOuNull(r.aliq_st),
+    comissao: numeroOuNull(r.comissao),
+    multiplo: r.multiplo === null || r.multiplo === undefined ? 1 : Number(r.multiplo),
+  }
+}
+
 export async function createCatalogItem(item: NovoCatalogItem): Promise<CatalogItem> {
   const user_id = await usuarioId()
 
@@ -244,6 +324,91 @@ export async function deleteCatalogItems(ids: string[]) {
   if (ids.length === 0) return
   const { error } = await supabase.from('catalog_items').delete().in('id', ids)
   if (error) throw new Error(error.message)
+}
+
+// ---------- grupos ----------
+
+export async function listGrupos(): Promise<GrupoCatalogo[]> {
+  const { data, error } = await supabase.from('catalog_groups').select('id, name').order('name')
+  if (error) throw traduzErro(error)
+  return (data ?? []) as GrupoCatalogo[]
+}
+
+export async function createGrupo(name: string): Promise<GrupoCatalogo> {
+  const { data, error } = await supabase
+    .from('catalog_groups')
+    .insert({ name: name.trim() })
+    .select('id, name')
+    .single()
+
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe um grupo com esse nome.')
+    throw traduzErro(error)
+  }
+  return data as GrupoCatalogo
+}
+
+// ---------- fornecedores do item ----------
+
+export async function listFornecedoresBasicos(): Promise<FornecedorBasico[]> {
+  const { data, error } = await supabase.from('suppliers').select('id, name').order('name')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as FornecedorBasico[]
+}
+
+export async function listFornecedoresDoItem(itemId: string): Promise<FornecedorDoItem[]> {
+  const { data, error } = await supabase
+    .from('catalog_item_suppliers')
+    .select('supplier_id, principal, custo, codigo_fornecedor')
+    .eq('item_id', itemId)
+
+  if (error) throw traduzErro(error)
+  return (data ?? []).map((r) => ({
+    supplier_id: r.supplier_id as string,
+    principal: r.principal === true,
+    custo: numeroOuNull(r.custo),
+    codigo_fornecedor: (r.codigo_fornecedor as string | null) ?? null,
+  }))
+}
+
+// grava a lista inteira: quem saiu é apagado, quem ficou é atualizado, quem entrou é criado
+export async function salvarFornecedoresDoItem(itemId: string, lista: FornecedorDoItem[]) {
+  // sempre um (e só um) principal quando há fornecedores
+  const lidos = lista.map((f) => ({ ...f }))
+  if (lidos.length > 0 && !lidos.some((f) => f.principal)) lidos[0].principal = true
+  let achouPrincipal = false
+  for (const f of lidos) {
+    if (f.principal && achouPrincipal) f.principal = false
+    if (f.principal) achouPrincipal = true
+  }
+
+  const ids = lidos.map((f) => f.supplier_id)
+
+  let remover = supabase.from('catalog_item_suppliers').delete().eq('item_id', itemId)
+  if (ids.length > 0) remover = remover.not('supplier_id', 'in', `(${ids.join(',')})`)
+  const r1 = await remover
+  if (r1.error) throw traduzErro(r1.error)
+
+  if (ids.length === 0) return
+
+  // tira o "principal" de todos antes, para a troca de principal não esbarrar no índice único
+  const r2 = await supabase
+    .from('catalog_item_suppliers')
+    .update({ principal: false })
+    .eq('item_id', itemId)
+  if (r2.error) throw traduzErro(r2.error)
+
+  const r3 = await supabase.from('catalog_item_suppliers').upsert(
+    lidos.map((f) => ({
+      item_id: itemId,
+      supplier_id: f.supplier_id,
+      principal: f.principal,
+      custo: f.custo,
+      codigo_fornecedor: f.codigo_fornecedor?.trim() || null,
+    })),
+    { onConflict: 'item_id,supplier_id' }
+  )
+  if (r3.error) throw traduzErro(r3.error)
 }
 
 // ---------- estoque ----------

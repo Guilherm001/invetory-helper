@@ -32,7 +32,9 @@ import {
   deleteCatalogItems,
   registrarEntrada,
   lastImportDate,
+  salvarFornecedoresDoItem,
   type CatalogItem,
+  type FornecedorDoItem,
   type NovoCatalogItem,
 } from '../services/catalogService'
 import CatalogItemDialog from './CatalogItemDialog'
@@ -107,9 +109,12 @@ export default function CatalogoPage() {
   const alternarTodos = () =>
     setSelecionados(todosMarcados ? new Set() : new Set(c.items.map((i) => i.id)))
 
-  const salvarItem = async (data: NovoCatalogItem) => {
-    if (dialogItem.item) await updateCatalogItem(dialogItem.item.id, data)
-    else await createCatalogItem(data)
+  const salvarItem = async (data: NovoCatalogItem, fornecedores: FornecedorDoItem[]) => {
+    const salvo = dialogItem.item
+      ? await updateCatalogItem(dialogItem.item.id, data)
+      : await createCatalogItem(data)
+    // os fornecedores do item vão numa segunda gravação, já com o id do item salvo
+    await salvarFornecedoresDoItem(salvo.id, fornecedores)
     await c.recarregar()
     carregarImportacao()
   }

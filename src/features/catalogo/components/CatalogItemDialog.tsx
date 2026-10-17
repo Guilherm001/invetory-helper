@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, PackagePlus, Pencil } from 'lucide-react'
+import { AlertCircle, Loader2, PackagePlus, Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
   Dialog,
@@ -10,32 +10,119 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../../components/ui/dialog'
-import type { CatalogItem, NovoCatalogItem } from '../services/catalogService'
+import {
+  createGrupo,
+  getCatalogItemDetalhe,
+  listFornecedoresBasicos,
+  listFornecedoresDoItem,
+  listGrupos,
+  type CatalogItem,
+  type CatalogItemDetalhe,
+  type FornecedorBasico,
+  type FornecedorDoItem,
+  type GrupoCatalogo,
+  type NovoCatalogItem,
+} from '../services/catalogService'
+import {
+  CSOSN,
+  CST_NORMAL,
+  MULTIPLOS_PADRAO,
+  ORIGENS,
+  SITUACOES_TRIB,
+  exemploMultiplo,
+  formatarCest,
+  formatarNcm,
+  soDigitos,
+  textoNumero,
+  type SituacaoTributaria,
+} from '../lib/fiscal'
 
 interface Props {
   open: boolean
   item: CatalogItem | null // null = criar
   onClose: () => void
-  onSave: (data: NovoCatalogItem) => Promise<void>
+  onSave: (data: NovoCatalogItem, fornecedores: FornecedorDoItem[]) => Promise<void>
+}
+
+type Aba = 'geral' | 'venda' | 'fiscal' | 'fornecedores'
+
+interface Form {
+  barcode: string
+  name: string
+  unit: string
+  price: string
+  stock: string
+  groupId: string
+  multiplo: string
+  comissao: string
+  ncm: string
+  cest: string
+  origem: string
+  cst: string
+  sit: string
+  aliqIcms: string
+  aliqIpi: string
+  aliqSt: string
+}
+
+interface VinculoForm {
+  supplier_id: string
+  principal: boolean
+  custo: string
+  codigo: string
+}
+
+type Erros = Partial<Record<keyof Form | 'fornecedores', string>>
+
+const ABAS: { id: Aba; rotulo: string }[] = [
+  { id: 'geral', rotulo: 'Geral' },
+  { id: 'venda', rotulo: 'Venda' },
+  { id: 'fiscal', rotulo: 'Fiscal' },
+  { id: 'fornecedores', rotulo: 'Fornecedores' },
+]
+
+// em qual aba cada campo mora (para abrir a aba certa quando há erro)
+const ABA_DO_CAMPO: Record<string, Aba> = {
+  name: 'geral',
+  price: 'geral',
+  stock: 'geral',
+  multiplo: 'venda',
+  comissao: 'venda',
+  ncm: 'fiscal',
+  cest: 'fiscal',
+  aliqIcms: 'fiscal',
+  aliqIpi: 'fiscal',
+  aliqSt: 'fiscal',
+  fornecedores: 'fornecedores',
 }
 
 const inputClass =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
+  'w-full rounded-lg border bg-white px-3 py-2.5 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 md:text-sm'
+
+const borda = (erro?: string) => (erro ? 'border-red-400' : 'border-slate-200')
 
 function Campo({
   label,
-  children,
+  erro,
   dica,
+  className = '',
+  children,
 }: {
   label: string
-  children: React.ReactNode
+  erro?: string
   dica?: string
+  className?: string
+  children: React.ReactNode
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className={`space-y-1.5 ${className}`}>
       <span className="block text-sm font-semibold text-slate-700">{label}</span>
       {children}
-      {dica && <p className="text-xs text-slate-400">{dica}</p>}
+      {erro ? (
+        <p className="text-xs text-red-600">{erro}</p>
+      ) : (
+        dica && <p className="text-xs text-slate-400">{dica}</p>
+      )}
     </div>
   )
 }
@@ -47,165 +134,772 @@ function paraNumero(v: string): number | null {
   return Number(t.replace(',', '.'))
 }
 
-const emTexto = (n: number | null) => (n === null || n === undefined ? '' : String(n).replace('.', ','))
+const numTexto = (n: number | null | undefined) =>
+  n === null || n === undefined ? '' : textoNumero(n)
 
-export default function CatalogItemDialog({ open, item, onClose, onSave }: Props) {
-  const [barcode, setBarcode] = useState('')
-  const [name, setName] = useState('')
-  const [unit, setUnit] = useState('')
-  const [price, setPrice] = useState('')
-  const [stock, setStock] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [errorMessage, setErrorMessage] = useState('')
+const percentualInvalido = (v: string) => {
+  const n = paraNumero(v)
+  return n !== null && (Number.isNaN(n) || n < 0 || n > 100)
+}
 
+function formInicial(item: CatalogItem | null): Form {
+  return {
+    barcode: item?.barcode ?? '',
+    name: item?.name ?? '',
+    unit: item?.unit ?? '',
+    price: numTexto(item?.price),
+    stock: numTexto(item?.stock),
+    groupId: '',
+    multiplo: '1',
+    comissao: '',
+    ncm: '',
+    cest: '',
+    origem: '',
+    cst: '',
+    sit: '',
+    aliqIcms: '',
+    aliqIpi: '',
+    aliqSt: '',
+  }
+}
+
+// o que vem do banco depois que a janela abre
+function extrasDoBanco(d: CatalogItemDetalhe): Partial<Form> {
+  return {
+    groupId: d.group_id ?? '',
+    multiplo: numTexto(d.multiplo),
+    comissao: numTexto(d.comissao),
+    ncm: d.ncm ?? '',
+    cest: d.cest ?? '',
+    origem: d.origem === null ? '' : String(d.origem),
+    cst: d.cst_icms ?? '',
+    sit: d.situacao_trib ?? '',
+    aliqIcms: numTexto(d.aliq_icms),
+    aliqIpi: numTexto(d.aliq_ipi),
+    aliqSt: numTexto(d.aliq_st),
+  }
+}
+
+function validar(f: Form, vinculos: VinculoForm[]): Erros {
+  const e: Erros = {}
+
+  if (!f.name.trim()) e.name = 'A descrição é obrigatória.'
+
+  const preco = paraNumero(f.price)
+  if (preco !== null && (Number.isNaN(preco) || preco < 0)) e.price = 'Informe um valor válido.'
+
+  const estoque = paraNumero(f.stock)
+  if (estoque !== null && Number.isNaN(estoque)) e.stock = 'Informe um número.'
+
+  const m = paraNumero(f.multiplo)
+  if (m === null || Number.isNaN(m) || m <= 0) {
+    e.multiplo = 'Informe um valor maior que zero (ex.: 1, 0,5 ou 0,25).'
+  } else if (Math.round(m * 1000) / 1000 !== m) {
+    e.multiplo = 'Use até 3 casas decimais.'
+  } else if (m > 1000) {
+    e.multiplo = 'Valor grande demais.'
+  }
+
+  if (percentualInvalido(f.comissao)) e.comissao = 'Informe de 0 a 100.'
+  if (f.ncm && f.ncm.length !== 8) e.ncm = 'O NCM tem 8 números.'
+  if (f.cest && f.cest.length !== 7) e.cest = 'O CEST tem 7 números.'
+  if (percentualInvalido(f.aliqIcms)) e.aliqIcms = 'Informe de 0 a 100.'
+  if (percentualInvalido(f.aliqIpi)) e.aliqIpi = 'Informe de 0 a 100.'
+  if (percentualInvalido(f.aliqSt)) e.aliqSt = 'Informe de 0 a 100.'
+
+  for (const v of vinculos) {
+    const custo = paraNumero(v.custo)
+    if (custo !== null && (Number.isNaN(custo) || custo < 0)) {
+      e.fornecedores = 'Confira o custo informado nos fornecedores.'
+      break
+    }
+  }
+
+  return e
+}
+
+// ---------- conteúdo (só existe enquanto a janela está aberta) ----------
+
+function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
   const editando = item !== null
 
-  // preenche (ou limpa) sempre que o modal abre
+  const [aba, setAba] = useState<Aba>('geral')
+  const [f, setF] = useState<Form>(() => formInicial(item))
+  const [vinculos, setVinculos] = useState<VinculoForm[]>([])
+  const [grupos, setGrupos] = useState<GrupoCatalogo[]>([])
+  const [fornecedores, setFornecedores] = useState<FornecedorBasico[]>([])
+  const [carregando, setCarregando] = useState(true)
+  const [erroCarga, setErroCarga] = useState('')
+
+  const [erros, setErros] = useState<Erros>({})
+  const [errorMessage, setErrorMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const [novoGrupo, setNovoGrupo] = useState('')
+  const [criandoGrupo, setCriandoGrupo] = useState(false)
+  const [erroGrupo, setErroGrupo] = useState('')
+  const [fornecedorEscolhido, setFornecedorEscolhido] = useState('')
+
+  // carrega grupos, fornecedores e (na edição) os dados completos do item
   useEffect(() => {
-    if (!open) return
-    setBarcode(item?.barcode ?? '')
-    setName(item?.name ?? '')
-    setUnit(item?.unit ?? '')
-    setPrice(emTexto(item?.price ?? null))
-    setStock(emTexto(item?.stock ?? null))
-    setErrorMessage('')
-  }, [open, item])
+    let cancelado = false
+
+    Promise.all([
+      listGrupos(),
+      listFornecedoresBasicos(),
+      item ? getCatalogItemDetalhe(item.id) : Promise.resolve(null),
+      item ? listFornecedoresDoItem(item.id) : Promise.resolve([] as FornecedorDoItem[]),
+    ])
+      .then(([g, forn, detalhe, doItem]) => {
+        if (cancelado) return
+        setGrupos(g)
+        setFornecedores(forn)
+        if (detalhe) setF((p) => ({ ...p, ...extrasDoBanco(detalhe) }))
+        setVinculos(
+          doItem.map((v) => ({
+            supplier_id: v.supplier_id,
+            principal: v.principal,
+            custo: numTexto(v.custo),
+            codigo: v.codigo_fornecedor ?? '',
+          }))
+        )
+        setCarregando(false)
+      })
+      .catch((e) => {
+        if (cancelado) return
+        setErroCarga(e instanceof Error ? e.message : 'Erro ao carregar os dados do item')
+        setCarregando(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [item])
+
+  const set = <K extends keyof Form>(campo: K, valor: Form[K]) => {
+    setF((p) => ({ ...p, [campo]: valor }))
+    if (erros[campo]) setErros((p) => ({ ...p, [campo]: undefined }))
+  }
+
+  // ---------- grupo ----------
+
+  const criarGrupo = async () => {
+    const nome = novoGrupo.trim()
+    if (!nome || criandoGrupo) return
+    setCriandoGrupo(true)
+    setErroGrupo('')
+    try {
+      const g = await createGrupo(nome)
+      setGrupos((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')))
+      set('groupId', g.id)
+      setNovoGrupo('')
+    } catch (e) {
+      setErroGrupo(e instanceof Error ? e.message : 'Não foi possível criar o grupo')
+    } finally {
+      setCriandoGrupo(false)
+    }
+  }
+
+  // ---------- fornecedores do item ----------
+
+  const disponiveis = fornecedores.filter((x) => !vinculos.some((v) => v.supplier_id === x.id))
+  const nomeDe = (id: string) => fornecedores.find((x) => x.id === id)?.name ?? 'Fornecedor'
+
+  const adicionarFornecedor = () => {
+    if (!fornecedorEscolhido) return
+    setVinculos((prev) => [
+      ...prev,
+      {
+        supplier_id: fornecedorEscolhido,
+        principal: prev.length === 0, // o primeiro vira o principal
+        custo: '',
+        codigo: '',
+      },
+    ])
+    setFornecedorEscolhido('')
+    if (erros.fornecedores) setErros((p) => ({ ...p, fornecedores: undefined }))
+  }
+
+  const tornarPrincipal = (id: string) =>
+    setVinculos((prev) => prev.map((v) => ({ ...v, principal: v.supplier_id === id })))
+
+  const removerFornecedor = (id: string) =>
+    setVinculos((prev) => {
+      const resto = prev.filter((v) => v.supplier_id !== id)
+      if (resto.length > 0 && !resto.some((v) => v.principal)) resto[0] = { ...resto[0], principal: true }
+      return resto
+    })
+
+  const alterarVinculo = (id: string, dados: Partial<VinculoForm>) =>
+    setVinculos((prev) => prev.map((v) => (v.supplier_id === id ? { ...v, ...dados } : v)))
+
+  // ---------- salvar ----------
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (saving) return
 
-    const precoNum = paraNumero(price)
-    const estoqueNum = paraNumero(stock)
+    const novos = validar(f, vinculos)
+    setErros(novos)
 
-    if (!name.trim()) {
-      setErrorMessage('A descrição é obrigatória.')
+    const camposComErro = Object.keys(novos).filter((c) => novos[c as keyof Erros])
+    if (camposComErro.length > 0) {
+      setErrorMessage('Corrija os campos destacados.')
+      const primeiraAba = ABAS.find((a) => camposComErro.some((c) => ABA_DO_CAMPO[c] === a.id))
+      if (primeiraAba) setAba(primeiraAba.id)
       return
     }
-    if (Number.isNaN(precoNum) || Number.isNaN(estoqueNum)) {
-      setErrorMessage('Preço e estoque precisam ser números.')
-      return
+
+    const dados: NovoCatalogItem = {
+      barcode: f.barcode.trim() || null,
+      name: f.name.trim(),
+      unit: f.unit.trim().toUpperCase() || null,
+      price: paraNumero(f.price),
+      stock: paraNumero(f.stock),
+      group_id: f.groupId || null,
+      multiplo: paraNumero(f.multiplo) ?? 1,
+      comissao: paraNumero(f.comissao),
+      ncm: f.ncm || null,
+      cest: f.cest || null,
+      origem: f.origem === '' ? null : Number(f.origem),
+      cst_icms: f.cst || null,
+      situacao_trib: (f.sit || null) as SituacaoTributaria | null,
+      aliq_icms: paraNumero(f.aliqIcms),
+      aliq_ipi: paraNumero(f.aliqIpi),
+      aliq_st: paraNumero(f.aliqSt),
     }
+
+    const lista: FornecedorDoItem[] = vinculos.map((v) => ({
+      supplier_id: v.supplier_id,
+      principal: v.principal,
+      custo: paraNumero(v.custo),
+      codigo_fornecedor: v.codigo.trim() || null,
+    }))
 
     setSaving(true)
     setErrorMessage('')
     try {
       // o código não é enviado: o banco gera na criação e não muda na edição
-      await onSave({
-        barcode: barcode.trim() || null,
-        name: name.trim(),
-        unit: unit.trim().toUpperCase() || null,
-        price: precoNum,
-        stock: estoqueNum,
-      })
+      await onSave(dados, lista)
       onClose()
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Erro ao salvar')
-    } finally {
       setSaving(false)
     }
   }
 
+  const multiploNum = paraNumero(f.multiplo)
+  const exemplo = multiploNum !== null && !Number.isNaN(multiploNum) ? exemploMultiplo(multiploNum) : ''
+
+  const abaTemErro = (id: Aba) => Object.keys(erros).some((c) => erros[c as keyof Erros] && ABA_DO_CAMPO[c] === id)
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="top-[5%] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[480px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100">
-        <DialogHeader className="bg-[#079C9C] px-6 py-5 text-left">
-          <div className="flex items-center gap-3">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/20">
-              {editando ? (
-                <Pencil className="size-6 text-white" />
-              ) : (
-                <PackagePlus className="size-6 text-white" />
+    <>
+      <DialogHeader className="shrink-0 bg-[#079C9C] px-6 py-5 text-left">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/20">
+            {editando ? (
+              <Pencil className="size-6 text-white" />
+            ) : (
+              <PackagePlus className="size-6 text-white" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <DialogTitle className="text-xl font-bold text-white">
+              {editando ? 'Editar item' : 'Novo item'}
+            </DialogTitle>
+            <DialogDescription className="truncate text-sm text-white/80">
+              {editando ? item?.name : 'Cadastre um produto no catálogo'}
+            </DialogDescription>
+          </div>
+        </div>
+      </DialogHeader>
+
+      <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+        {/* abas */}
+        <div role="tablist" aria-label="Seções do cadastro" className="shrink-0 overflow-x-auto border-b border-slate-200 px-4">
+          <div className="flex gap-1">
+            {ABAS.map(({ id, rotulo }) => {
+              const ativa = aba === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={ativa}
+                  onClick={() => setAba(id)}
+                  className={`relative -mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-semibold transition ${
+                    ativa
+                      ? 'border-[#079C9C] text-[#079C9C]'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {rotulo}
+                  {id === 'fornecedores' && vinculos.length > 0 && (
+                    <span className="rounded-full bg-slate-100 px-1.5 text-xs font-semibold text-slate-600">
+                      {vinculos.length}
+                    </span>
+                  )}
+                  {abaTemErro(id) && <span className="size-2 rounded-full bg-red-500" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="min-h-[340px] flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          {erroCarga && (
+            <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              {erroCarga}
+            </p>
+          )}
+
+          {carregando && editando && aba !== 'geral' ? (
+            <p className="flex items-center gap-2 py-6 text-sm text-slate-400">
+              <Loader2 className="size-4 animate-spin" />
+              Carregando dados do item...
+            </p>
+          ) : (
+            <>
+              {/* ===== GERAL ===== */}
+              {aba === 'geral' && (
+                <>
+                  <Campo label="Descrição" erro={erros.name}>
+                    <input
+                      value={f.name}
+                      onChange={(e) => set('name', e.target.value)}
+                      className={`${inputClass} ${borda(erros.name)}`}
+                      placeholder="Ex: Cimento CP-II 50kg"
+                      autoFocus
+                    />
+                  </Campo>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Campo label="Código">
+                      <input
+                        value={editando ? item?.code ?? '' : ''}
+                        readOnly
+                        disabled
+                        tabIndex={-1}
+                        className={`${inputClass} ${borda()} cursor-not-allowed bg-slate-50 text-slate-500`}
+                        placeholder="Gerado automaticamente"
+                      />
+                    </Campo>
+                    <Campo label="Código de barras">
+                      <input
+                        value={f.barcode}
+                        onChange={(e) => set('barcode', e.target.value)}
+                        className={`${inputClass} ${borda()}`}
+                        inputMode="numeric"
+                        placeholder="Opcional"
+                      />
+                    </Campo>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <Campo label="Unidade">
+                      <input
+                        value={f.unit}
+                        onChange={(e) => set('unit', e.target.value)}
+                        className={`${inputClass} ${borda()} uppercase`}
+                        placeholder="UN, SC, M"
+                      />
+                    </Campo>
+                    <Campo label="Preço (R$)" erro={erros.price}>
+                      <input
+                        value={f.price}
+                        onChange={(e) => set('price', e.target.value)}
+                        className={`${inputClass} ${borda(erros.price)}`}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                      />
+                    </Campo>
+                    <Campo label="Estoque" erro={erros.stock}>
+                      <input
+                        value={f.stock}
+                        onChange={(e) => set('stock', e.target.value)}
+                        className={`${inputClass} ${borda(erros.stock)}`}
+                        inputMode="decimal"
+                        placeholder="0"
+                      />
+                    </Campo>
+                  </div>
+
+                  {editando && (
+                    <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      Para somar ao estoque guardando o histórico, use o botão de entrada na
+                      lista. Mudar o estoque aqui apenas substitui o valor.
+                    </p>
+                  )}
+
+                  <Campo label="Grupo" dica="Para organizar os produtos por tipo (ex.: Cimentos, Tintas, Hidráulica)">
+                    <select
+                      value={f.groupId}
+                      onChange={(e) => set('groupId', e.target.value)}
+                      className={`${inputClass} ${borda()}`}
+                    >
+                      <option value="">Sem grupo</option>
+                      {grupos.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Campo>
+
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        value={novoGrupo}
+                        onChange={(e) => {
+                          setNovoGrupo(e.target.value)
+                          setErroGrupo('')
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            criarGrupo()
+                          }
+                        }}
+                        maxLength={60}
+                        placeholder="Criar um grupo novo"
+                        aria-label="Nome do novo grupo"
+                        className={`${inputClass} ${borda()}`}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={criarGrupo}
+                        disabled={!novoGrupo.trim() || criandoGrupo}
+                        className="shrink-0 gap-1.5 border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10 hover:text-[#079C9C]"
+                      >
+                        {criandoGrupo ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Plus className="size-4" />
+                        )}
+                        Criar
+                      </Button>
+                    </div>
+                    {erroGrupo && <p className="text-xs text-red-600">{erroGrupo}</p>}
+                  </div>
+                </>
               )}
-            </div>
-            <div className="min-w-0">
-              <DialogTitle className="text-xl font-bold text-white">
-                {editando ? 'Editar item' : 'Novo item'}
-              </DialogTitle>
-              <DialogDescription className="truncate text-sm text-white/80">
-                {editando ? item?.name : 'Cadastre um produto no catálogo'}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-            <Campo label="Descrição">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className={inputClass}
-                placeholder="Ex: Cimento CP-II 50kg"
-                autoFocus
-              />
-            </Campo>
+              {/* ===== VENDA ===== */}
+              {aba === 'venda' && (
+                <>
+                  <div className="space-y-2.5">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">Vendido de quanto em quanto?</p>
+                      <p className="text-xs text-slate-400">
+                        Define o menor pedaço e o passo da quantidade na venda. Ex.: um item de
+                        &ldquo;meio em meio&rdquo; pode sair como 0,5, 1 ou 1,5.
+                      </p>
+                    </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <Campo label="Código">
-                <input
-                  value={editando ? item?.code ?? '' : ''}
-                  readOnly
-                  disabled
-                  tabIndex={-1}
-                  className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500`}
-                  placeholder="Gerado automaticamente"
-                />
-              </Campo>
-              <Campo label="Código de barras">
-                <input
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  className={inputClass}
-                  inputMode="numeric"
-                  placeholder="Opcional"
-                />
-              </Campo>
-            </div>
+                    <div role="radiogroup" aria-label="Múltiplo de venda" className="flex flex-wrap gap-2">
+                      {MULTIPLOS_PADRAO.map((m) => {
+                        const ativo = multiploNum === m.valor
+                        return (
+                          <button
+                            key={m.valor}
+                            type="button"
+                            role="radio"
+                            aria-checked={ativo}
+                            onClick={() => set('multiplo', textoNumero(m.valor))}
+                            className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                              ativo
+                                ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {m.titulo} ({textoNumero(m.valor)})
+                          </button>
+                        )
+                      })}
+                    </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <Campo label="Unidade">
-                <input
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  className={`${inputClass} uppercase`}
-                  placeholder="UN, SC, M"
-                />
-              </Campo>
-              <Campo label="Preço (R$)">
-                <input
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  className={inputClass}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                />
-              </Campo>
-              <Campo label="Estoque">
-                <input
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  className={inputClass}
-                  inputMode="decimal"
-                  placeholder="0"
-                />
-              </Campo>
-            </div>
+                    <Campo label="Ou digite outro valor" erro={erros.multiplo}>
+                      <input
+                        value={f.multiplo}
+                        onChange={(e) => set('multiplo', e.target.value)}
+                        inputMode="decimal"
+                        placeholder="1"
+                        className={`${inputClass} ${borda(erros.multiplo)} sm:max-w-[200px]`}
+                      />
+                    </Campo>
 
-            {editando && (
-              <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                Para somar ao estoque guardando o histórico, use o botão de entrada na lista.
-                Mudar o estoque aqui apenas substitui o valor.
-              </p>
-            )}
+                    {exemplo && !erros.multiplo && (
+                      <p className="rounded-lg bg-[#079C9C]/5 px-3 py-2 text-sm text-[#079C9C]">{exemplo}</p>
+                    )}
+                  </div>
 
-            {errorMessage && (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                {errorMessage}
-              </p>
-            )}
-          </div>
+                  <Campo
+                    label="Comissão (%)"
+                    erro={erros.comissao}
+                    dica="Percentual do valor da venda que o vendedor ganha neste produto"
+                    className="sm:max-w-[240px]"
+                  >
+                    <input
+                      value={f.comissao}
+                      onChange={(e) => set('comissao', e.target.value)}
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      className={`${inputClass} ${borda(erros.comissao)}`}
+                    />
+                  </Campo>
+                </>
+              )}
 
-          <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+              {/* ===== FISCAL ===== */}
+              {aba === 'fiscal' && (
+                <>
+                  <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Esses dados são usados na emissão de nota fiscal. Em dúvida, confirme com o
+                    contador antes de preencher.
+                  </p>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Campo label="NCM" erro={erros.ncm} dica="8 números">
+                      <input
+                        value={formatarNcm(f.ncm)}
+                        onChange={(e) => set('ncm', soDigitos(e.target.value).slice(0, 8))}
+                        inputMode="numeric"
+                        placeholder="0000.00.00"
+                        autoComplete="off"
+                        className={`${inputClass} ${borda(erros.ncm)}`}
+                      />
+                    </Campo>
+                    <Campo label="CEST" erro={erros.cest} dica="7 números, quando o produto tem ST">
+                      <input
+                        value={formatarCest(f.cest)}
+                        onChange={(e) => set('cest', soDigitos(e.target.value).slice(0, 7))}
+                        inputMode="numeric"
+                        placeholder="00.000.00"
+                        autoComplete="off"
+                        className={`${inputClass} ${borda(erros.cest)}`}
+                      />
+                    </Campo>
+                  </div>
+
+                  <Campo label="Origem da mercadoria">
+                    <select
+                      value={f.origem}
+                      onChange={(e) => set('origem', e.target.value)}
+                      className={`${inputClass} ${borda()}`}
+                    >
+                      <option value="">Não informada</option>
+                      {ORIGENS.map((o) => (
+                        <option key={o.valor} value={String(o.valor)}>
+                          {o.rotulo}
+                        </option>
+                      ))}
+                    </select>
+                  </Campo>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Campo label="CST / CSOSN do ICMS">
+                      <select
+                        value={f.cst}
+                        onChange={(e) => set('cst', e.target.value)}
+                        className={`${inputClass} ${borda()}`}
+                      >
+                        <option value="">Não informado</option>
+                        <optgroup label="Regime normal (CST)">
+                          {CST_NORMAL.map((c) => (
+                            <option key={c.valor} value={c.valor}>
+                              {c.rotulo}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Simples Nacional (CSOSN)">
+                          {CSOSN.map((c) => (
+                            <option key={c.valor} value={c.valor}>
+                              {c.rotulo}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </Campo>
+
+                    <Campo label="Situação tributária (S. Trib.)">
+                      <select
+                        value={f.sit}
+                        onChange={(e) => set('sit', e.target.value)}
+                        className={`${inputClass} ${borda()}`}
+                      >
+                        <option value="">Não informada</option>
+                        {SITUACOES_TRIB.map((s) => (
+                          <option key={s.valor} value={s.valor}>
+                            {s.rotulo}
+                          </option>
+                        ))}
+                      </select>
+                    </Campo>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Campo label="Alíq. ICMS (%)" erro={erros.aliqIcms}>
+                      <input
+                        value={f.aliqIcms}
+                        onChange={(e) => set('aliqIcms', e.target.value)}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className={`${inputClass} ${borda(erros.aliqIcms)}`}
+                      />
+                    </Campo>
+                    <Campo label="Alíq. IPI (%)" erro={erros.aliqIpi}>
+                      <input
+                        value={f.aliqIpi}
+                        onChange={(e) => set('aliqIpi', e.target.value)}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className={`${inputClass} ${borda(erros.aliqIpi)}`}
+                      />
+                    </Campo>
+                    <Campo label="Alíq. subst. trib. (%)" erro={erros.aliqSt}>
+                      <input
+                        value={f.aliqSt}
+                        onChange={(e) => set('aliqSt', e.target.value)}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className={`${inputClass} ${borda(erros.aliqSt)}`}
+                      />
+                    </Campo>
+                  </div>
+                </>
+              )}
+
+              {/* ===== FORNECEDORES ===== */}
+              {aba === 'fornecedores' && (
+                <>
+                  <p className="text-xs text-slate-400">
+                    Escolha quem fornece este produto. O fornecedor principal é o que aparece
+                    primeiro nas compras. Informe o custo e o código que o fornecedor usa, se
+                    quiser.
+                  </p>
+
+                  {erros.fornecedores && <p className="text-xs text-red-600">{erros.fornecedores}</p>}
+
+                  {vinculos.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+                      Nenhum fornecedor ligado a este produto.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {vinculos.map((v) => (
+                        <li
+                          key={v.supplier_id}
+                          className={`space-y-2 rounded-xl border p-3 shadow-sm ${
+                            v.principal ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="min-w-0 truncate font-semibold text-slate-900">
+                              {nomeDe(v.supplier_id)}
+                            </p>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => tornarPrincipal(v.supplier_id)}
+                                aria-pressed={v.principal}
+                                title={v.principal ? 'Fornecedor principal' : 'Tornar principal'}
+                                className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition ${
+                                  v.principal
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                }`}
+                              >
+                                <Star className={`size-4 ${v.principal ? 'fill-amber-400 text-amber-500' : ''}`} />
+                                {v.principal ? 'Principal' : 'Tornar principal'}
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Tirar ${nomeDe(v.supplier_id)}`}
+                                onClick={() => removerFornecedor(v.supplier_id)}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                              >
+                                <Trash2 className="size-4" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <input
+                              value={v.custo}
+                              onChange={(e) => alterarVinculo(v.supplier_id, { custo: e.target.value })}
+                              inputMode="decimal"
+                              placeholder="Custo (R$)"
+                              aria-label={`Custo em ${nomeDe(v.supplier_id)}`}
+                              className={`${inputClass} ${borda()}`}
+                            />
+                            <input
+                              value={v.codigo}
+                              onChange={(e) => alterarVinculo(v.supplier_id, { codigo: e.target.value })}
+                              maxLength={60}
+                              placeholder="Código no fornecedor"
+                              aria-label={`Código no fornecedor ${nomeDe(v.supplier_id)}`}
+                              className={`${inputClass} ${borda()}`}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {fornecedores.length === 0 ? (
+                    <p className="text-xs text-slate-400">
+                      Nenhum fornecedor cadastrado ainda. Cadastre em Fornecedores para poder
+                      ligar aqui.
+                    </p>
+                  ) : disponiveis.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={fornecedorEscolhido}
+                        onChange={(e) => setFornecedorEscolhido(e.target.value)}
+                        aria-label="Escolher fornecedor"
+                        className={`${inputClass} ${borda()}`}
+                      >
+                        <option value="">Escolha um fornecedor</option>
+                        {disponiveis.map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.name}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={adicionarFornecedor}
+                        disabled={!fornecedorEscolhido}
+                        className="shrink-0 gap-1.5 border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10 hover:text-[#079C9C]"
+                      >
+                        <Plus className="size-4" />
+                        Adicionar
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">Todos os fornecedores já estão ligados.</p>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="shrink-0 border-t border-slate-200 bg-slate-50">
+          {errorMessage && (
+            <p
+              role="alert"
+              className="flex items-start gap-2 border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-600"
+            >
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              {errorMessage}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 px-6 py-4">
             <Button
               type="button"
               variant="outline"
@@ -217,7 +911,7 @@ export default function CatalogItemDialog({ open, item, onClose, onSave }: Props
             </Button>
             <Button
               type="submit"
-              disabled={saving}
+              disabled={saving || (carregando && editando) || !!erroCarga}
               className="min-w-36 gap-2 bg-[#079C9C] text-white shadow-sm hover:bg-[#079C9C]/90"
             >
               {saving ? (
@@ -232,7 +926,17 @@ export default function CatalogItemDialog({ open, item, onClose, onSave }: Props
               )}
             </Button>
           </div>
-        </form>
+        </div>
+      </form>
+    </>
+  )
+}
+
+export default function CatalogItemDialog({ open, item, onClose, onSave }: Props) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="top-[3%] flex max-h-[94dvh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[680px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100">
+        {open && <Conteudo key={item?.id ?? 'novo'} item={item} onClose={onClose} onSave={onSave} />}
       </DialogContent>
     </Dialog>
   )
