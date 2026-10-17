@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   Building2,
@@ -17,6 +18,7 @@ import {
   excluirCliente,
   listarClientes,
   type Cliente,
+  type SituacaoCliente,
   type TipoCliente,
 } from '../services/clientesService'
 import { formatarDocumento, formatarTelefone, pendenciasFiscais } from '../lib/documentos'
@@ -35,10 +37,19 @@ const FILTROS: [TipoCliente | 'todos', string][] = [
   ['juridica', 'Pessoa jurídica'],
 ]
 
+const SITUACOES: [SituacaoCliente, string][] = [
+  ['ativos', 'Ativos'],
+  ['inativos', 'Inativos'],
+  ['todos', 'Todos'],
+]
+
 export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
+  const router = useRouter()
+
   const [termo, setTermo] = useState('')
   const [termoBusca, setTermoBusca] = useState('')
   const [tipo, setTipo] = useState<TipoCliente | 'todos'>('todos')
+  const [situacao, setSituacao] = useState<SituacaoCliente>('ativos')
   const [versao, setVersao] = useState(0)
   const [res, setRes] = useState<Resultado | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -50,7 +61,7 @@ export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
   const [aviso, setAviso] = useState<string | null>(null)
   const [erroAcao, setErroAcao] = useState('')
 
-  const chave = `${tipo}|${termoBusca}|${versao}`
+  const chave = `${tipo}|${situacao}|${termoBusca}|${versao}`
 
   // espera a pessoa parar de digitar
   useEffect(() => {
@@ -60,7 +71,7 @@ export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
 
   useEffect(() => {
     let cancelado = false
-    listarClientes({ termo: termoBusca, tipo, pagina: 0 })
+    listarClientes({ termo: termoBusca, tipo, situacao, pagina: 0 })
       .then((r) => {
         if (cancelado) return
         setRes({ chave, itens: r.itens, total: r.total, paginas: 1 })
@@ -72,13 +83,13 @@ export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
     return () => {
       cancelado = true
     }
-  }, [chave, tipo, termoBusca])
+  }, [chave, tipo, situacao, termoBusca])
 
   const carregarMais = async () => {
     if (!res || res.chave !== chave || carregandoMais) return
     setCarregandoMais(true)
     try {
-      const r = await listarClientes({ termo: termoBusca, tipo, pagina: res.paginas })
+      const r = await listarClientes({ termo: termoBusca, tipo, situacao, pagina: res.paginas })
       setRes((atual) =>
         atual && atual.chave === chave
           ? {
@@ -179,26 +190,57 @@ export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div role="radiogroup" aria-label="Filtrar por tipo" className="flex flex-wrap gap-2">
-            {FILTROS.map(([valor, rotulo]) => {
-              const ativo = tipo === valor
-              return (
-                <button
-                  key={valor}
-                  type="button"
-                  role="radio"
-                  aria-checked={ativo}
-                  onClick={() => setTipo(valor)}
-                  className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
-                    ativo
-                      ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
-                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {rotulo}
-                </button>
-              )
-            })}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div role="radiogroup" aria-label="Filtrar por tipo" className="flex flex-wrap gap-2">
+              {FILTROS.map(([valor, rotulo]) => {
+                const ativo = tipo === valor
+                return (
+                  <button
+                    key={valor}
+                    type="button"
+                    role="radio"
+                    aria-checked={ativo}
+                    onClick={() => setTipo(valor)}
+                    className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                      ativo
+                        ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {rotulo}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* só o dono vê e muda a situação (ativo/inativo) */}
+            {ehDono && (
+              <div
+                role="radiogroup"
+                aria-label="Filtrar por situação"
+                className="flex flex-wrap gap-2 sm:border-l sm:border-slate-200 sm:pl-4"
+              >
+                {SITUACOES.map(([valor, rotulo]) => {
+                  const ativo = situacao === valor
+                  return (
+                    <button
+                      key={valor}
+                      type="button"
+                      role="radio"
+                      aria-checked={ativo}
+                      onClick={() => setSituacao(valor)}
+                      className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                        ativo
+                          ? 'border-slate-700 bg-slate-700 text-white'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {rotulo}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <p className="flex items-center gap-2 text-sm text-slate-500">
@@ -237,7 +279,11 @@ export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
               >
                 <button
                   type="button"
-                  onClick={() => setDialog({ aberto: true, cliente: c })}
+                  onClick={() =>
+                    ehDono
+                      ? router.push(`/clientes/${c.id}`)
+                      : setDialog({ aberto: true, cliente: c })
+                  }
                   className="flex min-w-0 flex-1 items-start gap-3 rounded-xl p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#079C9C]"
                 >
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#079C9C]/10 text-[#079C9C]">
@@ -245,7 +291,14 @@ export default function ClientesLista({ ehDono }: { ehDono: boolean }) {
                   </span>
 
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold text-slate-900">{c.nome}</span>
+                    <span className="block truncate font-semibold text-slate-900">
+                      {c.nome}
+                      {!c.ativo && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-slate-600">
+                          inativo
+                        </span>
+                      )}
+                    </span>
                     {pj && c.nome_fantasia && (
                       <span className="block truncate text-xs text-slate-500">
                         {c.nome_fantasia}
