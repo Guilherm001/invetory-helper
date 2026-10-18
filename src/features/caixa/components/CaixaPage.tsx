@@ -8,6 +8,7 @@ import {
   Loader2,
   Lock,
   Receipt,
+  LayoutDashboard,
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import { useCaixa } from '../hooks/useCaixa'
@@ -80,7 +81,7 @@ function SessoesRecentes({ onVer }: { onVer: (id: string) => void }) {
   )
 }
 
-export default function CaixaPage() {
+export default function CaixaPage({ onTrocarLayout }: { onTrocarLayout?: () => void }) {
   const c = useCaixa()
 
   const [selecionado, setSelecionado] = useState<string | null>(null)
