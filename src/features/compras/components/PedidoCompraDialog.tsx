@@ -13,6 +13,7 @@ import {
   TrendingDown,
   TrendingUp,
   X,
+  Check,
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
@@ -147,6 +148,7 @@ function Conteudo({
   const [frete, setFrete] = useState(d.frete > 0 ? precoTexto(d.frete) : '')
   const [desconto, setDesconto] = useState(d.desconto > 0 ? precoTexto(d.desconto) : '')
   const [obs, setObs] = useState(d.observacao ?? '')
+  const [limiteBusca, setLimiteBusca] = useState(30)
 
   const [itens, setItens] = useState<ItemForm[]>(() =>
     inicial.itens.map((i) => ({
@@ -180,29 +182,29 @@ function Conteudo({
 
   // resultados da busca enquanto digita
   const consulta = interpretar(termo).nome
-  useEffect(() => {
-    if (consulta.length < 2 && !/^\d+$/.test(consulta)) {
-      setResultados([])
-      setBuscando(false)
-      return
+useEffect(() => {
+  if (consulta.length < 2 && !/^\d+$/.test(consulta)) {
+    setResultados([])
+    setBuscando(false)
+    return
+  }
+  let cancelado = false
+  setBuscando(true)
+  const timer = setTimeout(async () => {
+    try {
+      const r = await buscarProdutos({ termo: consulta, pagina: 0, soComEstoque: false })
+      if (!cancelado) setResultados(r.itens.slice(0, limiteBusca))
+    } catch {
+      if (!cancelado) setResultados([])
+    } finally {
+      if (!cancelado) setBuscando(false)
     }
-    let cancelado = false
-    setBuscando(true)
-    const timer = setTimeout(async () => {
-      try {
-        const r = await buscarProdutos({ termo: consulta, pagina: 0, soComEstoque: false })
-        if (!cancelado) setResultados(r.itens.slice(0, 6))
-      } catch {
-        if (!cancelado) setResultados([])
-      } finally {
-        if (!cancelado) setBuscando(false)
-      }
-    }, 250)
-    return () => {
-      cancelado = true
-      clearTimeout(timer)
-    }
-  }, [consulta])
+  }, 250)
+  return () => {
+    cancelado = true
+    clearTimeout(timer)
+  }
+}, [consulta, limiteBusca])
 
   // última compra de cada produto (para o alerta de variação)
   const chavesTexto = itens.map((i) => chaveItem(i.codigo, i.nome)).filter(Boolean).join('\u0000')
@@ -577,38 +579,72 @@ function Conteudo({
                 enterKeyHint="done"
                 className={`${inputClass} pl-9`}
               />
+              {termo && !buscando && (
+  <button
+    type="button"
+    onClick={() => {
+      setTermo('')
+      setLimiteBusca(30)
+    }}
+    aria-label="Limpar busca"
+    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
+  >
+    <X className="size-4" />
+  </button>
+)}
               {buscando && (
                 <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-slate-400" />
               )}
             </div>
 
             {resultados.length > 0 && (
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                {resultados.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        adicionarProduto(p, interpretar(termo).quantidade)
-                        setTermo('')
-                      }}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-slate-50"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-slate-900">
-                          {p.name}
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                          Cód. {p.code}
-                          {p.unit ? ` · ${p.unit}` : ''}
-                        </span>
-                      </span>
-                      <Plus className="size-4 shrink-0 text-[#079C9C]" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+  <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+    {resultados.map((p) => {
+      const noPedido = itens.some((x) => x.codigo !== '' && x.codigo === p.code)
+      return (
+        <li key={p.id}>
+          <button
+            type="button"
+            onClick={() => adicionarProduto(p, interpretar(termo).quantidade)}
+            className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-slate-50 ${
+              noPedido ? 'bg-emerald-50/60' : ''
+            }`}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-slate-900">
+                {p.name}
+              </span>
+              <span className="block text-xs text-slate-500">
+                Cód. {p.code}
+                {p.unit ? ` · ${p.unit}` : ''}
+              </span>
+            </span>
+            {noPedido ? (
+              <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-700">
+                <Check className="size-3.5" />
+                No pedido
+              </span>
+            ) : (
+              <Plus className="size-4 shrink-0 text-[#079C9C]" />
             )}
+          </button>
+        </li>
+      )
+    })}
+
+    {resultados.length >= limiteBusca && (
+      <li>
+        <button
+          type="button"
+          onClick={() => setLimiteBusca((l) => l + 30)}
+          className="w-full p-2 text-center text-sm font-semibold text-[#079C9C] hover:bg-slate-50"
+        >
+          Mostrar mais
+        </button>
+      </li>
+    )}
+  </ul>
+)}
 
             <p className="text-xs text-slate-400">
               Enter adiciona o primeiro resultado. Se não achar no catálogo, entra como item
