@@ -12,6 +12,7 @@ export default function ListaPDV({
   busca,
   onBusca,
   foco,
+  ativo,
 }: {
   pedidos: PedidoAberto[]
   selecionado: string | null
@@ -19,13 +20,14 @@ export default function ListaPDV({
   busca: string
   onBusca: (v: string) => void
   foco: number // muda quando a busca deve receber o cursor
+  ativo: boolean // false enquanto um pedido está aberto: as setas pertencem ao painel
 }) {
   const ref = useRef<HTMLInputElement>(null)
-  const [ativo, setAtivo] = useState(0)
+  const [marcado, setMarcado] = useState(0)
 
   useEffect(() => {
-    ref.current?.focus()
-  }, [foco])
+    if (ativo) ref.current?.focus()
+  }, [foco, ativo])
 
   const palavras = normalizar(busca).split(/\s+/).filter(Boolean)
   const visiveis = pedidos.filter((p) => {
@@ -34,13 +36,13 @@ export default function ListaPDV({
     return palavras.every((w) => texto.includes(w))
   })
 
-  const idx = Math.min(ativo, Math.max(0, visiveis.length - 1))
-  const idAtivo = visiveis[idx]?.id ?? null
+  const idx = Math.min(marcado, Math.max(0, visiveis.length - 1))
+  const idMarcado = visiveis[idx]?.id ?? null
 
   // a linha escolhida pelas setas sempre fica à vista
   useEffect(() => {
-    if (idAtivo) document.getElementById(`pdv-linha-${idAtivo}`)?.scrollIntoView({ block: 'nearest' })
-  }, [idAtivo])
+    if (idMarcado) document.getElementById(`pdv-linha-${idMarcado}`)?.scrollIntoView({ block: 'nearest' })
+  }, [idMarcado])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -51,29 +53,31 @@ export default function ListaPDV({
           value={busca}
           onChange={(e) => {
             onBusca(e.target.value)
-            setAtivo(0)
+            setMarcado(0)
           }}
           onKeyDown={(e) => {
+            if (!ativo) return
             if (e.key === 'ArrowDown') {
               e.preventDefault()
-              setAtivo(Math.min(idx + 1, visiveis.length - 1))
+              setMarcado(Math.min(idx + 1, visiveis.length - 1))
             } else if (e.key === 'ArrowUp') {
               e.preventDefault()
-              setAtivo(Math.max(idx - 1, 0))
-            } else if (e.key === 'Enter' && visiveis[idx]) {
+              setMarcado(Math.max(idx - 1, 0))
+            } else if (e.key === 'Enter' && visiveis[idx] && !e.repeat) {
               e.preventDefault()
               onSelecionar(visiveis[idx].id)
             }
           }}
-          autoFocus
+          tabIndex={ativo ? 0 : -1}
           autoComplete="off"
-          placeholder="Nº, nome ou telefone   ( / )"
+          placeholder="Digite para buscar, ou use as setas"
           aria-label="Buscar pedido"
           className="w-full rounded-md border border-slate-700 bg-slate-900 py-2.5 pl-9 pr-9 text-base text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500"
         />
         {busca && (
           <button
             type="button"
+            tabIndex={-1}
             aria-label="Limpar busca"
             onClick={() => {
               onBusca('')
@@ -101,21 +105,22 @@ export default function ListaPDV({
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-800">
           {visiveis.map((p, i) => {
-            const marcado = i === idx
+            const destaque = ativo && i === idx
             const aberto = p.id === selecionado
             return (
               <li key={p.id} className="border-b border-slate-800 last:border-b-0">
                 <button
                   id={`pdv-linha-${p.id}`}
                   type="button"
+                  tabIndex={-1}
                   onClick={() => onSelecionar(p.id)}
-                  onMouseEnter={() => setAtivo(i)}
+                  onMouseEnter={() => setMarcado(i)}
                   aria-current={aberto ? 'true' : undefined}
                   className={`grid w-full grid-cols-[3.5rem_minmax(0,1fr)_2.5rem_3rem_6.5rem] items-center gap-2 px-2 py-2.5 text-left text-sm outline-none transition ${
                     aberto
                       ? 'bg-emerald-500/15 text-emerald-100'
-                      : marcado
-                        ? 'bg-slate-800 text-slate-100'
+                      : destaque
+                        ? 'bg-emerald-500/20 text-slate-50 ring-2 ring-inset ring-emerald-400/70'
                         : 'text-slate-300 hover:bg-slate-900'
                   }`}
                 >
@@ -138,9 +143,7 @@ export default function ListaPDV({
         </ul>
       )}
 
-      <p className="mt-2 shrink-0 text-[11px] text-slate-500">
-        ↑ ↓ escolhem · Enter abre · / busca
-      </p>
+      <p className="mt-2 shrink-0 text-[11px] text-slate-500">↑ ↓ escolhem · Enter abre</p>
     </div>
   )
 }

@@ -18,3 +18,5 @@ export function linhasEmpresa(): string[] {
     [EMPRESA.endereco, EMPRESA.telefone].filter(Boolean).join(' · '),
   ].filter(Boolean)
 }
+
+export const CUPOM_PELO_SERVICO = true

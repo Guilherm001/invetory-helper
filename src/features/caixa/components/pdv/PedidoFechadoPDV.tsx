@@ -1,10 +1,13 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { Check, FileCheck2 } from 'lucide-react'
-import BotoesImpressao from '@/features/loja/components/BotoesImpressao'
+import BotoesImpressao, { type AcoesImpressao } from '@/features/loja/components/BotoesImpressao'
 import type { ResultadoFechamento } from '../../types'
 import { pedidoDoCaixa } from '../../services/caixaService'
 import { dataCurta, reais } from '../../lib/formatar'
+
+const ACOES = ['Próximo pedido', 'Cupom', 'A4', 'PDF']
 
 export default function PedidoFechadoPDV({
   resultado,
@@ -13,16 +16,49 @@ export default function PedidoFechadoPDV({
   resultado: ResultadoFechamento
   onProximo: () => void
 }) {
+  const [col, setCol] = useState(0)
+  const acoes = useRef<AcoesImpressao>(null)
+  const montadoEm = useRef(0)
+
+  useEffect(() => {
+    montadoEm.current = Date.now()
+  }, [])
+
+  const ativar = (i: number) => {
+    if (i === 0) onProximo()
+    else if (i === 1) acoes.current?.cupom()
+    else if (i === 2) acoes.current?.a4()
+    else acoes.current?.pdf()
+  }
+
+  // ← → escolhem, Enter confirma
+  const teclaRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  useEffect(() => {
+    teclaRef.current = (e) => {
+      if (e.defaultPrevented || document.querySelector('[role="dialog"]')) return
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        setCol((c) => Math.min(ACOES.length - 1, c + 1))
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCol((c) => Math.max(0, c - 1))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        // ignora o Enter que fechou o pedido, se ele ainda estiver chegando
+        if (!e.repeat && Date.now() - montadoEm.current > 400) ativar(col)
+      }
+    }
+  })
+  useEffect(() => {
+    const f = (e: KeyboardEvent) => teclaRef.current(e)
+    window.addEventListener('keydown', f)
+    return () => window.removeEventListener('keydown', f)
+  }, [])
+
   return (
-    <div
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          onProximo()
-        }
-      }}
-      className="flex flex-col items-center gap-5 py-6 text-center"
-    >
+    <div className="flex flex-col items-center gap-5 py-6 text-center">
       <div className="flex size-14 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
         <Check className="size-8" strokeWidth={3} />
       </div>
@@ -58,29 +94,48 @@ export default function PedidoFechadoPDV({
         </div>
       )}
 
-      <div className="w-full max-w-md space-y-3 rounded-md border border-slate-800 bg-slate-900 p-4">
-        <p className="text-xs uppercase tracking-widest text-slate-500">O cliente quer imprimir?</p>
-        <BotoesImpressao centralizar carregar={() => pedidoDoCaixa(resultado.id)} />
+      <div className="w-full max-w-lg space-y-3 rounded-md border border-slate-800 bg-slate-900 p-4">
+        <p className="text-xs uppercase tracking-widest text-slate-500">
+          ← → escolhem · Enter confirma
+        </p>
 
-        <button
-          type="button"
-          disabled
-          title="A emissão fiscal ainda não está configurada"
-          className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md border border-dashed border-slate-700 px-3 py-2.5 text-sm font-semibold text-slate-600"
-        >
-          <FileCheck2 className="size-4" />
-          Emitir cupom fiscal · em breve
-        </button>
+        <div className="flex flex-wrap justify-center gap-2">
+          {ACOES.map((nome, i) => (
+            <button
+              key={nome}
+              type="button"
+              tabIndex={-1}
+              onClick={() => {
+                setCol(i)
+                ativar(i)
+              }}
+              className={`rounded-md border px-5 py-3 text-sm font-bold outline-none transition ${
+                i === 0 ? 'min-w-44 text-base' : ''
+              } ${
+                col === i
+                  ? 'border-emerald-400 bg-emerald-500/25 text-emerald-100 ring-2 ring-emerald-400/60'
+                  : i === 0
+                    ? 'border-emerald-700 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500'
+                    : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              {i === 0 ? 'PRÓXIMO PEDIDO' : nome}
+            </button>
+          ))}
+        </div>
+
+        <BotoesImpressao
+          ref={acoes}
+          semBotoes
+          centralizar
+          carregar={() => pedidoDoCaixa(resultado.id)}
+        />
+
+        <p className="flex items-center justify-center gap-2 text-xs text-slate-600">
+          <FileCheck2 className="size-3.5" />
+          Cupom fiscal · em breve
+        </p>
       </div>
-
-      <button
-        type="button"
-        onClick={onProximo}
-        autoFocus
-        className="w-full max-w-md rounded-md bg-emerald-500 px-4 py-4 text-lg font-bold text-slate-950 outline-none transition hover:bg-emerald-400 focus-visible:ring-4 focus-visible:ring-emerald-300/60"
-      >
-        PRÓXIMO PEDIDO ⏎
-      </button>
     </div>
   )
 }

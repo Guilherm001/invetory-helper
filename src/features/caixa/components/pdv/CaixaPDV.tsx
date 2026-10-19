@@ -17,6 +17,7 @@ import {
 import { useCaixa } from '../../hooks/useCaixa'
 import { relatorioDaSessao, sessoesRecentes } from '../../services/caixaService'
 import type { Relatorio, ResultadoFechamento, SessaoResumo } from '../../types'
+import type { Forma } from '../../lib/calculos'
 import { dataHora, reais } from '../../lib/formatar'
 import AbrirCaixa from '../AbrirCaixa'
 import DevolucaoDialog from '../DevolucaoDialog'
@@ -29,6 +30,16 @@ import PainelPDV from './PainelPDV'
 import PedidoFechadoPDV from './PedidoFechadoPDV'
 
 type Relatorio_ = { rel: Relatorio; parcial: boolean }
+
+// o Chrome reserva o Esc para sair da tela cheia; o bloqueio de teclado entrega o Esc ao caixa
+type TecladoNav = { lock?: (teclas: string[]) => Promise<void>; unlock?: () => void }
+
+function travarEsc(travar: boolean) {
+  const kb = (navigator as Navigator & { keyboard?: TecladoNav }).keyboard
+  if (!kb) return
+  if (travar) kb.lock?.(['Escape']).catch(() => {})
+  else kb.unlock?.()
+}
 
 function BtnBarra({
   onClick,
@@ -44,9 +55,10 @@ function BtnBarra({
   return (
     <button
       type="button"
+      tabIndex={-1}
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium outline-none transition disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${
+      className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium outline-none transition disabled:opacity-50 ${
         forte
           ? 'border-slate-600 bg-slate-100 text-slate-900 hover:bg-white'
           : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-500'
@@ -105,14 +117,6 @@ function SessoesRecentes({ onVer }: { onVer: (id: string) => void }) {
     </section>
   )
 }
-type TecladoNav = { lock?: (teclas: string[]) => Promise<void>; unlock?: () => void }
-
-function travarEsc(travar: boolean) {
-  const kb = (navigator as Navigator & { keyboard?: TecladoNav }).keyboard
-  if (!kb) return
-  if (travar) kb.lock?.(['Escape']).catch(() => {})
-  else kb.unlock?.()
-}
 
 export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => void }) {
   const c = useCaixa()
@@ -122,6 +126,7 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
   const [resultado, setResultado] = useState<ResultadoFechamento | null>(null)
   const [busca, setBusca] = useState('')
   const [foco, setFoco] = useState(0)
+  const [ultimaForma, setUltimaForma] = useState<Forma>('dinheiro')
   const [movimento, setMovimento] = useState<'sangria' | 'suprimento' | null>(null)
   const [pendenciaAberta, setPendenciaAberta] = useState(false)
   const [devolucaoAberta, setDevolucaoAberta] = useState(false)
@@ -130,10 +135,8 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
   const [carregandoRel, setCarregandoRel] = useState(false)
   const [erroAcao, setErroAcao] = useState('')
 
-    useEffect(() => {
-    if (document.fullscreenElement) travarEsc(true)
-    return () => travarEsc(false)
-  }, [])
+  const algumaJanela =
+    movimento !== null || pendenciaAberta || devolucaoAberta || fechandoCaixa || relatorio !== null
 
   // a página de trás não rola enquanto o caixa cobre a tela
   useEffect(() => {
@@ -145,7 +148,7 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
     }
   }, [ampliado])
 
-  // Esc (ou o botão do navegador) sai da tela cheia do navegador
+  // sair da tela cheia do navegador desfaz a ampliação
   useEffect(() => {
     const aoMudar = () => {
       if (!document.fullscreenElement) setAmpliado(false)
@@ -154,30 +157,23 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
     return () => document.removeEventListener('fullscreenchange', aoMudar)
   }, [])
 
-  useEffect(
-    () => () => {
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-    },
-    []
-  )
-
-  // "/" leva para a busca, de qualquer lugar da tela
+  // chegou já em tela cheia (vindo do layout clássico): trava o Esc também
   useEffect(() => {
-    const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return
-      const alvo = e.target as HTMLElement
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName)) return
-      if (document.querySelector('[role="dialog"]')) return
-      e.preventDefault()
-      setSelecionado(null)
-      setResultado(null)
-      setFoco((f) => f + 1)
-    }
-    window.addEventListener('keydown', aoTeclar)
-    return () => window.removeEventListener('keydown', aoTeclar)
+    if (document.fullscreenElement) travarEsc(true)
+    return () => travarEsc(false)
   }, [])
 
-   const alternarTelaCheia = async () => {
+  // o pedido aberto ou a tela de "fechado" ficam com o teclado: tira o cursor da busca
+  useEffect(() => {
+    if (selecionado || resultado) (document.activeElement as HTMLElement | null)?.blur?.()
+  }, [selecionado, resultado])
+
+  // voltou para a lista (ou fechou uma janela): o cursor volta para a busca
+  useEffect(() => {
+    if (!algumaJanela && !selecionado && !resultado) setFoco((f) => f + 1)
+  }, [algumaJanela, selecionado, resultado])
+
+  const alternarTelaCheia = async () => {
     if (!ampliado) {
       setAmpliado(true)
       try {
@@ -215,7 +211,6 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
     setResultado(null)
     setSelecionado(null)
     setBusca('')
-    setFoco((f) => f + 1)
   }
 
   const estado = c.estado
@@ -330,6 +325,7 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
               busca={busca}
               onBusca={setBusca}
               foco={foco}
+              ativo={!selecionado && !resultado && !algumaJanela}
             />
           </section>
 
@@ -347,10 +343,9 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
               <PainelPDV
                 key={selecionado}
                 pedidoId={selecionado}
-                onVoltar={() => {
-                  setSelecionado(null)
-                  setFoco((f) => f + 1)
-                }}
+                formaInicial={ultimaForma}
+                onForma={setUltimaForma}
+                onVoltar={() => setSelecionado(null)}
                 onFechado={(r) => {
                   setResultado(r)
                   setSelecionado(null)
@@ -360,7 +355,7 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
             ) : (
               <div className="flex h-full min-h-64 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-800 text-sm text-slate-500">
                 <p>Escolha um pedido da lista para receber.</p>
-                <p className="text-xs">Digite o número, use ↑ ↓ e tecle Enter.</p>
+                <p className="text-xs">↑ ↓ para escolher, Enter para abrir.</p>
               </div>
             )}
           </section>
