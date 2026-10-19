@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { AlertCircle, Loader2, PackagePlus, Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, Loader2, PackagePlus, Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
   Dialog,
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../../components/ui/dialog'
+import { formatarReais } from '@/features/comparar-precos/utils/melhorPreco'
 import {
   createGrupo,
   getCatalogItemDetalhe,
@@ -36,6 +37,7 @@ import {
   textoNumero,
   type SituacaoTributaria,
 } from '../lib/fiscal'
+import { PASSOS_ARREDONDAMENTO, arredondarAcima, calcularPreco } from '../lib/preco'
 
 interface Props {
   open: boolean
@@ -44,15 +46,20 @@ interface Props {
   onSave: (data: NovoCatalogItem, fornecedores: FornecedorDoItem[]) => Promise<void>
 }
 
-type Aba = 'geral' | 'venda' | 'fiscal' | 'fornecedores'
+type Aba = 'geral' | 'preco' | 'venda' | 'fiscal' | 'fornecedores'
 
 interface Form {
   barcode: string
   name: string
   unit: string
-  price: string
   stock: string
   groupId: string
+  custo: string
+  aliqIcms: string
+  aliqIpi: string
+  aliqSt: string
+  margem: string
+  price: string
   multiplo: string
   comissao: string
   ncm: string
@@ -60,9 +67,6 @@ interface Form {
   origem: string
   cst: string
   sit: string
-  aliqIcms: string
-  aliqIpi: string
-  aliqSt: string
 }
 
 interface VinculoForm {
@@ -76,6 +80,7 @@ type Erros = Partial<Record<keyof Form | 'fornecedores', string>>
 
 const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'geral', rotulo: 'Geral' },
+  { id: 'preco', rotulo: 'Preço' },
   { id: 'venda', rotulo: 'Venda' },
   { id: 'fiscal', rotulo: 'Fiscal' },
   { id: 'fornecedores', rotulo: 'Fornecedores' },
@@ -84,15 +89,17 @@ const ABAS: { id: Aba; rotulo: string }[] = [
 // em qual aba cada campo mora (para abrir a aba certa quando há erro)
 const ABA_DO_CAMPO: Record<string, Aba> = {
   name: 'geral',
-  price: 'geral',
   stock: 'geral',
+  custo: 'preco',
+  aliqIcms: 'preco',
+  aliqIpi: 'preco',
+  aliqSt: 'preco',
+  margem: 'preco',
+  price: 'preco',
   multiplo: 'venda',
   comissao: 'venda',
   ncm: 'fiscal',
   cest: 'fiscal',
-  aliqIcms: 'fiscal',
-  aliqIpi: 'fiscal',
-  aliqSt: 'fiscal',
   fornecedores: 'fornecedores',
 }
 
@@ -127,6 +134,82 @@ function Campo({
   )
 }
 
+// uma linha do passo a passo do preço: número do passo, nome, o quanto soma e o campo
+function LinhaPasso({
+  passo,
+  rotulo,
+  opcional,
+  dica,
+  erro,
+  resultado,
+  prefixo,
+  sufixo,
+  valor,
+  onChange,
+  ariaLabel,
+}: {
+  passo?: number
+  rotulo: string
+  opcional?: boolean
+  dica?: string
+  erro?: string
+  resultado?: string
+  prefixo?: string
+  sufixo?: string
+  valor: string
+  onChange: (v: string) => void
+  ariaLabel: string
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span
+        className={`mt-2 flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+          passo ? 'bg-[#079C9C]/10 text-[#079C9C]' : 'bg-slate-100 text-slate-400'
+        }`}
+      >
+        {passo ?? '+'}
+      </span>
+
+      <div className="min-w-0 flex-1 pt-1.5">
+        <p className="text-sm font-semibold text-slate-700">
+          {rotulo}
+          {opcional && <span className="font-normal text-slate-400"> (opcional)</span>}
+        </p>
+        {resultado && <p className="text-xs font-semibold text-[#079C9C]">{resultado}</p>}
+        {erro ? (
+          <p className="text-xs text-red-600">{erro}</p>
+        ) : (
+          dica && <p className="text-xs text-slate-400">{dica}</p>
+        )}
+      </div>
+
+      <div className="relative w-32 shrink-0">
+        {prefixo && (
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+            {prefixo}
+          </span>
+        )}
+        <input
+          value={valor}
+          onChange={(e) => onChange(e.target.value)}
+          inputMode="decimal"
+          placeholder="0,00"
+          aria-label={ariaLabel}
+          aria-invalid={!!erro}
+          className={`${inputClass} ${borda(erro)} text-right ${prefixo ? 'pl-9' : ''} ${
+            sufixo ? 'pr-8' : ''
+          }`}
+        />
+        {sufixo && (
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+            {sufixo}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // "12,50" -> 12.5 | vazio -> null | inválido -> NaN
 function paraNumero(v: string): number | null {
   const t = v.trim()
@@ -137,9 +220,21 @@ function paraNumero(v: string): number | null {
 const numTexto = (n: number | null | undefined) =>
   n === null || n === undefined ? '' : textoNumero(n)
 
+// valor com até 4 casas (custos muito baixos, como 0,0625)
+const numTexto4 = (n: number | null | undefined) =>
+  n === null || n === undefined ? '' : String(Math.round(n * 10000) / 10000).replace('.', ',')
+
+const dinheiroTexto = (n: number) => n.toFixed(2).replace('.', ',')
+
 const percentualInvalido = (v: string) => {
   const n = paraNumero(v)
   return n !== null && (Number.isNaN(n) || n < 0 || n > 100)
+}
+
+// só números válidos entram na conta; vazio vale 0
+const numeroOuZero = (v: string) => {
+  const n = paraNumero(v)
+  return n === null || Number.isNaN(n) ? 0 : n
 }
 
 function formInicial(item: CatalogItem | null): Form {
@@ -147,9 +242,14 @@ function formInicial(item: CatalogItem | null): Form {
     barcode: item?.barcode ?? '',
     name: item?.name ?? '',
     unit: item?.unit ?? '',
-    price: numTexto(item?.price),
     stock: numTexto(item?.stock),
     groupId: '',
+    custo: '',
+    aliqIcms: '',
+    aliqIpi: '',
+    aliqSt: '',
+    margem: '',
+    price: numTexto(item?.price),
     multiplo: '1',
     comissao: '',
     ncm: '',
@@ -157,9 +257,6 @@ function formInicial(item: CatalogItem | null): Form {
     origem: '',
     cst: '',
     sit: '',
-    aliqIcms: '',
-    aliqIpi: '',
-    aliqSt: '',
   }
 }
 
@@ -167,6 +264,11 @@ function formInicial(item: CatalogItem | null): Form {
 function extrasDoBanco(d: CatalogItemDetalhe): Partial<Form> {
   return {
     groupId: d.group_id ?? '',
+    custo: numTexto4(d.custo),
+    aliqIcms: numTexto(d.aliq_icms),
+    aliqIpi: numTexto(d.aliq_ipi),
+    aliqSt: numTexto(d.aliq_st),
+    margem: numTexto(d.margem),
     multiplo: numTexto(d.multiplo),
     comissao: numTexto(d.comissao),
     ncm: d.ncm ?? '',
@@ -174,9 +276,6 @@ function extrasDoBanco(d: CatalogItemDetalhe): Partial<Form> {
     origem: d.origem === null ? '' : String(d.origem),
     cst: d.cst_icms ?? '',
     sit: d.situacao_trib ?? '',
-    aliqIcms: numTexto(d.aliq_icms),
-    aliqIpi: numTexto(d.aliq_ipi),
-    aliqSt: numTexto(d.aliq_st),
   }
 }
 
@@ -185,11 +284,22 @@ function validar(f: Form, vinculos: VinculoForm[]): Erros {
 
   if (!f.name.trim()) e.name = 'A descrição é obrigatória.'
 
-  const preco = paraNumero(f.price)
-  if (preco !== null && (Number.isNaN(preco) || preco < 0)) e.price = 'Informe um valor válido.'
-
   const estoque = paraNumero(f.stock)
   if (estoque !== null && Number.isNaN(estoque)) e.stock = 'Informe um número.'
+
+  const custo = paraNumero(f.custo)
+  if (custo !== null && (Number.isNaN(custo) || custo < 0)) e.custo = 'Informe um valor válido.'
+
+  if (percentualInvalido(f.aliqIcms)) e.aliqIcms = 'Informe de 0 a 100.'
+  if (percentualInvalido(f.aliqIpi)) e.aliqIpi = 'Informe de 0 a 100.'
+  if (percentualInvalido(f.aliqSt)) e.aliqSt = 'Informe de 0 a 100.'
+
+  const margem = paraNumero(f.margem)
+  if (margem !== null && (Number.isNaN(margem) || margem < 0 || margem > 10000))
+    e.margem = 'Informe uma margem válida.'
+
+  const preco = paraNumero(f.price)
+  if (preco !== null && (Number.isNaN(preco) || preco < 0)) e.price = 'Informe um valor válido.'
 
   const m = paraNumero(f.multiplo)
   if (m === null || Number.isNaN(m) || m <= 0) {
@@ -203,13 +313,10 @@ function validar(f: Form, vinculos: VinculoForm[]): Erros {
   if (percentualInvalido(f.comissao)) e.comissao = 'Informe de 0 a 100.'
   if (f.ncm && f.ncm.length !== 8) e.ncm = 'O NCM tem 8 números.'
   if (f.cest && f.cest.length !== 7) e.cest = 'O CEST tem 7 números.'
-  if (percentualInvalido(f.aliqIcms)) e.aliqIcms = 'Informe de 0 a 100.'
-  if (percentualInvalido(f.aliqIpi)) e.aliqIpi = 'Informe de 0 a 100.'
-  if (percentualInvalido(f.aliqSt)) e.aliqSt = 'Informe de 0 a 100.'
 
   for (const v of vinculos) {
-    const custo = paraNumero(v.custo)
-    if (custo !== null && (Number.isNaN(custo) || custo < 0)) {
+    const c = paraNumero(v.custo)
+    if (c !== null && (Number.isNaN(c) || c < 0)) {
       e.fornecedores = 'Confira o custo informado nos fornecedores.'
       break
     }
@@ -239,6 +346,7 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
   const [criandoGrupo, setCriandoGrupo] = useState(false)
   const [erroGrupo, setErroGrupo] = useState('')
   const [fornecedorEscolhido, setFornecedorEscolhido] = useState('')
+  const [passoArredondar, setPassoArredondar] = useState(0.01)
 
   // carrega grupos, fornecedores e (na edição) os dados completos do item
   useEffect(() => {
@@ -280,6 +388,29 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
     setF((p) => ({ ...p, [campo]: valor }))
     if (erros[campo]) setErros((p) => ({ ...p, [campo]: undefined }))
   }
+
+  // ---------- preço calculado ----------
+
+  const custoNum = paraNumero(f.custo)
+  const temCusto = custoNum !== null && !Number.isNaN(custoNum) && custoNum > 0
+  const calculo = temCusto
+    ? calcularPreco({
+        custo: custoNum,
+        icms: numeroOuZero(f.aliqIcms),
+        ipi: numeroOuZero(f.aliqIpi),
+        st: numeroOuZero(f.aliqSt),
+        margem: numeroOuZero(f.margem),
+      })
+    : null
+  const precoFinal = calculo ? arredondarAcima(calculo.preco, passoArredondar) : null
+  const precoAtual = paraNumero(f.price)
+  const precoAplicado = precoFinal !== null && precoAtual === precoFinal
+
+  // o que o preço que está no cadastro rende sobre o custo com impostos
+  const lucroAtual =
+    calculo && precoAtual !== null && !Number.isNaN(precoAtual)
+      ? Math.round((precoAtual - calculo.custoComImpostos) * 10000) / 10000
+      : null
 
   // ---------- grupo ----------
 
@@ -357,6 +488,8 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
       price: paraNumero(f.price),
       stock: paraNumero(f.stock),
       group_id: f.groupId || null,
+      custo: paraNumero(f.custo),
+      margem: paraNumero(f.margem),
       multiplo: paraNumero(f.multiplo) ?? 1,
       comissao: paraNumero(f.comissao),
       ncm: f.ncm || null,
@@ -391,7 +524,8 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
   const multiploNum = paraNumero(f.multiplo)
   const exemplo = multiploNum !== null && !Number.isNaN(multiploNum) ? exemploMultiplo(multiploNum) : ''
 
-  const abaTemErro = (id: Aba) => Object.keys(erros).some((c) => erros[c as keyof Erros] && ABA_DO_CAMPO[c] === id)
+  const abaTemErro = (id: Aba) =>
+    Object.keys(erros).some((c) => erros[c as keyof Erros] && ABA_DO_CAMPO[c] === id)
 
   return (
     <>
@@ -417,7 +551,11 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
 
       <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
         {/* abas */}
-        <div role="tablist" aria-label="Seções do cadastro" className="shrink-0 overflow-x-auto border-b border-slate-200 px-4">
+        <div
+          role="tablist"
+          aria-label="Seções do cadastro"
+          className="shrink-0 overflow-x-auto border-b border-slate-200 px-4"
+        >
           <div className="flex gap-1">
             {ABAS.map(({ id, rotulo }) => {
               const ativa = aba === id
@@ -497,22 +635,13 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                     </Campo>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <Campo label="Unidade">
                       <input
                         value={f.unit}
                         onChange={(e) => set('unit', e.target.value)}
                         className={`${inputClass} ${borda()} uppercase`}
                         placeholder="UN, SC, M"
-                      />
-                    </Campo>
-                    <Campo label="Preço (R$)" erro={erros.price}>
-                      <input
-                        value={f.price}
-                        onChange={(e) => set('price', e.target.value)}
-                        className={`${inputClass} ${borda(erros.price)}`}
-                        inputMode="decimal"
-                        placeholder="0,00"
                       />
                     </Campo>
                     <Campo label="Estoque" erro={erros.stock}>
@@ -529,11 +658,15 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                   {editando && (
                     <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
                       Para somar ao estoque guardando o histórico, use o botão de entrada na
-                      lista. Mudar o estoque aqui apenas substitui o valor.
+                      lista. Mudar o estoque aqui apenas substitui o valor. O preço de venda fica
+                      na aba Preço.
                     </p>
                   )}
 
-                  <Campo label="Grupo" dica="Para organizar os produtos por tipo (ex.: Cimentos, Tintas, Hidráulica)">
+                  <Campo
+                    label="Grupo"
+                    dica="Para organizar os produtos por tipo (ex.: Cimentos, Tintas, Hidráulica)"
+                  >
                     <select
                       value={f.groupId}
                       onChange={(e) => set('groupId', e.target.value)}
@@ -587,6 +720,182 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                 </>
               )}
 
+              {/* ===== PREÇO ===== */}
+              {aba === 'preco' && (
+                <>
+                  <p className="text-xs text-slate-400">
+                    Siga os passos: informe o custo, os impostos e a margem desejada. O preço de
+                    venda já aparece calculado e dá para arredondar.
+                  </p>
+
+                  <div className="space-y-3.5 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    <LinhaPasso
+                      passo={1}
+                      rotulo="Custo"
+                      dica="Valor de compra, sem impostos"
+                      erro={erros.custo}
+                      prefixo="R$"
+                      valor={f.custo}
+                      onChange={(v) => set('custo', v)}
+                      ariaLabel="Custo do produto"
+                    />
+
+                    <LinhaPasso
+                      passo={2}
+                      rotulo="ICMS"
+                      erro={erros.aliqIcms}
+                      resultado={calculo ? `+ ${formatarReais(calculo.icmsValor)}` : undefined}
+                      sufixo="%"
+                      valor={f.aliqIcms}
+                      onChange={(v) => set('aliqIcms', v)}
+                      ariaLabel="Alíquota de ICMS"
+                    />
+
+                    <LinhaPasso
+                      passo={3}
+                      rotulo="IPI"
+                      erro={erros.aliqIpi}
+                      resultado={calculo ? `+ ${formatarReais(calculo.ipiValor)}` : undefined}
+                      sufixo="%"
+                      valor={f.aliqIpi}
+                      onChange={(v) => set('aliqIpi', v)}
+                      ariaLabel="Alíquota de IPI"
+                    />
+
+                    <LinhaPasso
+                      rotulo="Subst. tributária"
+                      opcional
+                      erro={erros.aliqSt}
+                      resultado={calculo ? `+ ${formatarReais(calculo.stValor)}` : undefined}
+                      sufixo="%"
+                      valor={f.aliqSt}
+                      onChange={(v) => set('aliqSt', v)}
+                      ariaLabel="Alíquota de substituição tributária"
+                    />
+
+                    <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                      <span className="text-sm font-semibold text-slate-700">Custo com impostos</span>
+                      <span className="text-base font-bold tabular-nums text-slate-900">
+                        {calculo ? formatarReais(calculo.custoComImpostos) : '—'}
+                      </span>
+                    </div>
+
+                    <LinhaPasso
+                      passo={4}
+                      rotulo="Margem desejada"
+                      dica="Somada ao custo com impostos (100% = o dobro)"
+                      erro={erros.margem}
+                      resultado={calculo ? `+ ${formatarReais(calculo.lucro)} de lucro` : undefined}
+                      sufixo="%"
+                      valor={f.margem}
+                      onChange={(v) => set('margem', v)}
+                      ariaLabel="Margem desejada"
+                    />
+                  </div>
+
+                  {/* resultado */}
+                  <div className="space-y-3 rounded-xl border-2 border-[#079C9C]/30 bg-[#079C9C]/5 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#079C9C]">
+                          5 · Preço de venda calculado
+                        </p>
+                        <p className="text-3xl font-bold tabular-nums text-slate-900">
+                          {precoFinal !== null ? formatarReais(precoFinal) : '—'}
+                        </p>
+                        {calculo && precoFinal !== null && precoFinal !== calculo.preco && (
+                          <p className="text-xs text-slate-500">
+                            arredondado de {formatarReais(calculo.preco)}
+                          </p>
+                        )}
+                        {!calculo && (
+                          <p className="text-xs text-slate-500">Informe o custo para calcular.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-slate-600">Arredondar para cima</p>
+                      <div role="radiogroup" aria-label="Arredondamento" className="flex flex-wrap gap-2">
+                        {PASSOS_ARREDONDAMENTO.map((p) => {
+                          const ativo = passoArredondar === p.valor
+                          return (
+                            <button
+                              key={p.valor}
+                              type="button"
+                              role="radio"
+                              aria-checked={ativo}
+                              onClick={() => setPassoArredondar(p.valor)}
+                              className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
+                                ativo
+                                  ? 'border-[#079C9C] bg-[#079C9C] text-white'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              {p.rotulo}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      disabled={precoFinal === null || precoAplicado}
+                      onClick={() => precoFinal !== null && set('price', dinheiroTexto(precoFinal))}
+                      className="w-full gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
+                    >
+                      {precoAplicado ? (
+                        <>
+                          <Check className="size-4" />
+                          Preço aplicado
+                        </>
+                      ) : precoFinal !== null ? (
+                        `Usar ${formatarReais(precoFinal)} como preço de venda`
+                      ) : (
+                        'Usar como preço de venda'
+                      )}
+                    </Button>
+                  </div>
+
+                  <Campo
+                    label="Preço de venda (R$)"
+                    erro={erros.price}
+                    dica="É este valor que aparece na venda. Dá para digitar à mão, se preferir."
+                  >
+                    <input
+                      value={f.price}
+                      onChange={(e) => set('price', e.target.value)}
+                      className={`${inputClass} ${borda(erros.price)} sm:max-w-[240px]`}
+                      inputMode="decimal"
+                      placeholder="0,00"
+                    />
+                  </Campo>
+
+                  {calculo && lucroAtual !== null && precoAtual !== null && precoAtual > 0 && (
+                    <p
+                      className={`rounded-lg px-3 py-2 text-sm ${
+                        lucroAtual < 0 ? 'bg-red-50 text-red-700' : 'bg-slate-50 text-slate-600'
+                      }`}
+                    >
+                      {lucroAtual < 0 ? (
+                        <>Atenção: este preço está abaixo do custo com impostos.</>
+                      ) : (
+                        <>
+                          Com este preço: lucro de {formatarReais(lucroAtual)}, que é{' '}
+                          {textoNumero(
+                            Math.round((lucroAtual / calculo.custoComImpostos) * 1000) / 10
+                          )}
+                          % sobre o custo e{' '}
+                          {textoNumero(Math.round((lucroAtual / precoAtual) * 1000) / 10)}% sobre a
+                          venda.
+                        </>
+                      )}
+                    </p>
+                  )}
+                </>
+              )}
+
               {/* ===== VENDA ===== */}
               {aba === 'venda' && (
                 <>
@@ -632,7 +941,9 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                     </Campo>
 
                     {exemplo && !erros.multiplo && (
-                      <p className="rounded-lg bg-[#079C9C]/5 px-3 py-2 text-sm text-[#079C9C]">{exemplo}</p>
+                      <p className="rounded-lg bg-[#079C9C]/5 px-3 py-2 text-sm text-[#079C9C]">
+                        {exemplo}
+                      </p>
                     )}
                   </div>
 
@@ -658,7 +969,8 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                 <>
                   <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
                     Esses dados são usados na emissão de nota fiscal. Em dúvida, confirme com o
-                    contador antes de preencher.
+                    contador antes de preencher. As alíquotas de ICMS, IPI e substituição
+                    tributária ficam na aba Preço.
                   </p>
 
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -739,36 +1051,6 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                       </select>
                     </Campo>
                   </div>
-
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <Campo label="Alíq. ICMS (%)" erro={erros.aliqIcms}>
-                      <input
-                        value={f.aliqIcms}
-                        onChange={(e) => set('aliqIcms', e.target.value)}
-                        inputMode="decimal"
-                        placeholder="0,00"
-                        className={`${inputClass} ${borda(erros.aliqIcms)}`}
-                      />
-                    </Campo>
-                    <Campo label="Alíq. IPI (%)" erro={erros.aliqIpi}>
-                      <input
-                        value={f.aliqIpi}
-                        onChange={(e) => set('aliqIpi', e.target.value)}
-                        inputMode="decimal"
-                        placeholder="0,00"
-                        className={`${inputClass} ${borda(erros.aliqIpi)}`}
-                      />
-                    </Campo>
-                    <Campo label="Alíq. subst. trib. (%)" erro={erros.aliqSt}>
-                      <input
-                        value={f.aliqSt}
-                        onChange={(e) => set('aliqSt', e.target.value)}
-                        inputMode="decimal"
-                        placeholder="0,00"
-                        className={`${inputClass} ${borda(erros.aliqSt)}`}
-                      />
-                    </Campo>
-                  </div>
                 </>
               )}
 
@@ -812,7 +1094,9 @@ function Conteudo({ item, onClose, onSave }: Omit<Props, 'open'>) {
                                     : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
                                 }`}
                               >
-                                <Star className={`size-4 ${v.principal ? 'fill-amber-400 text-amber-500' : ''}`} />
+                                <Star
+                                  className={`size-4 ${v.principal ? 'fill-amber-400 text-amber-500' : ''}`}
+                                />
                                 {v.principal ? 'Principal' : 'Tornar principal'}
                               </button>
                               <button

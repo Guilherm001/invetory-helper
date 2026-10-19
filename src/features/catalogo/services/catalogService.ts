@@ -24,6 +24,8 @@ export interface CatalogExtras {
   aliq_st: number | null
   comissao: number | null
   multiplo: number // de quanto em quanto pode vender (1 = inteiro, 0.5 = meio em meio...)
+  custo: number | null // custo bruto
+  margem: number | null // margem desejada (%) sobre o custo com impostos
 }
 
 export type CatalogItemDetalhe = CatalogItem & CatalogExtras
@@ -58,7 +60,7 @@ export interface FornecedorDoItem {
 }
 
 const COLUNAS = 'id, code, barcode, name, unit, price, stock'
-const COLUNAS_DETALHE = `${COLUNAS}, group_id, ncm, cest, origem, cst_icms, situacao_trib, aliq_icms, aliq_ipi, aliq_st, comissao, multiplo`
+const COLUNAS_DETALHE = `${COLUNAS}, group_id, ncm, cest, origem, cst_icms, situacao_trib, aliq_icms, aliq_ipi, aliq_st, comissao, multiplo, custo, margem`
 const LIMITE_BUSCA = 15
 
 function traduzErro(error: { message: string; code?: string }) {
@@ -274,6 +276,8 @@ export async function getCatalogItemDetalhe(id: string): Promise<CatalogItemDeta
     aliq_ipi: numeroOuNull(r.aliq_ipi),
     aliq_st: numeroOuNull(r.aliq_st),
     comissao: numeroOuNull(r.comissao),
+    custo: numeroOuNull(r.custo),
+    margem: numeroOuNull(r.margem),
     multiplo: r.multiplo === null || r.multiplo === undefined ? 1 : Number(r.multiplo),
   }
 }
