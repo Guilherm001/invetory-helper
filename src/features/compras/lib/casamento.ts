@@ -40,12 +40,15 @@ export function agruparItensNota(itens: ItemNota[]): ItemNota[] {
 const palavras = (s: string) =>
   new Set(normalizar(s).split(' ').filter((t) => t.length > 1 || /\d/.test(t)))
 
-function parecido(a: Set<string>, b: Set<string>) {
+function jaccard(a: Set<string>, b: Set<string>) {
   if (a.size === 0 || b.size === 0) return 0
   let comuns = 0
   for (const t of a) if (b.has(t)) comuns++
   return comuns / (a.size + b.size - comuns)
 }
+
+// de 0 a 1: quanto dois nomes de produto se parecem
+export const similaridade = (a: string, b: string) => jaccard(palavras(a), palavras(b))
 
 interface ItemDoPedido {
   produto_codigo: string | null
@@ -53,12 +56,14 @@ interface ItemDoPedido {
 }
 
 // liga cada item do pedido ao item da nota. Devolve: posição no pedido -> posição na nota.
-// Ordem de confiança: ligação manual, código de barras, nome igual e, por último, nome parecido.
+// Ordem de confiança: ligação manual, código de barras, nome igual e, por último, nome parecido
+// (esse último pode ser desligado com { parecido: false }).
 export function casar(
   pedido: ItemDoPedido[],
   daNota: ItemNota[],
   barcodes: Map<string, string>, // código do catálogo -> código de barras
-  vinculos: Map<string, string> // chave do item da nota -> chave do item do pedido
+  vinculos: Map<string, string>, // chave do item da nota -> chave do item do pedido
+  opcoes: { parecido?: boolean } = {}
 ): Map<number, { ni: number; como: ComoCasou }> {
   const pares = new Map<number, { ni: number; como: ComoCasou }>()
   const usadas = new Set<number>()
@@ -99,22 +104,23 @@ export function casar(
   })
 
   // 3) nome parecido (os pares mais parecidos primeiro)
-  const candidatos: { pi: number; ni: number; nota: number }[] = []
-  pedido.forEach((p, pi) => {
-    if (pares.has(pi)) return
-    const a = palavras(p.produto_nome)
-    daNota.forEach((n, ni) => {
-      if (usadas.has(ni)) return
-      const nota = parecido(a, palavras(n.nome))
-      if (nota >= 0.6) candidatos.push({ pi, ni, nota })
+  if (opcoes.parecido !== false) {
+    const candidatos: { pi: number; ni: number; nota: number }[] = []
+    pedido.forEach((p, pi) => {
+      if (pares.has(pi)) return
+      daNota.forEach((n, ni) => {
+        if (usadas.has(ni)) return
+        const nota = similaridade(p.produto_nome, n.nome)
+        if (nota >= 0.6) candidatos.push({ pi, ni, nota })
+      })
     })
-  })
-  candidatos.sort((x, y) => y.nota - x.nota)
+    candidatos.sort((x, y) => y.nota - x.nota)
 
-  for (const c of candidatos) {
-    if (pares.has(c.pi) || usadas.has(c.ni)) continue
-    pares.set(c.pi, { ni: c.ni, como: 'parecido' })
-    usadas.add(c.ni)
+    for (const c of candidatos) {
+      if (pares.has(c.pi) || usadas.has(c.ni)) continue
+      pares.set(c.pi, { ni: c.ni, como: 'parecido' })
+      usadas.add(c.ni)
+    }
   }
 
   return pares

@@ -1,7 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Link2, Loader2, Unlink, X } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  ChevronDown,
+  Link2,
+  Loader2,
+  Pencil,
+  Sparkles,
+  Unlink,
+} from 'lucide-react'
 import { numeroTexto, reais } from '@/features/loja/lib/formatar'
 import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
 import {
@@ -12,12 +20,13 @@ import {
   type NotaCompra,
   type Vinculo,
 } from '../services/notasService'
-import { conferirItens, type LinhaConferencia } from '../lib/conferenciaNota'
+import { calcularAjustes, conferirItens } from '../lib/conferenciaNota'
 import { chaveNota } from '../lib/casamento'
 import { chaveItem } from '../lib/compras'
 import type { ItemNota } from '../lib/nfe'
+import AjustarPedidoDialog from './AjustarPedidoDialog'
 
-const chipClass = 'rounded-full px-2 py-0.5 text-[11px] font-semibold'
+const arred2 = (n: number) => Math.round(n * 100) / 100
 
 // preço da nota pode ter até 4 casas
 const reais4 = (n: number) =>
@@ -28,24 +37,67 @@ const reais4 = (n: number) =>
     maximumFractionDigits: 4,
   })
 
+const qp = (q: number, un: string | null, preco: number) =>
+  `${numeroTexto(q)}${un ? ` ${un}` : ''} × ${reais4(preco)}`
+
+// cores fixas: pedido = cinza, nota fiscal = verde, recebido = branco
+type Tipo = 'pedido' | 'nota' | 'recebido'
+
+const ESTILO: Record<Tipo, string> = {
+  pedido: 'border-slate-300 bg-slate-50',
+  nota: 'border-[#079C9C]/40 bg-[#079C9C]/5',
+  recebido: 'border-slate-200 bg-white',
+}
+
+const ROTULO: Record<Tipo, { texto: string; classe: string }> = {
+  pedido: { texto: 'Pedido', classe: 'bg-slate-200 text-slate-700' },
+  nota: { texto: 'Nota fiscal', classe: 'bg-[#079C9C]/15 text-[#047a7a]' },
+  recebido: { texto: 'Recebido', classe: 'bg-slate-100 text-slate-500' },
+}
+
+function Rotulo({ tipo }: { tipo: Tipo }) {
+  const r = ROTULO[tipo]
+  return (
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${r.classe}`}
+    >
+      {r.texto}
+    </span>
+  )
+}
+
+function Lado({ tipo, children }: { tipo: Tipo; children: React.ReactNode }) {
+  return (
+    <div className={`rounded-lg border p-2 ${ESTILO[tipo]}`}>
+      <Rotulo tipo={tipo} />
+      <div className="mt-1">{children}</div>
+    </div>
+  )
+}
+
+const chip = 'rounded-full px-2 py-0.5 text-[11px] font-semibold'
 const acaoClass =
-  'flex items-center gap-1 font-semibold text-[#079C9C] transition hover:underline disabled:opacity-50'
+  'flex items-center gap-1 text-xs font-semibold text-[#079C9C] transition hover:underline disabled:opacity-50'
 
 export default function ConferenciaItens({
   pedido,
   itens,
   notas,
+  onAjustado,
 }: {
   pedido: PedidoCompra
   itens: ItemPedidoCompra[]
   notas: NotaCompra[]
+  onAjustado: (aviso: string) => void
 }) {
   const [aberta, setAberta] = useState(false)
   const [barcodes, setBarcodes] = useState<Map<string, string>>(new Map())
   const [vinculos, setVinculos] = useState<Vinculo[]>([])
-  const [ligando, setLigando] = useState<string | null>(null)
+  const [selP, setSelP] = useState<string | null>(null) // id do item do pedido
+  const [selN, setSelN] = useState<string | null>(null) // chave do item da nota
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [erro, setErro] = useState('')
+  const [ajustando, setAjustando] = useState(false)
 
   // código de barras dos produtos do pedido, para ligar com os itens do XML
   const codigosTexto = itens.map((i) => i.produto_codigo ?? '').filter(Boolean).join('\u0000')
@@ -81,32 +133,37 @@ export default function ConferenciaItens({
     [vinculos]
   )
 
-  const conferencia = useMemo(
+  const c = useMemo(
     () => conferirItens(itens, notas, barcodes, mapaAlvo),
     [itens, notas, barcodes, mapaAlvo]
   )
 
-  // itens que ainda não foram reconhecidos com segurança: podem ser ligados à mão
-  const livresPedido = conferencia.linhas
-    .filter((x) => x.pedido && (!x.nota || x.como === 'parecido'))
-    .map((x) => x.pedido as ItemPedidoCompra)
-  const livresNota = conferencia.linhas
-    .filter((x) => x.nota && (!x.pedido || x.como === 'parecido'))
-    .map((x) => x.nota as ItemNota)
+  const ajustes = useMemo(() => calcularAjustes(c.pares), [c.pares])
+  const totalNotas = arred2(notas.reduce((s, n) => s + n.valor, 0))
+  const semPar = c.soPedido.length + c.soNota.length
+  const problemas = c.precoDifere + c.qtdDifere + semPar
 
-  const ligar = async (linha: LinhaConferencia, pedidoItem: ItemPedidoCompra, notaItem: ItemNota) => {
-    setOcupado(linha.id)
+  // só dá para fechar o total com a nota se tudo tem par dos dois lados
+  const podeFecharTotal = semPar === 0 && c.notasSemXml === 0 && c.pares.length > 0
+  const podeAjustar = ['enviado', 'confirmado', 'recebido'].includes(pedido.status)
+
+  const pedidoSel = c.soPedido.find((p) => p.id === selP) ?? null
+  const notaSel = c.soNota.find((n) => chaveNota(n) === selN) ?? null
+
+  const ligar = async (p: ItemPedidoCompra, n: ItemNota, marca: string) => {
+    setOcupado(marca)
     setErro('')
     try {
       await vincularItem({
         pedidoId: pedido.id,
-        itemId: pedidoItem.id,
-        alvoChave: chaveItem(pedidoItem.produto_codigo, pedidoItem.produto_nome),
-        notaChave: chaveNota(notaItem),
-        notaNome: notaItem.nome,
-        notaCodigo: notaItem.codigo,
+        itemId: p.id,
+        alvoChave: chaveItem(p.produto_codigo, p.produto_nome),
+        notaChave: chaveNota(n),
+        notaNome: n.nome,
+        notaCodigo: n.codigo,
       })
-      setLigando(null)
+      setSelP(null)
+      setSelN(null)
       await carregarVinculos()
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível ligar os itens')
@@ -115,8 +172,8 @@ export default function ConferenciaItens({
     }
   }
 
-  const desfazer = async (linha: LinhaConferencia, vinculo: Vinculo) => {
-    setOcupado(linha.id)
+  const desfazer = async (vinculo: Vinculo, marca: string) => {
+    setOcupado(marca)
     setErro('')
     try {
       await desvincularItem(vinculo.id)
@@ -127,9 +184,6 @@ export default function ConferenciaItens({
       setOcupado(null)
     }
   }
-
-  const problemas =
-    conferencia.precoDifere + conferencia.qtdDifere + conferencia.soNota + conferencia.soPedido
 
   return (
     <div className="rounded-xl border border-slate-200">
@@ -143,28 +197,21 @@ export default function ConferenciaItens({
           <span className="block text-sm font-semibold text-slate-700">Conferência dos itens</span>
           <span className="mt-1 flex flex-wrap gap-1.5">
             {problemas === 0 ? (
-              <span className={`${chipClass} bg-emerald-50 text-emerald-700`}>Tudo confere</span>
+              <span className={`${chip} bg-emerald-50 text-emerald-700`}>Tudo confere</span>
             ) : (
               <>
-                {conferencia.precoDifere > 0 && (
-                  <span className={`${chipClass} bg-red-50 text-red-700`}>
-                    {conferencia.precoDifere} com preço diferente
+                {c.precoDifere > 0 && (
+                  <span className={`${chip} bg-red-50 text-red-700`}>
+                    {c.precoDifere} com preço diferente
                   </span>
                 )}
-                {conferencia.qtdDifere > 0 && (
-                  <span className={`${chipClass} bg-amber-50 text-amber-700`}>
-                    {conferencia.qtdDifere} com quantidade diferente
+                {c.qtdDifere > 0 && (
+                  <span className={`${chip} bg-amber-50 text-amber-700`}>
+                    {c.qtdDifere} com quantidade diferente
                   </span>
                 )}
-                {conferencia.soNota > 0 && (
-                  <span className={`${chipClass} bg-amber-50 text-amber-700`}>
-                    {conferencia.soNota} só na nota
-                  </span>
-                )}
-                {conferencia.soPedido > 0 && (
-                  <span className={`${chipClass} bg-amber-50 text-amber-700`}>
-                    {conferencia.soPedido} não vieram na nota
-                  </span>
+                {semPar > 0 && (
+                  <span className={`${chip} bg-amber-50 text-amber-700`}>{semPar} sem par</span>
                 )}
               </>
             )}
@@ -176,19 +223,12 @@ export default function ConferenciaItens({
       </button>
 
       {aberta && (
-        <div className="space-y-2 border-t border-slate-100 p-3">
-          {conferencia.notasSemXml > 0 && (
+        <div className="space-y-4 border-t border-slate-100 p-3">
+          {c.notasSemXml > 0 && (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              {conferencia.notasSemXml}{' '}
-              {conferencia.notasSemXml === 1 ? 'nota sem XML não entra' : 'notas sem XML não entram'}{' '}
-              nesta conferência.
-            </p>
-          )}
-
-          {(conferencia.soNota > 0 || conferencia.soPedido > 0) && (
-            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              O sistema não reconheceu algum item? Ligue-o ao item certo: da próxima vez, com este
-              fornecedor, ele já será reconhecido.
+              {c.notasSemXml}{' '}
+              {c.notasSemXml === 1 ? 'nota sem XML não entra' : 'notas sem XML não entram'} nesta
+              conferência.
             </p>
           )}
 
@@ -198,102 +238,111 @@ export default function ConferenciaItens({
             </p>
           )}
 
-          <ul className="space-y-2">
-            {conferencia.linhas.map((l) => {
-              const vinculo = l.como === 'manual' && l.notaChave ? vinculoPorNota.get(l.notaChave) : undefined
-              const podeLigar = !l.nota || !l.pedido || l.como === 'parecido'
-              const aberto = ligando === l.id
-              const trabalhando = ocupado === l.id
+          {/* ajustar o pedido pela nota */}
+          {ajustes.length > 0 && podeAjustar && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#079C9C]/40 bg-[#079C9C]/5 px-3 py-2.5">
+              <p className="text-sm text-slate-700">
+                A nota tem preço ou quantidade diferente do pedido em{' '}
+                <strong>{ajustes.length}</strong> {ajustes.length === 1 ? 'item' : 'itens'}.
+              </p>
+              <button
+                type="button"
+                onClick={() => setAjustando(true)}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95"
+              >
+                <Pencil className="size-4" />
+                Ajustar o pedido pela nota
+              </button>
+            </div>
+          )}
 
-              return (
-                <li key={l.id} className="rounded-lg border border-slate-200 p-2.5">
-                  <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900">
-                    {l.pedido?.produto_nome ?? l.nota?.nome}
-                    {!l.pedido && (
-                      <span className={`${chipClass} bg-amber-50 text-amber-700`}>Só na nota</span>
-                    )}
-                    {!l.nota && (
-                      <span className={`${chipClass} bg-amber-50 text-amber-700`}>
-                        Não veio na nota
-                      </span>
-                    )}
-                    {l.como === 'manual' && (
-                      <span
-                        title="Você ligou este item à mão"
-                        className={`${chipClass} bg-emerald-50 text-emerald-700`}
-                      >
-                        Ligado por você
-                      </span>
-                    )}
-                    {l.como === 'parecido' && (
-                      <span
-                        title="Ligado ao item da nota pelo nome parecido"
-                        className={`${chipClass} bg-slate-100 text-slate-600`}
-                      >
-                        Nome parecido
-                      </span>
-                    )}
-                  </p>
+          {/* itens reconhecidos */}
+          {c.pares.length > 0 && (
+            <section className="space-y-2">
+              <h5 className="text-sm font-semibold text-slate-800">
+                Itens reconhecidos ({c.pares.length})
+              </h5>
 
-                  {l.pedido && l.nota && l.pedido.produto_nome !== l.nota.nome && (
-                    <p className="text-[11px] text-slate-400">Na nota: {l.nota.nome}</p>
-                  )}
+              <ul className="space-y-2">
+                {c.pares.map((l) => {
+                  const vinculo = l.como === 'manual' ? vinculoPorNota.get(l.notaChave) : undefined
+                  return (
+                    <li key={l.id} className="rounded-xl border border-slate-200 p-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {l.pedido.produto_nome}
+                        </p>
+                        {l.como === 'manual' && (
+                          <span
+                            title="Você ligou este item à mão"
+                            className={`${chip} bg-emerald-50 text-emerald-700`}
+                          >
+                            Ligado por você
+                          </span>
+                        )}
+                        {l.difPreco !== null && (
+                          <span
+                            className={`${chip} ${
+                              l.difPreco > 0 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            preço {l.difPreco > 0 ? '+' : ''}
+                            {String(l.difPreco).replace('.', ',')}%
+                          </span>
+                        )}
+                        {l.difQtd !== null && (
+                          <span className={`${chip} bg-amber-50 text-amber-700`}>
+                            quantidade {l.difQtd > 0 ? '+' : ''}
+                            {numeroTexto(l.difQtd)}
+                          </span>
+                        )}
+                        {l.unidadeDiferente && (
+                          <span className={`${chip} bg-slate-100 text-slate-600`}>
+                            unidade {l.pedido.unidade} × {l.nota.unidade}
+                          </span>
+                        )}
+                      </div>
 
-                  <div className="mt-1.5 grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
-                    <p>
-                      <span className="font-semibold text-slate-500">Pedido: </span>
-                      {l.pedido
-                        ? `${numeroTexto(l.pedido.quantidade)}${l.pedido.unidade ? ` ${l.pedido.unidade}` : ''} × ${reais(l.pedido.preco_unitario)}`
-                        : '—'}
-                    </p>
-
-                    <p>
-                      <span className="font-semibold text-slate-500">Nota: </span>
-                      {l.nota
-                        ? `${numeroTexto(l.nota.quantidade)}${l.nota.unidade ? ` ${l.nota.unidade}` : ''} × ${reais4(l.nota.preco)}`
-                        : '—'}
-                      {l.difPreco !== null && (
-                        <span
-                          className={`ml-1.5 font-semibold ${
-                            l.difPreco > 0 ? 'text-red-600' : 'text-emerald-600'
-                          }`}
-                        >
-                          {l.difPreco > 0 ? '+' : ''}
-                          {String(l.difPreco).replace('.', ',')}%
-                        </span>
+                      {l.nota.nome !== l.pedido.produto_nome && (
+                        <p className="mt-0.5 text-[11px] text-slate-400">Na nota: {l.nota.nome}</p>
                       )}
-                      {l.difQtd !== null && (
-                        <span className="ml-1.5 font-semibold text-amber-600">
-                          qtd {l.difQtd > 0 ? '+' : ''}
-                          {numeroTexto(l.difQtd)}
-                        </span>
-                      )}
-                      {l.unidadeDiferente && (
-                        <span className="ml-1.5 text-slate-400">
-                          (unidade: {l.pedido?.unidade} × {l.nota?.unidade})
-                        </span>
-                      )}
-                    </p>
 
-                    <p>
-                      <span className="font-semibold text-slate-500">Recebido: </span>
-                      {l.pedido ? numeroTexto(l.pedido.quantidade_recebida) : '—'}
-                      {l.recebidoDiferente && (
-                        <span className="ml-1.5 font-semibold text-amber-600">≠ nota</span>
-                      )}
-                    </p>
-                  </div>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        <Lado tipo="pedido">
+                          <p className="text-sm font-semibold text-slate-800">
+                            {qp(l.pedido.quantidade, l.pedido.unidade, l.pedido.preco_unitario)}
+                          </p>
+                          <p className="text-xs text-slate-500">Total {reais(l.pedido.subtotal)}</p>
+                        </Lado>
 
-                  {(vinculo || podeLigar) && (
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                        <Lado tipo="nota">
+                          <p className="text-sm font-semibold text-slate-800">
+                            {qp(l.nota.quantidade, l.nota.unidade, l.nota.preco)}
+                          </p>
+                          <p className="text-xs text-slate-500">Total {reais(l.nota.subtotal)}</p>
+                        </Lado>
+
+                        <Lado tipo="recebido">
+                          <p className="text-sm font-semibold text-slate-800">
+                            {numeroTexto(l.pedido.quantidade_recebida)}
+                            {l.pedido.unidade ? ` ${l.pedido.unidade}` : ''}
+                          </p>
+                          {l.recebidoDiferente && (
+                            <p className="text-xs font-semibold text-amber-600">
+                              diferente da nota
+                            </p>
+                          )}
+                        </Lado>
+                      </div>
+
                       {vinculo && (
                         <button
                           type="button"
-                          disabled={trabalhando}
-                          onClick={() => desfazer(l, vinculo)}
-                          className={`${acaoClass} !text-slate-500`}
+                          disabled={ocupado === l.id}
+                          onClick={() => desfazer(vinculo, l.id)}
+                          className={`${acaoClass} mt-2 !text-slate-500`}
                         >
-                          {trabalhando ? (
+                          {ocupado === l.id ? (
                             <Loader2 className="size-3.5 animate-spin" />
                           ) : (
                             <Unlink className="size-3.5" />
@@ -301,97 +350,211 @@ export default function ConferenciaItens({
                           Desfazer ligação
                         </button>
                       )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
 
-                      {podeLigar && (
-                        <button
-                          type="button"
-                          disabled={trabalhando}
-                          onClick={() => setLigando(aberto ? null : l.id)}
-                          className={acaoClass}
+          {/* itens sem par */}
+          {semPar > 0 && (
+            <section className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3">
+              <div>
+                <h5 className="text-sm font-semibold text-slate-800">Itens sem par ({semPar})</h5>
+                <p className="text-xs text-slate-500">
+                  O sistema não reconheceu estes itens. Ligue o item do pedido ao item da nota que
+                  é o mesmo produto: da próxima vez, com este fornecedor, ele já será reconhecido.
+                </p>
+              </div>
+
+              {/* prováveis pares */}
+              {c.sugestoes.length > 0 && (
+                <div className="space-y-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-[#079C9C]">
+                    <Sparkles className="size-3.5" />
+                    Prováveis pares ({c.sugestoes.length})
+                  </p>
+                  <ul className="space-y-2">
+                    {c.sugestoes.map((s) => {
+                      const marca = `s:${s.pedido.id}`
+                      return (
+                        <li
+                          key={marca}
+                          className="rounded-xl border border-[#079C9C]/30 bg-white p-2.5"
                         >
-                          <Link2 className="size-3.5" />
-                          {!l.pedido
-                            ? 'Ligar a um item do pedido'
-                            : !l.nota
-                              ? 'Ligar a um item da nota'
-                              : 'Trocar ligação'}
-                        </button>
-                      )}
-                    </div>
-                  )}
+                          <div className="grid gap-2 md:grid-cols-[1fr_auto_1fr] md:items-center">
+                            <Lado tipo="pedido">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {s.pedido.produto_nome}
+                              </p>
+                              <p className="text-xs text-slate-600">
+                                {qp(s.pedido.quantidade, s.pedido.unidade, s.pedido.preco_unitario)}{' '}
+                                · total {reais(s.pedido.subtotal)}
+                              </p>
+                            </Lado>
 
-                  {aberto && (
-                    <div className="mt-2 rounded-lg border border-[#079C9C]/30 bg-[#079C9C]/5 p-2">
-                      <div className="mb-1.5 flex items-start justify-between gap-2">
-                        <p className="text-xs font-semibold text-slate-600">
-                          {l.nota
-                            ? `"${l.nota.nome}" (da nota) é qual item do pedido?`
-                            : `"${l.pedido?.produto_nome}" (do pedido) é qual item da nota?`}
-                        </p>
-                        <button
-                          type="button"
-                          aria-label="Fechar"
-                          onClick={() => setLigando(null)}
-                          className="shrink-0 rounded p-0.5 text-slate-400 hover:text-slate-600"
-                        >
-                          <X className="size-4" />
-                        </button>
-                      </div>
+                            <ArrowLeftRight className="mx-auto size-4 rotate-90 text-slate-400 md:rotate-0" />
 
-                      {(l.nota ? livresPedido : livresNota).length === 0 ? (
-                        <p className="text-xs text-slate-500">
-                          Não há outros itens para ligar neste pedido.
-                        </p>
-                      ) : (
-                        <ul className="space-y-1">
-                          {l.nota
-                            ? livresPedido.map((p) => (
-                                <li key={p.id}>
-                                  <button
-                                    type="button"
-                                    disabled={trabalhando}
-                                    onClick={() => ligar(l, p, l.nota as ItemNota)}
-                                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left text-xs transition hover:border-[#079C9C] disabled:opacity-60"
-                                  >
-                                    <span className="block font-semibold text-slate-800">
-                                      {p.produto_nome}
-                                    </span>
-                                    <span className="text-slate-500">
-                                      {numeroTexto(p.quantidade)}
-                                      {p.unidade ? ` ${p.unidade}` : ''} × {reais(p.preco_unitario)}
-                                    </span>
-                                  </button>
-                                </li>
-                              ))
-                            : livresNota.map((n) => (
-                                <li key={chaveNota(n)}>
-                                  <button
-                                    type="button"
-                                    disabled={trabalhando}
-                                    onClick={() => ligar(l, l.pedido as ItemPedidoCompra, n)}
-                                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left text-xs transition hover:border-[#079C9C] disabled:opacity-60"
-                                  >
-                                    <span className="block font-semibold text-slate-800">
-                                      {n.nome}
-                                    </span>
-                                    <span className="text-slate-500">
-                                      {n.codigo ? `Cód. ${n.codigo} · ` : ''}
-                                      {numeroTexto(n.quantidade)}
-                                      {n.unidade ? ` ${n.unidade}` : ''} × {reais4(n.preco)}
-                                    </span>
-                                  </button>
-                                </li>
-                              ))}
-                        </ul>
-                      )}
-                    </div>
+                            <Lado tipo="nota">
+                              <p className="text-sm font-semibold text-slate-900">{s.nota.nome}</p>
+                              <p className="text-xs text-slate-600">
+                                {qp(s.nota.quantidade, s.nota.unidade, s.nota.preco)} · total{' '}
+                                {reais(s.nota.subtotal)}
+                              </p>
+                            </Lado>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] text-slate-500">
+                              Motivo: {s.motivos.join(' · ')}
+                            </p>
+                            <button
+                              type="button"
+                              disabled={ocupado !== null}
+                              onClick={() => ligar(s.pedido, s.nota, marca)}
+                              className="flex items-center gap-1.5 rounded-lg border border-[#079C9C] px-3 py-1.5 text-xs font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10 active:scale-95 disabled:opacity-50"
+                            >
+                              {ocupado === marca ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <Link2 className="size-3.5" />
+                              )}
+                              Ligar
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {/* duas colunas: escolha um de cada lado */}
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Rotulo tipo="pedido" />
+                    <span className="text-xs text-slate-500">
+                      só no pedido ({c.soPedido.length})
+                    </span>
+                  </div>
+                  {c.soPedido.length === 0 ? (
+                    <p className="text-xs text-slate-400">Nenhum.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {c.soPedido.map((p) => {
+                        const ativo = selP === p.id
+                        return (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              aria-pressed={ativo}
+                              onClick={() => setSelP(ativo ? null : p.id)}
+                              className={`w-full rounded-lg border p-2 text-left transition ${ESTILO.pedido} ${
+                                ativo ? 'ring-2 ring-[#079C9C]' : 'hover:border-slate-400'
+                              }`}
+                            >
+                              <span className="block text-sm font-semibold text-slate-900">
+                                {p.produto_nome}
+                              </span>
+                              <span className="block text-xs text-slate-600">
+                                {qp(p.quantidade, p.unidade, p.preco_unitario)} · total{' '}
+                                {reais(p.subtotal)}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   )}
-                </li>
-              )
-            })}
-          </ul>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Rotulo tipo="nota" />
+                    <span className="text-xs text-slate-500">só na nota ({c.soNota.length})</span>
+                  </div>
+                  {c.soNota.length === 0 ? (
+                    <p className="text-xs text-slate-400">Nenhum.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {c.soNota.map((n) => {
+                        const chave = chaveNota(n)
+                        const ativo = selN === chave
+                        return (
+                          <li key={chave}>
+                            <button
+                              type="button"
+                              aria-pressed={ativo}
+                              onClick={() => setSelN(ativo ? null : chave)}
+                              className={`w-full rounded-lg border p-2 text-left transition ${ESTILO.nota} ${
+                                ativo ? 'ring-2 ring-[#079C9C]' : 'hover:border-[#079C9C]'
+                              }`}
+                            >
+                              <span className="block text-sm font-semibold text-slate-900">
+                                {n.nome}
+                              </span>
+                              <span className="block text-xs text-slate-600">
+                                {n.codigo ? `Cód. ${n.codigo} · ` : ''}
+                                {qp(n.quantidade, n.unidade, n.preco)} · total {reais(n.subtotal)}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {pedidoSel && notaSel && (
+                <div className="space-y-2 rounded-lg border border-[#079C9C] bg-white p-3">
+                  <p className="text-xs font-semibold text-slate-600">Ligar estes dois itens?</p>
+                  <div className="grid gap-2 md:grid-cols-[1fr_auto_1fr] md:items-center">
+                    <Lado tipo="pedido">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {pedidoSel.produto_nome}
+                      </p>
+                    </Lado>
+                    <ArrowLeftRight className="mx-auto size-4 rotate-90 text-slate-400 md:rotate-0" />
+                    <Lado tipo="nota">
+                      <p className="text-sm font-semibold text-slate-900">{notaSel.nome}</p>
+                    </Lado>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={ocupado !== null}
+                    onClick={() => ligar(pedidoSel, notaSel, 'manual')}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#079C9C] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60"
+                  >
+                    {ocupado === 'manual' ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Link2 className="size-4" />
+                    )}
+                    Ligar estes dois
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
         </div>
       )}
+
+      <AjustarPedidoDialog
+        aberto={ajustando}
+        pedido={pedido}
+        itens={itens}
+        ajustes={ajustes}
+        podeFecharTotal={podeFecharTotal}
+        totalNotas={totalNotas}
+        onClose={() => setAjustando(false)}
+        onAplicado={(aviso) => {
+          setAjustando(false)
+          onAjustado(aviso)
+        }}
+      />
     </div>
   )
 }

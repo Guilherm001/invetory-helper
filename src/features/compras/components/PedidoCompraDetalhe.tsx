@@ -49,6 +49,14 @@ import type { PedidoInicial } from './PedidoCompraDialog'
 import ReceberPedidoDialog from './ReceberPedidoDialog'
 import NotasDoPedido from './NotasDoPedido'
 
+const reais4 = (n: number) =>
+  n.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })
+
 interface Acao {
   status: StatusCompra
   rotulo: string
@@ -323,7 +331,7 @@ function Conteudo({
                       {i.unidade ? ` ${i.unidade}` : ''} · {i.produto_nome}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {reais(i.preco_unitario)} cada
+                     {reais4(i.preco_unitario)} cada  cada
                       {i.produto_codigo ? ` · Cód. ${i.produto_codigo}` : ''}
                     </p>
                     {i.quantidade_recebida > 0 && (
@@ -418,7 +426,7 @@ function Conteudo({
           </div>
         )}
         
-        <NotasDoPedido pedido={pedido} itens={itens} />
+        <NotasDoPedido pedido={pedido} itens={itens} onMudou={onMudou} />
         <div>
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Histórico

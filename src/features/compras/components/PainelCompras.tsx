@@ -28,6 +28,7 @@ import {
   type Painel,
 } from '../services/painelService'
 import { numeroPedido } from '../lib/compras'
+import { aceitarDivergencia } from '../services/notasService'
 
 const PERIODOS = [7, 30, 90]
 
@@ -266,6 +267,26 @@ export default function PainelCompras() {
       setDispensando(null)
     }
   }
+    const aceitarDif = async (id: string, numero: number, dif: number) => {
+    if (
+      !window.confirm(
+        `Aceitar a diferença de ${reais(Math.abs(dif))} ${
+          dif > 0 ? 'a mais' : 'a menos'
+        } na nota do pedido ${numeroPedido(numero)}? Ele sai deste alerta. Se o valor mudar depois, o aviso volta.`
+      )
+    )
+      return
+    setDispensando(id)
+    setErroAcao('')
+    try {
+      await aceitarDivergencia(id, true)
+      setVersao((v) => v + 1)
+    } catch (e) {
+      setErroAcao(e instanceof Error ? e.message : 'Não foi possível aceitar a diferença')
+    } finally {
+      setDispensando(null)
+    }
+  }
 
   return (
     <div className="w-full pb-16">
@@ -486,9 +507,12 @@ export default function PainelCompras() {
                   </li>
                 )}
 
-                {d.lista_divergentes.map((v) => (
-                  <li key={v.id} className="py-2.5">
-                    <Link href={`/pedidos-compra?abrir=${v.id}`} className="block hover:underline">
+                                {d.lista_divergentes.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <Link
+                      href={`/pedidos-compra?abrir=${v.id}`}
+                      className="min-w-0 flex-1 hover:underline"
+                    >
                       <span className="block truncate text-sm font-semibold text-slate-900">
                         {numeroPedido(v.numero)} · {v.fornecedor_nome}
                       </span>
@@ -498,6 +522,24 @@ export default function PainelCompras() {
                         {reais(Math.abs(v.dif))})
                       </span>
                     </Link>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={`/pedidos-compra?abrir=${v.id}`}
+                        className="rounded-lg border border-[#079C9C] px-3 py-1.5 text-xs font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10"
+                      >
+                        Ver pedido
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => aceitarDif(v.id, v.numero, v.dif)}
+                        disabled={dispensando !== null}
+                        title="Aceitar esta diferença: ela sai do alerta"
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        {dispensando === v.id && <Loader2 className="size-3.5 animate-spin" />}
+                        Aceitar diferença
+                      </button>
+                    </div>
                   </li>
                 ))}
 

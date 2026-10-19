@@ -302,3 +302,90 @@ export async function barcodesDosCodigos(codigos: string[]): Promise<Map<string,
       .map((r) => [String(r.code), String(r.barcode)] as const)
   )
 }
+
+// ---------- diferença de valor aceita ----------
+
+export interface DivergenciaAceita {
+  dif: number
+  por: string | null
+  em: string | null
+  obs: string | null
+}
+
+export async function lerDivergenciaAceita(pedidoId: string): Promise<DivergenciaAceita | null> {
+  const { data, error } = await supabase
+    .from('pedidos_compra')
+    .select(
+      'divergencia_aceita_dif, divergencia_aceita_por, divergencia_aceita_em, divergencia_aceita_obs'
+    )
+    .eq('id', pedidoId)
+    .maybeSingle()
+
+  // sem o SQL novo, as colunas não existem: segue como se nada tivesse sido aceito
+  if (error || !data || data.divergencia_aceita_dif == null) return null
+
+  return {
+    dif: Number(data.divergencia_aceita_dif),
+    por: (data.divergencia_aceita_por as string | null) ?? null,
+    em: (data.divergencia_aceita_em as string | null) ?? null,
+    obs: (data.divergencia_aceita_obs as string | null) ?? null,
+  }
+}
+
+export async function aceitarDivergencia(pedidoId: string, aceitar: boolean, obs = '') {
+  const { error } = await supabase.rpc('aceitar_divergencia_nota', {
+    p_pedido: pedidoId,
+    p_aceitar: aceitar,
+    p_obs: obs.trim(),
+  })
+  if (error) throw traduz(error)
+}
+
+// ---------- ajuste do pedido pela nota ----------
+
+export interface AjusteEnviado {
+  item_id: string
+  quantidade: number
+  preco: number
+}
+
+export async function ajustarPedidoPelaNota(
+  pedidoId: string,
+  ajustes: AjusteEnviado[],
+  fecharTotal: boolean
+): Promise<{ alterados: number; total: number }> {
+  const { data, error } = await supabase.rpc('ajustar_pedido_pela_nota', {
+    p_pedido: pedidoId,
+    p_ajustes: ajustes,
+    p_fechar_total: fecharTotal,
+  })
+  if (error) throw traduz(error)
+
+  const r = data as { alterados: number; total: number | string }
+  return { alterados: Number(r.alterados), total: Number(r.total) }
+}
+
+export interface AjusteFeito {
+  feito_por: string | null
+  feito_em: string
+  total_antes: number
+  total_depois: number
+}
+
+export async function ultimoAjuste(pedidoId: string): Promise<AjusteFeito | null> {
+  const { data, error } = await supabase
+    .from('pedido_compra_ajustes')
+    .select('feito_por, feito_em, total_antes, total_depois')
+    .eq('pedido_id', pedidoId)
+    .order('feito_em', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error || !data) return null
+  return {
+    feito_por: (data.feito_por as string | null) ?? null,
+    feito_em: data.feito_em as string,
+    total_antes: Number(data.total_antes),
+    total_depois: Number(data.total_depois),
+  }
+}

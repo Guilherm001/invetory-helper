@@ -11,6 +11,7 @@ import {
   FileText,
   Image as ImageIcon,
   Loader2,
+  Pencil,
   Plus,
   Trash2,
 } from 'lucide-react'
@@ -19,12 +20,17 @@ import { dataCurta, dataHora, reais } from '@/features/loja/lib/formatar'
 import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
 import { dispensarNotas } from '../services/painelService'
 import {
+  aceitarDivergencia,
   documentoDoFornecedor,
   excluirNota,
+  lerDivergenciaAceita,
   linkDoArquivo,
   listarNotas,
   notaDispensada,
+  ultimoAjuste,
+  type AjusteFeito,
   type ArquivoNota,
+  type DivergenciaAceita,
   type NotaCompra,
 } from '../services/notasService'
 import { alertasDasNotas } from '../lib/conferenciaNota'
@@ -47,9 +53,11 @@ function IconeArquivo({ tipo }: { tipo: string }) {
 export default function NotasDoPedido({
   pedido,
   itens,
+  onMudou,
 }: {
   pedido: PedidoCompra
   itens: ItemPedidoCompra[] | null
+  onMudou?: (aviso?: string) => void
 }) {
   const [notas, setNotas] = useState<NotaCompra[] | null>(null)
   const [erro, setErro] = useState('')
@@ -60,6 +68,13 @@ export default function NotasDoPedido({
   const [docFornecedor, setDocFornecedor] = useState<string | null>(null)
   const [dispensada, setDispensada] = useState(false)
   const [dispensando, setDispensando] = useState(false)
+
+  // diferença de valor aceita e último ajuste feito pela nota
+  const [aceita, setAceita] = useState<DivergenciaAceita | null>(null)
+  const [formAceite, setFormAceite] = useState(false)
+  const [obsAceite, setObsAceite] = useState('')
+  const [salvandoAceite, setSalvandoAceite] = useState(false)
+  const [ajuste, setAjuste] = useState<AjusteFeito | null>(null)
 
   const podeAdicionar = ['enviado', 'confirmado', 'recebido'].includes(pedido.status)
 
@@ -94,6 +109,12 @@ export default function NotasDoPedido({
     notaDispensada(pedido.id).then((v) => {
       if (!cancelado) setDispensada(v)
     })
+    lerDivergenciaAceita(pedido.id).then((v) => {
+      if (!cancelado) setAceita(v)
+    })
+    ultimoAjuste(pedido.id).then((v) => {
+      if (!cancelado) setAjuste(v)
+    })
     return () => {
       cancelado = true
     }
@@ -102,8 +123,8 @@ export default function NotasDoPedido({
   const temXml = !!notas?.some((n) => n.itens.length > 0)
 
   const alertas = useMemo(
-    () => (itens && notas ? alertasDasNotas(pedido, itens, notas, docFornecedor) : []),
-    [pedido, itens, notas, docFornecedor]
+    () => (itens && notas ? alertasDasNotas(pedido, itens, notas, docFornecedor, aceita) : []),
+    [pedido, itens, notas, docFornecedor, aceita]
   )
 
   const alternarDispensa = async () => {
@@ -116,6 +137,34 @@ export default function NotasDoPedido({
       setErro(e instanceof Error ? e.message : 'Não foi possível alterar')
     } finally {
       setDispensando(false)
+    }
+  }
+
+  const aceitarDiferenca = async () => {
+    setSalvandoAceite(true)
+    setErro('')
+    try {
+      await aceitarDivergencia(pedido.id, true, obsAceite)
+      setAceita(await lerDivergenciaAceita(pedido.id))
+      setFormAceite(false)
+      setObsAceite('')
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível aceitar a diferença')
+    } finally {
+      setSalvandoAceite(false)
+    }
+  }
+
+  const desfazerAceite = async () => {
+    setSalvandoAceite(true)
+    setErro('')
+    try {
+      await aceitarDivergencia(pedido.id, false)
+      setAceita(null)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível desfazer')
+    } finally {
+      setSalvandoAceite(false)
     }
   }
 
@@ -240,21 +289,92 @@ export default function NotasDoPedido({
               {alertas.map((a, i) => (
                 <li
                   key={i}
-                  className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${
+                  className={`rounded-lg px-3 py-2 text-sm ${
                     a.nivel === 'aviso'
                       ? 'bg-amber-50 text-amber-800'
                       : 'bg-emerald-50 text-emerald-700'
                   }`}
                 >
-                  {a.nivel === 'aviso' ? (
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                  <div className="flex items-start gap-2">
+                    {a.nivel === 'aviso' ? (
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                    )}
+                    <span className="min-w-0 flex-1">{a.texto}</span>
+                  </div>
+
+                  {a.acao === 'aceitar' && (
+                    <div className="mt-2 pl-6">
+                      {!formAceite ? (
+                        <button
+                          type="button"
+                          onClick={() => setFormAceite(true)}
+                          className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                        >
+                          Aceitar esta diferença
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            value={obsAceite}
+                            onChange={(e) => setObsAceite(e.target.value)}
+                            maxLength={300}
+                            placeholder="Motivo (opcional): frete, desconto combinado..."
+                            aria-label="Motivo da diferença"
+                            className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-base text-slate-800 outline-none focus:border-amber-400 md:text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={aceitarDiferenca}
+                              disabled={salvandoAceite}
+                              className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-700 disabled:opacity-60"
+                            >
+                              {salvandoAceite && <Loader2 className="size-3 animate-spin" />}
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormAceite(false)
+                                setObsAceite('')
+                              }}
+                              disabled={salvandoAceite}
+                              className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
-                  {a.texto}
+
+                  {a.acao === 'desfazer' && (
+                    <div className="mt-1.5 pl-6">
+                      <button
+                        type="button"
+                        onClick={desfazerAceite}
+                        disabled={salvandoAceite}
+                        className="text-xs font-semibold text-emerald-800 hover:underline disabled:opacity-50"
+                      >
+                        Desfazer
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
+          )}
+
+          {ajuste && (
+            <p className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <Pencil className="mt-0.5 size-3.5 shrink-0 text-slate-400" />
+              Pedido ajustado pela nota{ajuste.feito_por ? ` por ${ajuste.feito_por}` : ''} em{' '}
+              {dataHora(ajuste.feito_em)}: total de {reais(ajuste.total_antes)} para{' '}
+              {reais(ajuste.total_depois)}.
+            </p>
           )}
 
           {/* notas */}
@@ -371,7 +491,14 @@ export default function NotasDoPedido({
           </ul>
 
           {/* conferência dos itens: só quando há XML */}
-          {temXml && itens && <ConferenciaItens pedido={pedido} itens={itens} notas={notas} />}
+          {temXml && itens && (
+            <ConferenciaItens
+              pedido={pedido}
+              itens={itens}
+              notas={notas}
+              onAjustado={(aviso) => onMudou?.(aviso)}
+            />
+          )}
         </div>
       )}
 
