@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  CalendarClock,
   Check,
   ClipboardCheck,
   ClipboardCopy,
@@ -20,7 +21,12 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { dataCurta, hoje, reais } from '@/features/loja/lib/formatar'
-import { carregarPainel, type Painel } from '../services/painelService'
+import {
+  carregarPainel,
+  dispensarNotas,
+  dispensarTodasSemNota,
+  type Painel,
+} from '../services/painelService'
 import { numeroPedido } from '../lib/compras'
 
 const PERIODOS = [7, 30, 90]
@@ -186,6 +192,8 @@ export default function PainelCompras() {
   const [versao, setVersao] = useState(0)
   const [res, setRes] = useState<{ chave: string; painel: Painel } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [dispensando, setDispensando] = useState<string | null>(null)
+  const [erroAcao, setErroAcao] = useState('')
 
   const chave = `${dias}|${versao}`
 
@@ -220,9 +228,44 @@ export default function PainelCompras() {
     d.atrasados.n === 0 &&
     d.faltas.sem_etapa === 0 &&
     d.rascunhos.parados === 0 &&
-    d.parciais === 0
+    d.parciais === 0 &&
+    d.divergentes.n === 0 &&
+    d.sem_nota.n === 0
 
   const maiorFornecedor = d ? Math.max(...d.fornecedores.map((f) => f.total), 1) : 1
+
+  const dispensar = async (id: string) => {
+    setDispensando(id)
+    setErroAcao('')
+    try {
+      await dispensarNotas([id], true)
+      setVersao((v) => v + 1)
+    } catch (e) {
+      setErroAcao(e instanceof Error ? e.message : 'Não foi possível alterar o pedido')
+    } finally {
+      setDispensando(null)
+    }
+  }
+
+  const dispensarTodos = async () => {
+    if (!d) return
+    if (
+      !window.confirm(
+        `Marcar os ${d.sem_nota.n} pedidos recebidos nos últimos ${d.dias} dias como "sem nota fiscal"? Eles saem deste alerta. Dá para desfazer, um a um, dentro de cada pedido.`
+      )
+    )
+      return
+    setDispensando('todos')
+    setErroAcao('')
+    try {
+      await dispensarTodasSemNota(d.dias)
+      setVersao((v) => v + 1)
+    } catch (e) {
+      setErroAcao(e instanceof Error ? e.message : 'Não foi possível alterar os pedidos')
+    } finally {
+      setDispensando(null)
+    }
+  }
 
   return (
     <div className="w-full pb-16">
@@ -351,10 +394,19 @@ export default function PainelCompras() {
 
           {/* ação agora */}
           <Bloco titulo="Precisa de ação agora" icone={AlertTriangle}>
+            {erroAcao && (
+              <p
+                role="alert"
+                className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
+              >
+                {erroAcao}
+              </p>
+            )}
+
             {nada ? (
               <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
                 <Check className="size-4" />
-                Tudo em dia: nada atrasado, parado ou esperando cotação.
+                Tudo em dia: nada atrasado, parado, sem nota ou com valor diferente.
               </p>
             ) : (
               <ul className="divide-y divide-slate-100">
@@ -431,6 +483,87 @@ export default function PainelCompras() {
                     >
                       Ver recebimento
                     </Link>
+                  </li>
+                )}
+
+                {d.lista_divergentes.map((v) => (
+                  <li key={v.id} className="py-2.5">
+                    <Link href={`/pedidos-compra?abrir=${v.id}`} className="block hover:underline">
+                      <span className="block truncate text-sm font-semibold text-slate-900">
+                        {numeroPedido(v.numero)} · {v.fornecedor_nome}
+                      </span>
+                      <span className="block text-xs text-amber-700">
+                        Nota fiscal {reais(v.notas)} contra {reais(v.esperado)} esperados (
+                        {v.dif > 0 ? '+' : '-'}
+                        {reais(Math.abs(v.dif))})
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+
+                {d.divergentes.n > d.lista_divergentes.length && (
+                  <li className="py-2.5 text-sm text-slate-500">
+                    E mais {d.divergentes.n - d.lista_divergentes.length} com valor de nota
+                    diferente.
+                  </li>
+                )}
+
+                {d.sem_nota.n > 0 && (
+                  <li className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <span className="text-sm text-slate-700">
+                      <strong>{plural(d.sem_nota.n, 'pedido recebido', 'pedidos recebidos')}</strong>{' '}
+                      sem nota fiscal registrada
+                    </span>
+                    <button
+                      type="button"
+                      onClick={dispensarTodos}
+                      disabled={dispensando !== null}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {dispensando === 'todos' && <Loader2 className="size-3.5 animate-spin" />}
+                      Marcar todos como sem nota
+                    </button>
+                  </li>
+                )}
+
+                {d.lista_sem_nota.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <Link
+                      href={`/pedidos-compra?abrir=${s.id}`}
+                      className="min-w-0 flex-1 hover:underline"
+                    >
+                      <span className="block truncate text-sm font-semibold text-slate-900">
+                        {numeroPedido(s.numero)} · {s.fornecedor_nome}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        Recebido em {new Date(s.recebido_em).toLocaleDateString('pt-BR')} ·{' '}
+                        {reais(s.total)}
+                      </span>
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={`/pedidos-compra?abrir=${s.id}`}
+                        className="rounded-lg border border-[#079C9C] px-3 py-1.5 text-xs font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10"
+                      >
+                        Registrar nota
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => dispensar(s.id)}
+                        disabled={dispensando !== null}
+                        title="Este pedido não tem nota fiscal (compra à vista, por exemplo)"
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        {dispensando === s.id && <Loader2 className="size-3.5 animate-spin" />}
+                        Sem nota
+                      </button>
+                    </div>
+                  </li>
+                ))}
+
+                {d.sem_nota.n > d.lista_sem_nota.length && (
+                  <li className="py-2.5 text-sm text-slate-500">
+                    E mais {d.sem_nota.n - d.lista_sem_nota.length} sem nota.
                   </li>
                 )}
               </ul>
@@ -516,6 +649,67 @@ export default function PainelCompras() {
               )}
             </Bloco>
           </div>
+
+          <Bloco
+            titulo={`Vencimentos das notas (próximos ${d.vencimentos.dias} dias)`}
+            icone={CalendarClock}
+          >
+            {d.lista_vencimentos.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Nenhum vencimento nos próximos {d.vencimentos.dias} dias. Só as notas importadas por
+                XML trazem os vencimentos.
+              </p>
+            ) : (
+              <>
+                <p className="mb-2 text-sm text-slate-600">
+                  <strong>{plural(d.vencimentos.n, 'vencimento', 'vencimentos')}</strong> somando{' '}
+                  <strong>{reais(d.vencimentos.total)}</strong>
+                </p>
+                <ul className="divide-y divide-slate-100">
+                  {d.lista_vencimentos.map((v, i) => (
+                    <li key={`${v.pedido_id}-${v.vencimento}-${i}`}>
+                      <Link
+                        href={`/pedidos-compra?abrir=${v.pedido_id}`}
+                        className="flex items-center justify-between gap-3 py-2.5 hover:underline"
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span
+                            className={`w-16 shrink-0 rounded-full px-2.5 py-0.5 text-center text-xs font-semibold ${
+                              v.vencimento === hojeIso
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {v.vencimento === hojeIso ? 'Hoje' : dataCurta(v.vencimento).slice(0, 5)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-slate-900">
+                              {v.fornecedor_nome}
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              NF {v.nf} · {numeroPedido(v.pedido_numero)}
+                            </span>
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-sm font-semibold text-slate-900">
+                          {reais(v.valor)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                {d.vencimentos.n > d.lista_vencimentos.length && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    E mais {d.vencimentos.n - d.lista_vencimentos.length} vencimentos no período.
+                  </p>
+                )}
+              </>
+            )}
+            <p className="mt-2 text-xs text-slate-400">
+              O sistema ainda não controla o que já foi pago: a lista mostra todos os vencimentos
+              das notas, pagos ou não.
+            </p>
+          </Bloco>
 
           <div className="grid gap-5 lg:grid-cols-2">
             <Bloco titulo="Compras por mês" icone={ClipboardCheck}>

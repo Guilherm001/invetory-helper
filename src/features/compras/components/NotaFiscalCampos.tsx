@@ -43,12 +43,14 @@ export default function NotaFiscalCampos({
   pedidoId,
   empresaId,
   erroEmpresa,
+  acaoXml,
 }: {
   nota: NotaRascunho
   setNota: Dispatch<SetStateAction<NotaRascunho>>
   pedidoId: string
   empresaId: string | null
   erroEmpresa?: string
+  acaoXml?: React.ReactNode // aparece logo depois de importar um XML
 }) {
   const [aviso, setAviso] = useState('')
   const [erroXml, setErroXml] = useState('')
@@ -246,6 +248,7 @@ export default function NotaFiscalCampos({
             . Os campos abaixo foram preenchidos.
           </p>
         )}
+         {nota.xml && acaoXml}
         {nota.xml?.autorizada === false && (
           <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
             <AlertCircle className="mt-0.5 size-3.5 shrink-0" />

@@ -4,6 +4,7 @@ import { reais } from '@/features/loja/lib/formatar'
 import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
 import type { NotaCompra } from '../services/notasService'
 import type { ItemNota } from './nfe'
+import { agruparItensNota, casar, chaveNota, type ComoCasou } from './casamento'
 
 const arred2 = (n: number) => Math.round(n * 100) / 100
 const arred3 = (n: number) => Math.round(n * 1000) / 1000
@@ -74,7 +75,8 @@ export interface LinhaConferencia {
   id: string
   pedido: ItemPedidoCompra | null
   nota: ItemNota | null
-  como: 'ean' | 'nome' | 'parecido' | null
+  como: ComoCasou | null
+  notaChave: string | null
   difPreco: number | null // % da nota contra o pedido
   difQtd: number | null // nota - pedido
   recebidoDiferente: boolean
@@ -90,85 +92,15 @@ export interface ResultadoConferencia {
   notasSemXml: number
 }
 
-const palavras = (s: string) =>
-  new Set(normalizar(s).split(' ').filter((t) => t.length > 1 || /\d/.test(t)))
-
-function parecido(a: Set<string>, b: Set<string>) {
-  if (a.size === 0 || b.size === 0) return 0
-  let comuns = 0
-  for (const t of a) if (b.has(t)) comuns++
-  return comuns / (a.size + b.size - comuns)
-}
-
 export function conferirItens(
   pedidoItens: ItemPedidoCompra[],
   notas: NotaCompra[],
-  barcodes: Map<string, string>
+  barcodes: Map<string, string>,
+  vinculos: Map<string, string>
 ): ResultadoConferencia {
-  // junta o mesmo produto de várias notas (entrega em partes)
-  const juntos = new Map<string, ItemNota>()
-  for (const n of notas) {
-    for (const i of n.itens) {
-      const k = i.ean ? `e:${i.ean}` : `n:${normalizar(i.nome)}`
-      const atual = juntos.get(k)
-      if (atual) {
-        const q = atual.quantidade + i.quantidade
-        const sub = atual.subtotal + i.subtotal
-        juntos.set(k, {
-          ...atual,
-          quantidade: q,
-          subtotal: arred2(sub),
-          preco: q > 0 ? Math.round((sub / q) * 10000) / 10000 : atual.preco,
-        })
-      } else {
-        juntos.set(k, { ...i })
-      }
-    }
-  }
-  const daNota = [...juntos.values()]
-
-  const pares = new Map<number, { ni: number; como: 'ean' | 'nome' | 'parecido' }>()
-  const usadas = new Set<number>()
-
-  // 1) código de barras
-  pedidoItens.forEach((p, pi) => {
-    const barras = p.produto_codigo ? barcodes.get(p.produto_codigo) : undefined
-    if (!barras) return
-    const ni = daNota.findIndex((n, i) => !usadas.has(i) && n.ean === barras)
-    if (ni >= 0) {
-      pares.set(pi, { ni, como: 'ean' })
-      usadas.add(ni)
-    }
-  })
-
-  // 2) nome igual
-  pedidoItens.forEach((p, pi) => {
-    if (pares.has(pi)) return
-    const alvo = normalizar(p.produto_nome)
-    const ni = daNota.findIndex((n, i) => !usadas.has(i) && normalizar(n.nome) === alvo)
-    if (ni >= 0) {
-      pares.set(pi, { ni, como: 'nome' })
-      usadas.add(ni)
-    }
-  })
-
-  // 3) nome parecido (os pares mais parecidos primeiro)
-  const candidatos: { pi: number; ni: number; nota: number }[] = []
-  pedidoItens.forEach((p, pi) => {
-    if (pares.has(pi)) return
-    const a = palavras(p.produto_nome)
-    daNota.forEach((n, ni) => {
-      if (usadas.has(ni)) return
-      const nota = parecido(a, palavras(n.nome))
-      if (nota >= 0.6) candidatos.push({ pi, ni, nota })
-    })
-  })
-  candidatos.sort((x, y) => y.nota - x.nota)
-  for (const c of candidatos) {
-    if (pares.has(c.pi) || usadas.has(c.ni)) continue
-    pares.set(c.pi, { ni: c.ni, como: 'parecido' })
-    usadas.add(c.ni)
-  }
+  const daNota = agruparItensNota(notas.flatMap((n) => n.itens))
+  const pares = casar(pedidoItens, daNota, barcodes, vinculos)
+  const usadas = new Set([...pares.values()].map((p) => p.ni))
 
   const algumRecebido = pedidoItens.some((i) => i.quantidade_recebida > 0)
 
@@ -180,17 +112,23 @@ export function conferirItens(
       n && p.preco_unitario > 0 && Math.abs(n.preco - p.preco_unitario) >= 0.01
         ? Math.round(((n.preco - p.preco_unitario) / p.preco_unitario) * 1000) / 10
         : null
-    const difQtd = n && Math.abs(n.quantidade - p.quantidade) > 0.0005 ? arred3(n.quantidade - p.quantidade) : null
+    const difQtd =
+      n && Math.abs(n.quantidade - p.quantidade) > 0.0005
+        ? arred3(n.quantidade - p.quantidade)
+        : null
 
     return {
       id: `p:${p.id}`,
       pedido: p,
       nota: n,
       como: par?.como ?? null,
+      notaChave: n ? chaveNota(n) : null,
       difPreco,
       difQtd,
-      recebidoDiferente: !!n && algumRecebido && Math.abs(p.quantidade_recebida - n.quantidade) > 0.0005,
-      unidadeDiferente: !!n && !!n.unidade && !!p.unidade && normalizar(n.unidade) !== normalizar(p.unidade),
+      recebidoDiferente:
+        !!n && algumRecebido && Math.abs(p.quantidade_recebida - n.quantidade) > 0.0005,
+      unidadeDiferente:
+        !!n && !!n.unidade && !!p.unidade && normalizar(n.unidade) !== normalizar(p.unidade),
     }
   })
 
@@ -201,6 +139,7 @@ export function conferirItens(
       pedido: null,
       nota: n,
       como: null,
+      notaChave: chaveNota(n),
       difPreco: null,
       difQtd: null,
       recebidoDiferente: false,

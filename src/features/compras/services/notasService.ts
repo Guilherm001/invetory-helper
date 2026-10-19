@@ -44,13 +44,23 @@ export interface NotaCompra {
   criado_em: string
 }
 
+export interface Vinculo {
+  id: string
+  nota_chave: string
+  alvo_chave: string
+  nota_nome: string | null
+  alvo_nome: string
+}
+
 const COLUNAS =
   'id, pedido_id, numero, serie, chave, emissao, valor, emitente_doc, emitente_nome, observacao, origem, arquivos, itens, duplicatas, registrada_por, criado_em'
 
 function traduz(error: { message: string; code?: string }) {
   const m = error.message.toLowerCase()
   if (m.includes('could not find the function') || error.code === '42P01' || m.includes('does not exist'))
-    return new Error('O registro de notas ainda não existe no banco. Rode o SQL de notas fiscais.')
+    return new Error(
+      'O registro de notas e vínculos ainda não está completo no banco. Rode o SQL de notas fiscais e o SQL de vínculos.'
+    )
   return new Error(error.message)
 }
 
@@ -220,7 +230,50 @@ export async function excluirNota(id: string) {
   if (paths.length > 0) await supabase.storage.from(BUCKET).remove(paths)
 }
 
-// ---------- apoio à conferência (só o dono usa) ----------
+// o pedido foi marcado como "sem nota fiscal" (compra à vista, por exemplo)?
+export async function notaDispensada(pedidoId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('pedidos_compra')
+    .select('nota_dispensada')
+    .eq('id', pedidoId)
+    .maybeSingle()
+  if (error) return false
+  return !!data?.nota_dispensada
+}
+
+// ---------- vínculos de produto (por fornecedor) ----------
+
+export async function listarVinculos(pedidoId: string): Promise<Vinculo[]> {
+  const { data, error } = await supabase.rpc('vinculos_do_pedido', { p_pedido: pedidoId })
+  if (error) throw traduz(error)
+  return (data ?? []) as Vinculo[]
+}
+
+export async function vincularItem(opts: {
+  pedidoId: string
+  itemId: string // item do pedido
+  alvoChave: string // chave do item do pedido
+  notaChave: string // chave do item da nota
+  notaNome: string
+  notaCodigo: string
+}) {
+  const { error } = await supabase.rpc('vincular_item_fornecedor', {
+    p_pedido: opts.pedidoId,
+    p_item: opts.itemId,
+    p_alvo_chave: opts.alvoChave,
+    p_nota_chave: opts.notaChave,
+    p_nota_nome: opts.notaNome,
+    p_nota_codigo: opts.notaCodigo,
+  })
+  if (error) throw traduz(error)
+}
+
+export async function desvincularItem(id: string) {
+  const { error } = await supabase.rpc('desvincular_item_fornecedor', { p_id: id })
+  if (error) throw traduz(error)
+}
+
+// ---------- apoio à conferência ----------
 
 export async function documentoDoFornecedor(ref: string): Promise<string | null> {
   const { data, error } = await supabase

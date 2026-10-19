@@ -8,6 +8,7 @@ import {
   Loader2,
   PackageCheck,
   Receipt,
+  ListChecks,
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
@@ -25,10 +26,18 @@ import {
   type ItemAReceber,
   type ResultadoRecebimento,
 } from '../services/comprasService'
-import { empresaIdAtual, registrarNota, type DadosNota } from '../services/notasService'
+import {
+  barcodesDosCodigos,
+  empresaIdAtual,
+  listarVinculos,
+  registrarNota,
+  type DadosNota,
+} from '../services/notasService'
+import { agruparItensNota, casar } from '../lib/casamento'
 import { numeroPedido } from '../lib/compras'
 import { NOTA_VAZIA, notaPreenchida, validarNota, type NotaRascunho } from '../lib/notaRascunho'
 import NotaFiscalCampos from './NotaFiscalCampos'
+
 
 export interface PedidoParaReceber {
   id: string
@@ -47,6 +56,8 @@ function lerQtd(texto: string | undefined) {
 }
 
 const faltaDe = (i: ItemAReceber) => Math.max(0, arredondar(i.quantidade - i.quantidade_recebida))
+const listaCurta = (nomes: string[]) =>
+  nomes.length <= 4 ? nomes.join(', ') : `${nomes.slice(0, 4).join(', ')} e mais ${nomes.length - 4}`
 
 function montarAviso(r: ResultadoRecebimento) {
   const situacao = r.completo
@@ -136,6 +147,16 @@ function Conteudo({
     aviso: string
   } | null>(null)
   const [tentando, setTentando] = useState(false)
+
+    // preenchimento do "Chegou" pelas quantidades do XML
+  const [preenchendo, setPreenchendo] = useState(false)
+  const [resumoXml, setResumoXml] = useState<{
+    preenchidos: number
+    jaRecebidos: number
+    naoReconhecidos: string[]
+    naoVieram: string[]
+    unidades: string[]
+  } | null>(null)
 
   useEffect(() => {
     let cancelado = false
@@ -254,6 +275,69 @@ function Conteudo({
     onRecebido(dadosNota ? `${aviso} Nota fiscal registrada.` : aviso)
   }
 
+    const usarQuantidadesDaNota = async () => {
+    if (!nota.xml || !itens || preenchendo) return
+    setPreenchendo(true)
+    setResumoXml(null)
+    setErro('')
+
+    try {
+      const [barcodes, vinculos] = await Promise.all([
+        barcodesDosCodigos(itens.map((i) => i.produto_codigo ?? '').filter(Boolean)),
+        listarVinculos(pedido.id).catch(() => []),
+      ])
+
+      const daNota = agruparItensNota(nota.xml.itens)
+      const pares = casar(
+        itens,
+        daNota,
+        barcodes,
+        new Map(vinculos.map((v) => [v.nota_chave, v.alvo_chave] as const))
+      )
+
+      const novos: Record<string, string> = {}
+      const unidades: string[] = []
+      let jaRecebidos = 0
+
+      pares.forEach(({ ni }, pi) => {
+        const item = itens[pi]
+        const n = daNota[ni]
+
+        // o que já chegou por completo não recebe mais nada
+        if (faltaDe(item) === 0) {
+          jaRecebidos++
+          return
+        }
+
+        novos[item.id] = numeroTexto(n.quantidade)
+
+        if (
+          n.unidade &&
+          item.unidade &&
+          n.unidade.trim().toLowerCase() !== item.unidade.trim().toLowerCase()
+        ) {
+          unidades.push(`${item.produto_nome} (pedido em ${item.unidade}, nota em ${n.unidade})`)
+        }
+      })
+
+      const usadas = new Set([...pares.values()].map((p) => p.ni))
+
+      setChegou((p) => ({ ...p, ...novos }))
+      setResumoXml({
+        preenchidos: Object.keys(novos).length,
+        jaRecebidos,
+        naoReconhecidos: daNota.filter((_, ni) => !usadas.has(ni)).map((n) => n.nome),
+        naoVieram: itens
+          .filter((it, pi) => faltaDe(it) > 0 && !pares.has(pi))
+          .map((it) => it.produto_nome),
+        unidades,
+      })
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível usar as quantidades da nota')
+    } finally {
+      setPreenchendo(false)
+    }
+  }
   const confirmar = async () => {
     if (!validar()) return
 
@@ -534,12 +618,76 @@ function Conteudo({
 
                   {/* fica montado mesmo fechado, para não perder as miniaturas */}
                   <div className={notaAberta ? 'border-t border-slate-100 p-3' : 'hidden'}>
-                    <NotaFiscalCampos
+                                        <NotaFiscalCampos
                       nota={nota}
                       setNota={setNota}
                       pedidoId={pedido.id}
                       empresaId={empresaId}
                       erroEmpresa={erroEmpresa}
+                      acaoXml={
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={usarQuantidadesDaNota}
+                            disabled={preenchendo || !itens}
+                            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#079C9C] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60"
+                          >
+                            {preenchendo ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <ListChecks className="size-4" />
+                            )}
+                            Usar as quantidades da nota
+                          </button>
+
+                          {resumoXml && (
+                            <div className="space-y-1.5 text-xs">
+                              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">
+                                {resumoXml.preenchidos === 0
+                                  ? 'Nenhum item da nota foi reconhecido.'
+                                  : `${resumoXml.preenchidos} ${
+                                      resumoXml.preenchidos === 1 ? 'item preenchido' : 'itens preenchidos'
+                                    } com as quantidades da nota. Confira o que chegou de verdade antes de confirmar.`}
+                              </p>
+
+                              {resumoXml.unidades.length > 0 && (
+                                <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+                                  Unidade diferente entre o pedido e a nota. Confira a quantidade:{' '}
+                                  {listaCurta(resumoXml.unidades)}.
+                                </p>
+                              )}
+
+                              {resumoXml.naoReconhecidos.length > 0 && (
+                                <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+                                  {resumoXml.naoReconhecidos.length}{' '}
+                                  {resumoXml.naoReconhecidos.length === 1
+                                    ? 'item da nota não foi reconhecido'
+                                    : 'itens da nota não foram reconhecidos'}
+                                  : {listaCurta(resumoXml.naoReconhecidos)}. Preencha à mão. Para o
+                                  sistema reconhecer da próxima vez, o dono liga os itens em Notas
+                                  fiscais do pedido.
+                                </p>
+                              )}
+
+                              {resumoXml.naoVieram.length > 0 && (
+                                <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                                  Não vieram na nota: {listaCurta(resumoXml.naoVieram)}.
+                                </p>
+                              )}
+
+                              {resumoXml.jaRecebidos > 0 && (
+                                <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">
+                                  {resumoXml.jaRecebidos}{' '}
+                                  {resumoXml.jaRecebidos === 1
+                                    ? 'item já tinha sido recebido por completo'
+                                    : 'itens já tinham sido recebidos por completo'}
+                                  : não mudaram.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      }
                     />
                   </div>
                 </div>
