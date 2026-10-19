@@ -281,20 +281,21 @@ export default function BotaoAdd({ addProducts }: BotaoAddProps) {
                             Catálogo (toque no item para adicionar)
                         </span>
                         <BuscaCatalogo
-                            key={buscaKey}
-                            onSelect={(item) => {
-                                adicionar([
-                                    criarItem({
-                                        name: item.name,
-                                        unit: item.unit,
-                                        catalog_code: item.code,
-                                        quantity: quantidade,
-                                    }),
-                                ])
-                                setQuantidade(1)
-                                setBuscaKey((k) => k + 1)
-                            }}
-                        />
+    key={buscaKey}
+    manterAberto
+    jaAdicionado={(item) => itens.some((i) => i.catalog_code === item.code)}
+    onSelect={(item) => {
+        adicionar([
+            criarItem({
+                name: item.name,
+                unit: item.unit,
+                catalog_code: item.code,
+                quantity: quantidade,
+            }),
+        ])
+        setQuantidade(1)
+    }}
+/>
                     </div>
 
                     {/* Nome + quantidade + adicionar */}

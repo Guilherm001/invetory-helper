@@ -1,17 +1,30 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
+import { Check, X } from 'lucide-react'
 import { searchCatalog, type CatalogItem } from '../services/catalogService'
+
+const PASSO = 50
 
 interface Props {
   onSelect: (item: CatalogItem) => void
+  // true: depois de escolher, o termo e os resultados continuam na tela
+  manterAberto?: boolean
+  // marca com um check os itens que já foram adicionados
+  jaAdicionado?: (item: CatalogItem) => boolean
 }
 
-export default function BuscaCatalogo({ onSelect }: Props) {
+export default function BuscaCatalogo({
+  onSelect,
+  manterAberto = false,
+  jaAdicionado,
+}: Props) {
   const [termo, setTermo] = useState('')
   const [results, setResults] = useState<CatalogItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [limite, setLimite] = useState(PASSO)
   const lendo = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Busca enquanto o usuário digita, com debounce
   useEffect(() => {
@@ -29,19 +42,12 @@ export default function BuscaCatalogo({ onSelect }: Props) {
       setLoading(true)
 
       try {
-        const encontrados = await searchCatalog(t)
-
-        if (!cancelado) {
-          setResults(encontrados)
-        }
+        const encontrados = await searchCatalog(t, limite)
+        if (!cancelado) setResults(encontrados)
       } catch {
-        if (!cancelado) {
-          setResults([])
-        }
+        if (!cancelado) setResults([])
       } finally {
-        if (!cancelado) {
-          setLoading(false)
-        }
+        if (!cancelado) setLoading(false)
       }
     }, 300)
 
@@ -49,20 +55,27 @@ export default function BuscaCatalogo({ onSelect }: Props) {
       cancelado = true
       clearTimeout(timer)
     }
-  }, [termo])
+  }, [termo, limite])
+
+  function limpar() {
+    setTermo('')
+    setResults([])
+    setLimite(PASSO)
+    inputRef.current?.focus()
+  }
 
   function escolher(item: CatalogItem) {
     onSelect(item)
-    setTermo('')
-    setResults([])
+    if (manterAberto) {
+      inputRef.current?.focus()
+      return
+    }
+    limpar()
   }
 
-  // Enter: se o que foi digitado é um código (ou código de barras) exato,
-  // adiciona na hora. Senão, mostra os semelhantes.
   async function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
-      setTermo('')
-      setResults([])
+      limpar()
       return
     }
 
@@ -73,14 +86,12 @@ export default function BuscaCatalogo({ onSelect }: Props) {
     const t = termo.trim()
     const soNumeros = /^\d+$/.test(t)
 
-    // código de 1 dígito só vale no Enter; texto precisa de 2+
     if (t.length < (soNumeros ? 1 : 2) || lendo.current) return
 
     lendo.current = true
 
     try {
-      // busca direto, sem esperar o debounce
-      const encontrados = await searchCatalog(t)
+      const encontrados = await searchCatalog(t, limite)
 
       const exato = encontrados.find(
         (item) => item.code === t || item.barcode === t
@@ -100,23 +111,38 @@ export default function BuscaCatalogo({ onSelect }: Props) {
     }
   }
 
+  const podeMostrarMais = !loading && results.length >= limite
+
   return (
     <div className="relative">
       <input
+        ref={inputRef}
         value={termo}
-        onChange={(e) => setTermo(e.target.value)}
+        onChange={(e) => {
+          setTermo(e.target.value)
+          setLimite(PASSO)
+        }}
         onKeyDown={handleKeyDown}
         placeholder="Buscar no catálogo: código, barras ou descrição"
         autoFocus
-        className="w-full p-2 border border-gray-300 rounded-md outline-none focus:ring-2 focus:ring-[#079C9C]"
+        className="w-full rounded-md border border-gray-300 p-2 pr-9 outline-none focus:ring-2 focus:ring-[#079C9C]"
       />
 
+      {termo && (
+        <button
+          type="button"
+          onClick={limpar}
+          aria-label="Limpar busca"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700"
+        >
+          <X className="size-4" />
+        </button>
+      )}
+
       {termo.trim().length >= 2 && (
-        <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto rounded-md border bg-white shadow-lg">
-          {loading && (
-            <li className="p-2 text-sm text-gray-500">
-              Buscando...
-            </li>
+        <ul className="absolute z-10 mt-1 max-h-80 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+          {loading && results.length === 0 && (
+            <li className="p-2 text-sm text-gray-500">Buscando...</li>
           )}
 
           {!loading && results.length === 0 && (
@@ -128,31 +154,56 @@ export default function BuscaCatalogo({ onSelect }: Props) {
           {results.map((item) => {
             const exato =
               item.code === termo.trim() || item.barcode === termo.trim()
+            const adicionado = jaAdicionado?.(item) ?? false
 
             return (
               <li key={item.id}>
                 <button
                   type="button"
                   onClick={() => escolher(item)}
-                  className={`w-full text-left p-2 hover:bg-gray-50 border-b last:border-b-0 ${
-                    exato ? 'bg-[#079C9C]/5' : ''
+                  className={`flex w-full items-center gap-2 border-b p-2 text-left last:border-b-0 hover:bg-gray-50 ${
+                    adicionado
+                      ? 'bg-emerald-50/60'
+                      : exato
+                        ? 'bg-[#079C9C]/5'
+                        : ''
                   }`}
                 >
-                  <p className="text-sm font-medium text-gray-900">
-                    {item.name}
-                  </p>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-gray-900">
+                      {item.name}
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      Cód. {item.code}
+                      {item.unit && ` · ${item.unit}`}
+                      {item.price != null &&
+                        ` · R$ ${item.price.toFixed(2).replace('.', ',')}`}
+                      {item.stock != null && ` · Estoque: ${item.stock}`}
+                    </span>
+                  </span>
 
-                  <p className="text-xs text-gray-500">
-                    Cód. {item.code}
-                    {item.unit && ` · ${item.unit}`}
-                    {item.price != null &&
-                      ` · R$ ${item.price.toFixed(2).replace('.', ',')}`}
-                    {item.stock != null && ` · Estoque: ${item.stock}`}
-                  </p>
+                  {adicionado && (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-emerald-700">
+                      <Check className="size-3.5" />
+                      Na lista
+                    </span>
+                  )}
                 </button>
               </li>
             )
           })}
+
+          {podeMostrarMais && (
+            <li>
+              <button
+                type="button"
+                onClick={() => setLimite((l) => l + PASSO)}
+                className="w-full p-2 text-center text-sm font-semibold text-[#079C9C] hover:bg-gray-50"
+              >
+                Mostrar mais
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>
