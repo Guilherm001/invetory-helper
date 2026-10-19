@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import CaixaPage from './CaixaPage'
 import CaixaPDV from './pdv/CaixaPDV'
 
@@ -8,6 +8,15 @@ type Layout = 'classico' | 'pdv'
 
 export default function CaixaEscolha({ inicial }: { inicial: Layout }) {
   const [layout, setLayout] = useState<Layout>(inicial)
+
+  // sair da página do caixa desfaz a tela cheia do navegador
+  // (fica aqui, e não nos layouts, para trocar de layout não derrubar a tela cheia)
+  useEffect(
+    () => () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    },
+    []
+  )
 
   const trocar = () => {
     const novo: Layout = layout === 'pdv' ? 'classico' : 'pdv'

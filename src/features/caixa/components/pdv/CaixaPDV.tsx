@@ -105,6 +105,14 @@ function SessoesRecentes({ onVer }: { onVer: (id: string) => void }) {
     </section>
   )
 }
+type TecladoNav = { lock?: (teclas: string[]) => Promise<void>; unlock?: () => void }
+
+function travarEsc(travar: boolean) {
+  const kb = (navigator as Navigator & { keyboard?: TecladoNav }).keyboard
+  if (!kb) return
+  if (travar) kb.lock?.(['Escape']).catch(() => {})
+  else kb.unlock?.()
+}
 
 export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => void }) {
   const c = useCaixa()
@@ -121,6 +129,11 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
   const [relatorio, setRelatorio] = useState<Relatorio_ | null>(null)
   const [carregandoRel, setCarregandoRel] = useState(false)
   const [erroAcao, setErroAcao] = useState('')
+
+    useEffect(() => {
+    if (document.fullscreenElement) travarEsc(true)
+    return () => travarEsc(false)
+  }, [])
 
   // a página de trás não rola enquanto o caixa cobre a tela
   useEffect(() => {
@@ -164,15 +177,17 @@ export default function CaixaPDV({ onTrocarLayout }: { onTrocarLayout?: () => vo
     return () => window.removeEventListener('keydown', aoTeclar)
   }, [])
 
-  const alternarTelaCheia = async () => {
+   const alternarTelaCheia = async () => {
     if (!ampliado) {
       setAmpliado(true)
       try {
         await document.documentElement.requestFullscreen?.()
+        travarEsc(true)
       } catch {
         /* sem tela cheia do navegador */
       }
     } else {
+      travarEsc(false)
       setAmpliado(false)
       if (document.fullscreenElement) {
         try {

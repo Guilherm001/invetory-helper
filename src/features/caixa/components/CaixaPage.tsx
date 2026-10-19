@@ -286,7 +286,7 @@ export default function CaixaPage({ onTrocarLayout }: { onTrocarLayout?: () => v
         </div>
       ) : (
         <div
-          className={`grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] ${ampliado ? 'min-h-0 flex-1 lg:grid-rows-[minmax(0,1fr)]' : ''
+          className={`grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] ${ampliado ? 'min-h-0 flex-1 grid-rows-[minmax(0,1fr)]' : ''
             }`}
         >
           <ListaPedidosCaixa
