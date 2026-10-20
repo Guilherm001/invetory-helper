@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { mesmaUnidade } from '../lib/unidades'
 import {
   AlertCircle,
   CheckCircle2,
@@ -311,11 +312,7 @@ function Conteudo({
 
         novos[item.id] = numeroTexto(n.quantidade)
 
-        if (
-          n.unidade &&
-          item.unidade &&
-          n.unidade.trim().toLowerCase() !== item.unidade.trim().toLowerCase()
-        ) {
+                if (n.unidade && item.unidade && !mesmaUnidade(n.unidade, item.unidade)) {
           unidades.push(`${item.produto_nome} (pedido em ${item.unidade}, nota em ${n.unidade})`)
         }
       })

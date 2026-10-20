@@ -12,8 +12,8 @@ import {
 } from '../../../../components/ui/dialog'
 import { numeroTexto, reais } from '@/features/loja/lib/formatar'
 import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
-import { ajustarPedidoPelaNota } from '../services/notasService'
-import type { Ajuste } from '../lib/conferenciaNota'
+import { ajustarPedidoPelaNota, type AjusteEnviado } from '../services/notasService'
+import type { Ajuste, ValoresAjuste } from '../lib/conferenciaNota'
 import { numeroPedido } from '../lib/compras'
 
 const arred2 = (n: number) => Math.round(n * 100) / 100
@@ -25,6 +25,11 @@ const reais4 = (n: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   })
+
+const qp = (v: ValoresAjuste) =>
+  `${numeroTexto(v.quantidade)}${v.unidade ? ` ${v.unidade}` : ''} × ${reais4(v.preco)}`
+
+type Escolha = 'nota' | 'pedido'
 
 function Conteudo({
   pedido,
@@ -44,16 +49,27 @@ function Conteudo({
   onAplicado: (aviso: string) => void
 }) {
   const [marcados, setMarcados] = useState<Set<string>>(() => new Set(ajustes.map((a) => a.itemId)))
+  const [escolha, setEscolha] = useState<Record<string, Escolha>>(() =>
+    Object.fromEntries(
+      ajustes
+        .filter((a) => a.alternativa)
+        .map((a) => [a.itemId, (a.usarNotaPorPadrao ? 'nota' : 'pedido') as Escolha])
+    )
+  )
   const [fechar, setFechar] = useState(podeFecharTotal)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
+  // os valores que cada item vai ter, conforme a escolha
+  const valoresDe = (a: Ajuste): ValoresAjuste =>
+    a.alternativa && escolha[a.itemId] === 'pedido' ? a.alternativa : a.para
+
   const escolhidos = ajustes.filter((a) => marcados.has(a.itemId))
-  const porItem = new Map(escolhidos.map((a) => [a.itemId, a]))
+  const porItem = new Map(escolhidos.map((a) => [a.itemId, valoresDe(a)]))
 
   // como o pedido ficaria
   const somaItens = arred2(
-    itens.reduce((s, i) => s + (porItem.get(i.id)?.para.subtotal ?? i.subtotal), 0)
+    itens.reduce((s, i) => s + (porItem.get(i.id)?.subtotal ?? i.subtotal), 0)
   )
   const residuo = arred2(totalNotas - somaItens)
   const frete = fechar ? Math.max(residuo, 0) : pedido.frete
@@ -75,15 +91,18 @@ function Conteudo({
     setSalvando(true)
     setErro('')
     try {
-      const r = await ajustarPedidoPelaNota(
-        pedido.id,
-        escolhidos.map((a) => ({
+      const envio: AjusteEnviado[] = escolhidos.map((a) => {
+        const v = valoresDe(a)
+        return {
           item_id: a.itemId,
-          quantidade: a.para.quantidade,
-          preco: a.para.preco,
-        })),
-        fechar
-      )
+          quantidade: v.quantidade,
+          preco: v.preco,
+          // só manda a unidade quando o pedido passa a usar a da nota
+          ...(v.unidade && v.unidade !== a.de.unidade ? { unidade: v.unidade } : {}),
+        }
+      })
+
+      const r = await ajustarPedidoPelaNota(pedido.id, envio, fechar)
       onAplicado(
         r.alterados === 0
           ? `Pedido ${numeroPedido(pedido.numero)}: nada precisou mudar.`
@@ -124,7 +143,9 @@ function Conteudo({
         <ul className="space-y-2">
           {ajustes.map((a) => {
             const marcado = marcados.has(a.itemId)
-            const un = a.de.unidade ? ` ${a.de.unidade}` : ''
+            const v = valoresDe(a)
+            const usandoNota = !a.alternativa || escolha[a.itemId] === 'nota'
+
             return (
               <li
                 key={a.itemId}
@@ -147,10 +168,7 @@ function Conteudo({
                         <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">
                           No pedido agora
                         </span>
-                        <span className="block text-sm font-semibold text-slate-800">
-                          {numeroTexto(a.de.quantidade)}
-                          {un} × {reais4(a.de.preco)}
-                        </span>
+                        <span className="block text-sm font-semibold text-slate-800">{qp(a.de)}</span>
                         <span className="block text-xs text-slate-500">
                           Total {reais(a.de.subtotal)}
                         </span>
@@ -158,23 +176,57 @@ function Conteudo({
 
                       <span className="rounded-lg border border-[#079C9C]/40 bg-[#079C9C]/5 p-2">
                         <span className="block text-[10px] font-bold uppercase tracking-wide text-[#047a7a]">
-                          Vai ficar (como na nota)
+                          {usandoNota ? 'Vai ficar (como na nota)' : 'Vai ficar (quantidade do pedido)'}
                         </span>
-                        <span className="block text-sm font-semibold text-slate-800">
-                          {numeroTexto(a.para.quantidade)}
-                          {un} × {reais4(a.para.preco)}
-                        </span>
+                        <span className="block text-sm font-semibold text-slate-800">{qp(v)}</span>
                         <span className="block text-xs text-slate-500">
-                          Total {reais(a.para.subtotal)}
+                          Total {reais(v.subtotal)}
                         </span>
                       </span>
                     </span>
-
-                    {a.aviso && (
-                      <span className="mt-1.5 block text-xs text-amber-700">{a.aviso}</span>
-                    )}
                   </span>
                 </label>
+
+                {/* unidade realmente diferente: como ajustar */}
+                {a.alternativa && marcado && (
+                  <div
+                    role="radiogroup"
+                    aria-label={`Como ajustar ${a.nome}`}
+                    className="mt-2 flex flex-wrap gap-2 pl-8"
+                  >
+                    {(
+                      [
+                        ['nota', `Usar a nota: ${qp(a.para)}`],
+                        [
+                          'pedido',
+                          `Manter ${numeroTexto(a.de.quantidade)}${a.de.unidade ? ` ${a.de.unidade}` : ''} e acertar só o preço`,
+                        ],
+                      ] as [Escolha, string][]
+                    ).map(([valor, rotulo]) => {
+                      const ativo = escolha[a.itemId] === valor
+                      return (
+                        <button
+                          key={valor}
+                          type="button"
+                          role="radio"
+                          aria-checked={ativo}
+                          onClick={() => setEscolha((p) => ({ ...p, [a.itemId]: valor }))}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                            ativo
+                              ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#047a7a]'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {rotulo}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {a.aviso && (
+                  <p className="mt-1.5 pl-8 text-xs text-amber-700">{a.aviso}</p>
+                )}
               </li>
             )
           })}

@@ -347,6 +347,7 @@ export interface AjusteEnviado {
   item_id: string
   quantidade: number
   preco: number
+  unidade?: string // só quando a unidade do pedido passa a ser a da nota
 }
 
 export async function ajustarPedidoPelaNota(

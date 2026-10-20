@@ -1,4 +1,3 @@
-import { normalizar } from '@/features/historico-precos/utils/estatisticas'
 import { formatarCnpj, formatarCpf } from '@/features/clientes/lib/documentos'
 import { numeroTexto, reais } from '@/features/loja/lib/formatar'
 import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
@@ -11,9 +10,11 @@ import {
   similaridade,
   type ComoCasou,
 } from './casamento'
+import { mesmaUnidade } from './unidades'
 
 const arred2 = (n: number) => Math.round(n * 100) / 100
 const arred3 = (n: number) => Math.round(n * 1000) / 1000
+const arred6 = (n: number) => Math.round(n * 1e6) / 1e6
 const soAlfanum = (s: string) => s.toUpperCase().replace(/[^0-9A-Z]/g, '')
 const fmtDoc = (d: string) => (d.length <= 11 ? formatarCpf(d) : formatarCnpj(d))
 
@@ -120,7 +121,7 @@ export interface LinhaConferencia {
   difPreco: number | null // % da nota contra o pedido
   difQtd: number | null // nota - pedido
   recebidoDiferente: boolean
-  unidadeDiferente: boolean
+  unidadeDiferente: boolean // só quando a unidade é realmente outra (UN e PC contam como iguais)
 }
 
 export interface Sugestao {
@@ -225,8 +226,7 @@ export function conferirItens(
       difPreco,
       difQtd,
       recebidoDiferente: algumRecebido && Math.abs(p.quantidade_recebida - n.quantidade) > 0.0005,
-      unidadeDiferente:
-        !!n.unidade && !!p.unidade && normalizar(n.unidade) !== normalizar(p.unidade),
+      unidadeDiferente: !!n.unidade && !!p.unidade && !mesmaUnidade(n.unidade, p.unidade),
     })
   })
 
@@ -254,12 +254,28 @@ export function conferirItens(
 
 // ---------- ajuste do pedido pela nota ----------
 
+export interface ValoresAjuste {
+  quantidade: number
+  preco: number
+  subtotal: number
+  unidade: string | null
+}
+
 export interface Ajuste {
   itemId: string
   nome: string
-  de: { quantidade: number; preco: number; subtotal: number; unidade: string | null }
-  para: { quantidade: number; preco: number; subtotal: number }
+  de: ValoresAjuste // como está no pedido
+  para: ValoresAjuste // como na nota (o padrão)
+  // só quando a unidade é realmente outra (CX × UN): manter a quantidade do pedido
+  alternativa: ValoresAjuste | null
+  usarNotaPorPadrao: boolean
   aviso: string | null
+}
+
+// o preço sai do total da linha da nota, para o item do pedido fechar no mesmo valor
+function comoNaNota(n: ItemNota, quantidade: number, unidade: string | null): ValoresAjuste {
+  const preco = arred6(quantidade > 0 ? n.subtotal / quantidade : n.preco)
+  return { quantidade, preco, subtotal: arred2(quantidade * preco), unidade }
 }
 
 // o que mudaria em cada item reconhecido para o pedido ficar igual à nota
@@ -269,38 +285,53 @@ export function calcularAjustes(pares: LinhaConferencia[]): Ajuste[] {
   for (const l of pares) {
     const p = l.pedido
     const n = l.nota
+    const trocaUnidade = l.unidadeDiferente
 
-    // unidade diferente (pedido em PC, nota em PT): mantém a quantidade do pedido
-    // e acerta só o preço, para o total ficar igual ao da nota
-    const quantidade = l.unidadeDiferente && p.quantidade > 0 ? p.quantidade : n.quantidade
-    const precoExato = quantidade > 0 ? n.subtotal / quantidade : n.preco
-    const preco = Math.round(precoExato * 1e6) / 1e6
-    const subtotal = arred2(quantidade * preco)
+    const de: ValoresAjuste = {
+      quantidade: p.quantidade,
+      preco: p.preco_unitario,
+      subtotal: p.subtotal,
+      unidade: p.unidade,
+    }
+
+    // quantidade e preço da nota. Se só o nome da unidade muda (PC × UN), o pedido mantém o dele.
+    const para = comoNaNota(n, n.quantidade, trocaUnidade ? n.unidade : p.unidade)
+    const alternativa = trocaUnidade && p.quantidade > 0 ? comoNaNota(n, p.quantidade, p.unidade) : null
 
     const mudou =
-      Math.abs(quantidade - p.quantidade) > 0.0005 || Math.abs(subtotal - p.subtotal) > 0.005
+      trocaUnidade ||
+      Math.abs(para.quantidade - de.quantidade) > 0.0005 ||
+      Math.abs(para.subtotal - de.subtotal) > 0.005
     if (!mudou) continue
 
+    // item já recebido em uma unidade: mexer na unidade deixaria o recebido sem sentido
+    const usarNotaPorPadrao = !(trocaUnidade && p.quantidade_recebida > 0)
+
     const avisos: string[] = []
-    if (l.unidadeDiferente)
+    if (trocaUnidade)
       avisos.push(
-        `Unidade diferente (pedido em ${p.unidade}, nota em ${n.unidade}): a quantidade do pedido foi mantida e o preço acertado para o total da nota.`
+        `Unidade diferente: o pedido está em ${p.unidade} e a nota em ${n.unidade}. Escolha como ajustar.`
       )
-    if (p.quantidade_recebida > 0 && Math.abs(p.quantidade_recebida - quantidade) > 0.0005)
+    if (trocaUnidade && p.quantidade_recebida > 0)
       avisos.push(
-        `Você recebeu ${numeroTexto(p.quantidade_recebida)}, e o pedido ficará com ${numeroTexto(quantidade)}.`
+        `Já recebido: ${numeroTexto(p.quantidade_recebida)} ${p.unidade ?? ''}. Por isso a quantidade do pedido vem mantida.`
+      )
+    if (
+      !trocaUnidade &&
+      p.quantidade_recebida > 0 &&
+      Math.abs(p.quantidade_recebida - para.quantidade) > 0.0005
+    )
+      avisos.push(
+        `Você recebeu ${numeroTexto(p.quantidade_recebida)} e o pedido ficará com ${numeroTexto(para.quantidade)}.`
       )
 
     lista.push({
       itemId: p.id,
       nome: p.produto_nome,
-      de: {
-        quantidade: p.quantidade,
-        preco: p.preco_unitario,
-        subtotal: p.subtotal,
-        unidade: p.unidade,
-      },
-      para: { quantidade, preco, subtotal },
+      de,
+      para,
+      alternativa,
+      usarNotaPorPadrao,
       aviso: avisos.length > 0 ? avisos.join(' ') : null,
     })
   }
