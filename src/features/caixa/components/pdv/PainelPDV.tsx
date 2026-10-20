@@ -43,6 +43,7 @@ import {
   type LinhaId,
 } from '../../lib/pdvNavegacao'
 import { numeroTexto, reais, virgula } from '../../lib/formatar'
+import { emCampo, naoTirarFoco, temDialogoAberto } from '../../lib/pdvTeclado'
 
 type Detalhe = 'dinheiro' | 'credito' | 'divisao'
 type Digitando = { para: 'recebido' | 'divisao' | 'desc-pct' | 'desc-val'; texto: string }
@@ -141,6 +142,7 @@ function LinhaOpcoes({
               id={marcado ? 'pdv-item-ativo' : undefined}
               type="button"
               tabIndex={-1}
+              onMouseDown={naoTirarFoco}
               aria-disabled={!it.ok}
               onClick={() => onClique(i)}
               className={`flex min-w-[5.5rem] flex-col items-center gap-0.5 rounded-md border px-3 py-2 text-sm font-semibold outline-none transition ${
@@ -363,7 +365,16 @@ export default function PainelPDV({
     foco.col
   )
 
-  // o que aparece como dica na linha de detalhe: troco ou valor da parcela
+  // dica na linha de formas: saldo do crédito, ou vencimento e limite da venda a prazo
+  const itemFormaAtivo = linhaAtiva === 'formas' ? itensFormas[colAtiva] : undefined
+  let dicaFormas = ''
+  if (itemFormaAtivo?.ok && itemFormaAtivo.chave === 'credito_cliente') {
+    dicaFormas = `Crédito do cliente ${reais(cli.credito)}`
+  } else if (itemFormaAtivo?.ok && itemFormaAtivo.chave === 'pendencia') {
+    dicaFormas = `Vence em ${dataDaqui(cli.info?.pendencia.dias ?? 25)} · disponível ${reais(cli.pendDisp)}`
+  }
+
+  // dica na linha de detalhe: troco ou valor da parcela
   const itemDetalheAtivo = linhaAtiva === 'detalhe' ? itensDetalhe[colAtiva] : undefined
   let dicaDetalhe = ''
   if (itemDetalheAtivo && detalhe === 'dinheiro') {
@@ -612,7 +623,7 @@ export default function PainelPDV({
   // ---------- teclado ----------
   const aoTeclar = (e: KeyboardEvent) => {
     if (e.defaultPrevented || !dados || vinculando || fechando) return
-    if (document.querySelector('[role="dialog"]')) return // janela aberta por cima
+    if (temDialogoAberto()) return // janela aberta por cima
 
     // F2 vale até digitando um valor
     if (e.key === 'F2') {
@@ -621,8 +632,7 @@ export default function PainelPDV({
       return
     }
 
-    const el = e.target as HTMLElement
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return // o campo trata as próprias teclas
+    if (emCampo(e.target)) return // o campo trata as próprias teclas
     if (Date.now() - montadoEm.current < 250) return
 
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -837,6 +847,7 @@ export default function PainelPDV({
           <button
             type="button"
             tabIndex={-1}
+            onMouseDown={naoTirarFoco}
             onClick={alternarDesconto}
             className="flex items-center gap-2 text-sm font-semibold text-emerald-400 hover:underline"
           >
@@ -889,6 +900,7 @@ export default function PainelPDV({
                     ? `Forma de pagamento · falta ${reais(falta)}`
                     : 'Forma de pagamento'
               }
+              dica={dicaFormas}
               itens={itensFormas}
               ativa={linhaAtiva === 'formas'}
               col={colAtiva}
@@ -993,6 +1005,7 @@ export default function PainelPDV({
           id={linhaAtiva === 'fechar' ? 'pdv-item-ativo' : undefined}
           type="button"
           tabIndex={-1}
+          onMouseDown={naoTirarFoco}
           onClick={() => void fechar()}
           disabled={!podeFechar}
           className={`flex w-full items-center justify-center gap-2 rounded-md px-4 py-4 text-lg font-bold outline-none transition disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 ${

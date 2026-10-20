@@ -6,6 +6,7 @@ import BotoesImpressao, { type AcoesImpressao } from '@/features/loja/components
 import type { ResultadoFechamento } from '../../types'
 import { pedidoDoCaixa } from '../../services/caixaService'
 import { dataCurta, reais } from '../../lib/formatar'
+import { emCampo, naoTirarFoco, temDialogoAberto } from '../../lib/pdvTeclado'
 
 const ACOES = ['Próximo pedido', 'Cupom', 'A4', 'PDF']
 
@@ -35,8 +36,7 @@ export default function PedidoFechadoPDV({
   const teclaRef = useRef<(e: KeyboardEvent) => void>(() => {})
   useEffect(() => {
     teclaRef.current = (e) => {
-      if (e.defaultPrevented || document.querySelector('[role="dialog"]')) return
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return
+      if (e.defaultPrevented || temDialogoAberto() || emCampo(e.target)) return
 
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault()
@@ -105,6 +105,7 @@ export default function PedidoFechadoPDV({
               key={nome}
               type="button"
               tabIndex={-1}
+              onMouseDown={naoTirarFoco}
               onClick={() => {
                 setCol(i)
                 ativar(i)
