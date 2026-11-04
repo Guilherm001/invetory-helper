@@ -116,13 +116,33 @@ function pontuar(q: string[], i: string[]): number {
   return forte * 0.7 + Math.min(coberturaLinha, coberturaItem) * 0.3
 }
 
-// "32,50" | "32.50" | "1.234,56" | "1.234" -> número
+// "32,50" | "32.50" | "1.234,56" | "1.234" | "32,505" -> número com 2 casas (arredonda)
 function paraNumero(s: string): number | null {
-  if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s)) {
-    return Number(s.replace(/\./g, '').replace(',', '.'))
+  let inteiro: string
+  let decimais = ''
+
+  let m: RegExpMatchArray | null
+  if ((m = s.match(/^(\d{1,3}(?:\.\d{3})+|\d+),(\d+)$/))) {
+    // vírgula decimal, com ou sem pontos de milhar: 1.234,56 | 32,505
+    inteiro = m[1].replace(/\./g, '')
+    decimais = m[2]
+  } else if (/^[1-9]\d{0,2}(?:\.\d{3})+$/.test(s)) {
+    // só pontos, em grupos de 3: milhar ("1.234" = 1234)
+    inteiro = s.replace(/\./g, '')
+  } else if ((m = s.match(/^(\d+)\.(\d+)$/))) {
+    // ponto decimal: 32.50 | 0.125 | 1.2345
+    inteiro = m[1]
+    decimais = m[2]
+  } else if (/^\d+$/.test(s)) {
+    inteiro = s
+  } else {
+    return null
   }
-  if (/^\d+([.,]\d{1,2})?$/.test(s)) return Number(s.replace(',', '.'))
-  return null
+
+  // arredonda em centavos pelos dígitos (evita erro de ponto flutuante: 1,005 -> 1,01)
+  const centavos =
+    Number(inteiro + (decimais + '00').slice(0, 2)) + (decimais.charAt(2) >= '5' ? 1 : 0)
+  return centavos / 100
 }
 
 interface Linha {
@@ -350,7 +370,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           <p className="text-xs text-slate-400">
             O nome não precisa ser igual: ignora acentos e maiúsculas e aceita parte do nome,
             abreviações (cim. CP2) e pequenos erros de digitação. Preços como 32,50, 32.50 e
-            R$ 1.234,56 funcionam.
+            R$ 1.234,56 funcionam, e mais de 2 casas decimais são arredondadas.
           </p>
         </div>
 
