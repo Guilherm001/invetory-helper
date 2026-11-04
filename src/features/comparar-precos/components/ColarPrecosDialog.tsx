@@ -303,6 +303,9 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
   const ignoradas = linhasFinais.filter((l) => l.escolhido === IGNORAR).length
   const atencao = linhasFinais.length - prontas.length - ignoradas
 
+  // itens já escolhidos em alguma linha: saem das listas das outras linhas
+  const usados = new Set(linhasFinais.filter((l) => l.valido).map((l) => l.escolhido))
+
   const aplicar = async () => {
     if (!fornecedorId) {
       setErrorMessage('Escolha o fornecedor.')
@@ -334,15 +337,24 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
     onClose()
   }
 
-  const opcoesItens = (candidatos: ItemComparacao[]) => {
-    const ids = new Set(candidatos.map((c) => c.id))
-    const outros = itens.filter((i) => !ids.has(i.id))
+  const opcoesItens = (candidatos: ItemComparacao[], atual: string) => {
+    // o item já escolhido na própria linha continua aparecendo; os usados em outras linhas somem
+    const livre = (i: ItemComparacao) => i.id === atual || !usados.has(i.id)
+
+    const provaveis = candidatos.filter(livre)
+    const ids = new Set(provaveis.map((c) => c.id))
+    const outros = itens
+      .filter((i) => !ids.has(i.id) && livre(i))
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })
+      )
+
     return (
       <>
         <option value="">Escolher item...</option>
-        {candidatos.length > 0 && (
+        {provaveis.length > 0 && (
           <optgroup label="Prováveis">
-            {candidatos.map((i) => (
+            {provaveis.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>
@@ -350,7 +362,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           </optgroup>
         )}
         {outros.length > 0 && (
-          <optgroup label={candidatos.length > 0 ? 'Outros itens' : 'Itens'}>
+          <optgroup label={provaveis.length > 0 ? 'Outros itens' : 'Itens'}>
             {outros.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
@@ -519,7 +531,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
                                 : 'border-amber-300 bg-amber-50 text-slate-800'
                           }`}
                         >
-                          {opcoesItens(l.candidatos)}
+                          {opcoesItens(l.candidatos, l.escolhido)}
                         </select>
 
                         <span className="shrink-0 text-xs">
