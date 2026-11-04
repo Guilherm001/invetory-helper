@@ -29,14 +29,92 @@ const IGNORAR = '__ignorar'
 
 // ---------- leitura do texto colado ----------
 
-// sem acento, sem maiúscula, sem pontuação: "Cimento CP-II" -> "cimento cp ii"
-const chaveBusca = (s: string) =>
-  s
+const ROMANOS: Record<string, string> = {
+  ii: '2',
+  iii: '3',
+  iv: '4',
+  vi: '6',
+  vii: '7',
+  viii: '8',
+  ix: '9',
+}
+
+// palavras do nome, sem acento, maiúscula ou pontuação.
+// "CP2" e "CP-II" viram as mesmas palavras: "cp" e "2"
+function termosDe(s: string): string[] {
+  return s
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
+    .replace(/([a-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([a-z])/g, '$1 $2')
+    .split(' ')
+    .filter(Boolean)
+    .map((t) => ROMANOS[t] ?? t)
+}
+
+const ehNumero = (t: string) => /^\d+$/.test(t)
+const singular = (t: string) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t)
+
+// número de trocas de letra entre duas palavras
+function distancia(a: string, b: string): number {
+  const d: number[] = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    let anterior = d[0]
+    d[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const guardado = d[j]
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, anterior + (a[i - 1] === b[j - 1] ? 0 : 1))
+      anterior = guardado
+    }
+  }
+  return d[b.length]
+}
+
+// quão parecidas são duas palavras: 1 = iguais, 0 = diferentes
+function parecenca(a: string, b: string): number {
+  if (a === b) return 1
+  // números só valem se forem iguais ("brita 1" não é "brita 2")
+  if (/\d/.test(a) || /\d/.test(b)) return 0
+
+  const sa = singular(a)
+  const sb = singular(b)
+  if (sa === sb) return 1
+
+  // abreviação: "cim" -> "cimento"
+  if (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) return 0.9
+
+  // erro de digitação: "cimneto" -> "cimento"
+  if (sa.length >= 4 && sb.length >= 4) {
+    const limite = Math.max(sa.length, sb.length) >= 7 ? 2 : 1
+    if (distancia(sa, sb) <= limite) return 0.85
+  }
+  return 0
+}
+
+// nota de 0 a 1 para "esta linha é este item"; 0 = não é
+function pontuar(q: string[], i: string[]): number {
+  if (q.length === 0 || i.length === 0) return 0
+
+  // números (medidas, bitolas) não podem se contradizer
+  const nq = q.filter(ehNumero)
+  const ni = i.filter(ehNumero)
+  if (nq.length > 0 && ni.length > 0) {
+    const qDentro = nq.every((n) => ni.includes(n))
+    const iDentro = ni.every((n) => nq.includes(n))
+    if (!qDentro && !iDentro) return 0
+  }
+
+  const melhor = (t: string, lista: string[]) => Math.max(...lista.map((x) => parecenca(t, x)))
+  const coberturaLinha = q.reduce((soma, t) => soma + melhor(t, i), 0) / q.length
+  const coberturaItem = i.reduce((soma, t) => soma + melhor(t, q), 0) / i.length
+
+  // um dos lados precisa estar quase todo explicado pelo outro
+  const forte = Math.max(coberturaLinha, coberturaItem)
+  if (forte < 0.85) return 0
+  return forte * 0.7 + Math.min(coberturaLinha, coberturaItem) * 0.3
+}
 
 // "32,50" | "32.50" | "1.234,56" | "1.234" -> número
 function paraNumero(s: string): number | null {
@@ -71,23 +149,35 @@ function lerLinha(bruta: string): Linha | null {
 
 interface ItemNorm {
   item: ItemComparacao
-  chave: string
   termos: string[]
 }
 
-// itens que podem ser o da linha: igual > contém todas as palavras > o item está dentro da linha
-function candidatosDe(nome: string, itens: ItemNorm[]): ItemNorm[] {
-  const q = chaveBusca(nome)
-  if (!q) return []
+interface Achado {
+  candidatos: ItemNorm[] // do mais ao menos provável
+  auto: string // id do item escolhido sozinho ('' = o usuário decide)
+  aproximado: boolean // casou por semelhança, não por nome igual
+}
 
-  const exatos = itens.filter((i) => i.chave === q)
-  if (exatos.length > 0) return exatos
+function candidatosDe(nome: string, itens: ItemNorm[]): Achado {
+  const vazio: Achado = { candidatos: [], auto: '', aproximado: false }
+  const q = termosDe(nome)
+  if (q.length === 0) return vazio
 
-  const termosQ = q.split(' ')
-  const contidos = itens.filter((i) => termosQ.every((t) => i.chave.includes(t)))
-  if (contidos.length > 0) return contidos
+  const pontuados = itens
+    .map((i) => ({ i, nota: pontuar(q, i.termos) }))
+    .filter((x) => x.nota > 0)
+    .sort((a, b) => b.nota - a.nota)
+  if (pontuados.length === 0) return vazio
 
-  return itens.filter((i) => i.termos.length > 0 && i.termos.every((t) => q.includes(t)))
+  const [topo, segundo] = pontuados
+  // escolhe sozinho só quando o primeiro é bom e está bem à frente do segundo
+  const claro = topo.nota >= 0.8 && (!segundo || topo.nota - segundo.nota >= 0.1)
+
+  return {
+    candidatos: pontuados.slice(0, 6).map((x) => x.i),
+    auto: claro ? topo.i.item.id : '',
+    aproximado: claro && topo.nota < 0.99,
+  }
 }
 
 // ---------- diálogo ----------
@@ -106,10 +196,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
 
   const itensNorm = useMemo<ItemNorm[]>(
     () =>
-      itens.map((item) => {
-        const k = chaveBusca(item.name)
-        return { item, chave: k, termos: k.split(' ').filter(Boolean) }
-      }),
+      itens.map((item) => ({ item, termos: termosDe(item.name) })),
     [itens]
   )
 
@@ -120,18 +207,27 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
         .map(lerLinha)
         .filter((l): l is Linha => l !== null)
         .map((l) => {
-          const candidatos = l.valor === null ? [] : candidatosDe(l.nome, itensNorm)
-          return { ...l, candidatos: candidatos.map((c) => c.item) }
+          const r: Achado =
+            l.valor === null
+              ? { candidatos: [], auto: '', aproximado: false }
+              : candidatosDe(l.nome, itensNorm)
+          return {
+            ...l,
+            candidatos: r.candidatos.map((c) => c.item),
+            auto: r.auto,
+            aproximado: r.aproximado,
+          }
         }),
     [texto, itensNorm]
   )
 
   // item escolhido em cada linha: escolha manual > único candidato > nenhum
   const linhasFinais = linhas.map((l, idx) => {
-    const auto = l.candidatos.length === 1 ? l.candidatos[0].id : ''
-    const escolhido = escolhas[idx] ?? auto
+    const escolhido = escolhas[idx] ?? l.auto
     const valido = l.valor !== null && escolhido !== '' && escolhido !== IGNORAR
-    return { ...l, idx, escolhido, valido }
+    // casou por semelhança e o usuário ainda não confirmou no seletor
+    const parecido = valido && l.aproximado && escolhas[idx] === undefined
+    return { ...l, idx, escolhido, valido, parecido }
   })
 
   const prontas = linhasFinais.filter((l) => l.valido)
@@ -252,8 +348,9 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
             placeholder={'Um item por linha, com o preço no fim. Ex:\ncimento CP-II 32,50\nareia média - R$ 120,00\ntijolo 8 furos: 1,15'}
           />
           <p className="text-xs text-slate-400">
-            O nome não precisa ser igual: ignora acentos e maiúsculas e aceita só parte do nome.
-            Preços como 32,50, 32.50 e R$ 1.234,56 funcionam.
+            O nome não precisa ser igual: ignora acentos e maiúsculas e aceita parte do nome,
+            abreviações (cim. CP2) e pequenos erros de digitação. Preços como 32,50, 32.50 e
+            R$ 1.234,56 funcionam.
           </p>
         </div>
 
@@ -320,21 +417,27 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
 
                         <span className="shrink-0 text-xs">
                           {l.valido ? (
-                            troca ? (
-                              <span className="font-medium text-amber-600">
-                                troca {formatarReais(precoAtual as number)}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
-                                <Check className="size-3.5" />
-                                {precoAtual !== undefined ? 'igual ao atual' : 'ok'}
-                              </span>
-                            )
+                            <span className="inline-flex items-center gap-1.5 font-medium">
+                              {l.parecido ? (
+                                <span className="text-amber-600">parecido, confira</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-emerald-700">
+                                  <Check className="size-3.5" />
+                                  {precoAtual !== undefined && !troca ? 'igual ao atual' : 'ok'}
+                                </span>
+                              )}
+                              {troca && (
+                                <span className="text-amber-600">
+                                  · troca {formatarReais(precoAtual as number)}
+                                </span>
+                              )}
+                            </span>
                           ) : l.escolhido === IGNORAR ? (
                             <span className="text-slate-400">ignorada</span>
-                          ) : l.candidatos.length > 1 ? (
+                          ) : l.candidatos.length > 0 ? (
                             <span className="font-medium text-amber-600">
-                              {l.candidatos.length} possíveis
+                              {l.candidatos.length}{' '}
+                              {l.candidatos.length === 1 ? 'possível' : 'possíveis'}
                             </span>
                           ) : (
                             <span className="font-medium text-amber-600">não achei</span>
