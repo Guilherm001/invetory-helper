@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { AlertTriangle, Check, ClipboardPaste, Loader2 } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Check, ClipboardPaste, FileUp, Loader2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 } from '../../../../components/ui/dialog'
 import type { Fornecedor, ItemComparacao, Preco } from '../types'
 import { chave, formatarReais, montarMapa } from '../utils/melhorPreco'
+import { extrairLinhasDoPdf } from '../utils/lerPdf'
 
 interface Props {
   open: boolean
@@ -212,6 +213,33 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
+  const inputArquivoRef = useRef<HTMLInputElement>(null)
+  const [lendoPdf, setLendoPdf] = useState(false)
+
+  const importarPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0]
+    e.target.value = '' // permite escolher o mesmo arquivo de novo
+    if (!arquivo) return
+
+    setLendoPdf(true)
+    setErrorMessage('')
+    try {
+      const linhasPdf = await extrairLinhasDoPdf(arquivo)
+      if (linhasPdf.length === 0) {
+        setErrorMessage(
+          'Não encontrei texto neste PDF. Se ele for escaneado (foto), não dá para ler.'
+        )
+        return
+      }
+      setTexto(linhasPdf.join('\n'))
+      setEscolhas({})
+    } catch {
+      setErrorMessage('Não consegui abrir este PDF.')
+    } finally {
+      setLendoPdf(false)
+    }
+  }
+
   const mapa = useMemo(() => montarMapa(precos), [precos])
 
   const itensNorm = useMemo<ItemNorm[]>(
@@ -324,7 +352,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           <div>
             <DialogTitle className="text-xl font-bold text-white">Colar preços</DialogTitle>
             <DialogDescription className="text-sm text-white/80">
-              Cole a lista do fornecedor e confira antes de aplicar
+              Cole a lista ou importe um PDF e confira antes de aplicar
             </DialogDescription>
           </div>
         </div>
@@ -353,9 +381,31 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
 
         {/* Texto */}
         <div className="space-y-1.5">
-          <label htmlFor="colar-texto" className="block text-sm font-semibold text-slate-700">
-            Lista de preços
-          </label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="colar-texto" className="block text-sm font-semibold text-slate-700">
+              Lista de preços
+            </label>
+            <button
+              type="button"
+              onClick={() => inputArquivoRef.current?.click()}
+              disabled={lendoPdf}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#079C9C] hover:underline disabled:opacity-60"
+            >
+              {lendoPdf ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileUp className="size-4" />
+              )}
+              Importar PDF
+            </button>
+            <input
+              ref={inputArquivoRef}
+              type="file"
+              accept="application/pdf"
+              onChange={importarPdf}
+              className="hidden"
+            />
+          </div>
           <textarea
             id="colar-texto"
             value={texto}
