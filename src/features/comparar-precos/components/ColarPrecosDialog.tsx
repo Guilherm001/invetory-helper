@@ -12,7 +12,12 @@ import {
 } from '../../../../components/ui/dialog'
 import type { Fornecedor, ItemComparacao, Preco } from '../types'
 import { chave, formatarReais, montarMapa } from '../utils/melhorPreco'
-import { extrairLinhasDoPdf } from '../utils/lerPdf'
+import {
+  extrairItensDoPdf,
+  textoDasLinhas,
+  type LinhaPdf,
+  type ModoPreco,
+} from '../utils/lerPdf'
 
 interface Props {
   open: boolean
@@ -213,31 +218,47 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
+  // importação de PDF
   const inputArquivoRef = useRef<HTMLInputElement>(null)
   const [lendoPdf, setLendoPdf] = useState(false)
+  const [itensPdf, setItensPdf] = useState<LinhaPdf[]>([])
+  const [modoPreco, setModoPreco] = useState<ModoPreco>('unidade')
+  const temEmbalagem = itensPdf.some((l) => l.embalagem !== null)
 
   const importarPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivo = e.target.files?.[0]
     e.target.value = '' // permite escolher o mesmo arquivo de novo
     if (!arquivo) return
 
+    if (arquivo.type !== 'application/pdf' && !arquivo.name.toLowerCase().endsWith('.pdf')) {
+      setErrorMessage('Escolha um arquivo PDF.')
+      return
+    }
+
     setLendoPdf(true)
     setErrorMessage('')
     try {
-      const linhasPdf = await extrairLinhasDoPdf(arquivo)
-      if (linhasPdf.length === 0) {
+      const lidos = await extrairItensDoPdf(arquivo)
+      if (lidos.length === 0) {
         setErrorMessage(
-          'Não encontrei texto neste PDF. Se ele for escaneado (foto), não dá para ler.'
+          'Não encontrei linhas com preço neste PDF. Se ele for escaneado (foto), não dá para ler.'
         )
         return
       }
-      setTexto(linhasPdf.join('\n'))
+      setItensPdf(lidos)
+      setTexto(textoDasLinhas(lidos, modoPreco))
       setEscolhas({})
     } catch {
       setErrorMessage('Não consegui abrir este PDF.')
     } finally {
       setLendoPdf(false)
     }
+  }
+
+  const trocarModo = (novo: ModoPreco) => {
+    setModoPreco(novo)
+    setTexto(textoDasLinhas(itensPdf, novo))
+    setEscolhas({})
   }
 
   const mapa = useMemo(() => montarMapa(precos), [precos])
@@ -406,6 +427,22 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
               className="hidden"
             />
           </div>
+
+          {temEmbalagem && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <span className="font-medium text-slate-700">Preço a usar:</span>
+              <select
+                value={modoPreco}
+                onChange={(e) => trocarModo(e.target.value as ModoPreco)}
+                aria-label="Preço por unidade ou por caixa"
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
+              >
+                <option value="unidade">Por unidade (valor ÷ embalagem)</option>
+                <option value="caixa">Por caixa</option>
+              </select>
+            </div>
+          )}
+
           <textarea
             id="colar-texto"
             value={texto}
