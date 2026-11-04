@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDownUp, ArrowLeft, Loader2, Plus, Search, X } from 'lucide-react'
+import { ArrowDownUp, ArrowLeft, ClipboardPaste, Loader2, Plus, Search, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import { useComparacao } from '../hooks/useComparacao'
 import type { Fornecedor } from '../types'
@@ -10,6 +10,7 @@ import { analisar } from '../utils/melhorPreco'
 import TabelaComparativa from './TabelaComparativa'
 import ResumoEconomia from './ResumoEconomia'
 import FornecedorDialog from './FornecedorDialog'
+import ColarPrecosDialog from './ColarPrecosDialog'
 import { useReferencias } from '@/features/historico-precos/hooks/useReferencias'
 
 // "10 cimento" ou "10x cimento" -> quantidade 10
@@ -47,6 +48,7 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
   // o item sumiria debaixo do cursor. O botão "Reordenar" atualiza.
   const [ordemSemPreco, setOrdemSemPreco] = useState<string[]>([])
   const buscaRef = useRef<HTMLInputElement>(null)
+  const [colarAberto, setColarAberto] = useState(false)
 
   // a análise usa TODOS os itens: filtro e ordem são só visuais
   const analise = useMemo(
@@ -223,7 +225,7 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
         <>
           {/* Pesquisar e ordenar */}
           <div className="space-y-1.5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center md:max-w-2xl">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center md:max-w-3xl">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -278,6 +280,18 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
                   <option value="sem-preco">Sem preço primeiro</option>
                 </select>
               </div>
+
+              {c.fornecedores.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setColarAberto(true)}
+                  className="shrink-0 gap-1.5 border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10 hover:text-[#079C9C]"
+                >
+                  <ClipboardPaste className="size-4" />
+                  Colar preços
+                </Button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -340,6 +354,15 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
           />
         </>
       )}
+
+      <ColarPrecosDialog
+        open={colarAberto}
+        itens={c.itens}
+        fornecedores={c.fornecedores}
+        precos={c.precos}
+        onClose={() => setColarAberto(false)}
+        onAplicar={c.definirPreco}
+      />
 
       <FornecedorDialog
         open={dialogFornecedor.open}
