@@ -1,7 +1,15 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ClipboardPaste, FileUp, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ClipboardPaste,
+  FileUp,
+  Loader2,
+  Search,
+} from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
   Dialog,
@@ -206,6 +214,184 @@ function candidatosDe(nome: string, itens: ItemNorm[]): Achado {
   }
 }
 
+// ---------- seletor de item com pesquisa ----------
+
+interface SeletorProps {
+  escolhido: string // id do item, IGNORAR ou ''
+  candidatos: ItemComparacao[]
+  itens: ItemComparacao[]
+  usados: Set<string>
+  tom: string // classes de cor do botão
+  ariaLabel: string
+  onChange: (valor: string) => void
+}
+
+function SeletorItem({
+  escolhido,
+  candidatos,
+  itens,
+  usados,
+  tom,
+  ariaLabel,
+  onChange,
+}: SeletorProps) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const raiz = useRef<HTMLDivElement>(null)
+
+  // fecha ao clicar fora e garante que a lista aberta apareça inteira na rolagem
+  useEffect(() => {
+    if (!aberto) return
+    const fora = (e: MouseEvent) => {
+      if (raiz.current && !raiz.current.contains(e.target as Node)) {
+        setAberto(false)
+        setBusca('')
+      }
+    }
+    document.addEventListener('mousedown', fora)
+    raiz.current?.scrollIntoView({ block: 'nearest' })
+    return () => document.removeEventListener('mousedown', fora)
+  }, [aberto])
+
+  const fechar = () => {
+    setAberto(false)
+    setBusca('')
+  }
+
+  const escolher = (valor: string) => {
+    onChange(valor)
+    fechar()
+  }
+
+  // o item já escolhido nesta linha continua aparecendo; os usados em outras linhas somem
+  const livre = (i: ItemComparacao) => i.id === escolhido || !usados.has(i.id)
+
+  const termosBusca = aberto ? termosDe(busca) : []
+  const passa = (i: ItemComparacao) => {
+    if (termosBusca.length === 0) return true
+    const nome = termosDe(i.name).join(' ')
+    return termosBusca.every((t) => nome.includes(t))
+  }
+
+  const provaveis = aberto ? candidatos.filter((i) => livre(i) && passa(i)) : []
+  const idsProvaveis = new Set(provaveis.map((i) => i.id))
+  const outros = aberto
+    ? itens
+        .filter((i) => !idsProvaveis.has(i.id) && livre(i) && passa(i))
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })
+        )
+    : []
+
+  const itemAtual = itens.find((i) => i.id === escolhido)
+  const rotulo =
+    escolhido === IGNORAR ? 'Ignorar esta linha' : itemAtual ? itemAtual.name : 'Escolher item...'
+
+  const opcao = (i: ItemComparacao) => (
+    <button
+      key={i.id}
+      type="button"
+      role="option"
+      aria-selected={i.id === escolhido}
+      onClick={() => escolher(i.id)}
+      className={`block w-full whitespace-normal break-words px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-50 ${
+        i.id === escolhido ? 'bg-[#079C9C]/10 font-medium' : ''
+      }`}
+    >
+      {i.name}
+    </button>
+  )
+
+  const titulo = (texto: string) => (
+    <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+      {texto}
+    </p>
+  )
+
+  return (
+    <div ref={raiz} className="min-w-0">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={aberto}
+        onClick={() => (aberto ? fechar() : setAberto(true))}
+        className={`flex w-full items-start justify-between gap-2 rounded-lg border px-2.5 py-2 text-left text-sm outline-none transition focus:ring-2 focus:ring-[#079C9C]/20 ${tom}`}
+      >
+        <span className="min-w-0 flex-1 whitespace-normal break-words">{rotulo}</span>
+        <ChevronDown
+          className={`mt-0.5 size-4 shrink-0 text-slate-400 transition ${aberto ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {aberto && (
+        <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="relative border-b border-slate-100 p-2">
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input
+              data-seletor-busca=""
+              autoFocus
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  fechar()
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  const primeiro = provaveis[0] ?? outros[0]
+                  if (primeiro) escolher(primeiro.id)
+                }
+              }}
+              placeholder="Pesquisar item..."
+              aria-label="Pesquisar item"
+              className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
+            />
+          </div>
+
+          <div role="listbox" className="max-h-52 overflow-y-auto pb-1">
+            {provaveis.length > 0 && (
+              <>
+                {titulo('Prováveis')}
+                {provaveis.map(opcao)}
+              </>
+            )}
+            {outros.length > 0 && (
+              <>
+                {titulo(provaveis.length > 0 ? 'Outros itens' : 'Itens')}
+                {outros.map(opcao)}
+              </>
+            )}
+            {provaveis.length === 0 && outros.length === 0 && (
+              <p className="px-3 py-3 text-sm text-slate-500">Nenhum item encontrado.</p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => escolher(IGNORAR)}
+              className="text-slate-500 hover:text-slate-800 hover:underline"
+            >
+              Ignorar esta linha
+            </button>
+            {escolhido !== '' && (
+              <button
+                type="button"
+                onClick={() => escolher('')}
+                className="text-[#079C9C] hover:underline"
+              >
+                Limpar escolha
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------- diálogo ----------
 
 function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Props, 'open'>) {
@@ -337,44 +523,6 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
     onClose()
   }
 
-  const opcoesItens = (candidatos: ItemComparacao[], atual: string) => {
-    // o item já escolhido na própria linha continua aparecendo; os usados em outras linhas somem
-    const livre = (i: ItemComparacao) => i.id === atual || !usados.has(i.id)
-
-    const provaveis = candidatos.filter(livre)
-    const ids = new Set(provaveis.map((c) => c.id))
-    const outros = itens
-      .filter((i) => !ids.has(i.id) && livre(i))
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })
-      )
-
-    return (
-      <>
-        <option value="">Escolher item...</option>
-        {provaveis.length > 0 && (
-          <optgroup label="Prováveis">
-            {provaveis.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {outros.length > 0 && (
-          <optgroup label={provaveis.length > 0 ? 'Outros itens' : 'Itens'}>
-            {outros.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        <option value={IGNORAR}>Ignorar esta linha</option>
-      </>
-    )
-  }
-
   return (
     <>
       <DialogHeader className="bg-[#079C9C] px-6 py-5 text-left">
@@ -493,16 +641,19 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
                     : undefined
                 const troca = precoAtual !== undefined && precoAtual !== l.valor
 
+                const tom = l.valido
+                  ? 'border-emerald-300 bg-emerald-50/60 text-slate-800'
+                  : l.escolhido === IGNORAR
+                    ? 'border-slate-200 bg-slate-50 text-slate-500'
+                    : 'border-amber-300 bg-amber-50 text-slate-800'
+
                 return (
                   <li
                     key={l.idx}
                     className={`space-y-1.5 px-3 py-2.5 ${l.escolhido === IGNORAR ? 'opacity-50' : ''}`}
                   >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span
-                        className="min-w-0 truncate text-sm font-medium text-slate-800"
-                        title={l.bruta}
-                      >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 break-words text-sm font-medium text-slate-800">
                         {l.valor === null ? l.bruta : l.nome || '(sem nome)'}
                       </span>
                       <span className="shrink-0 text-sm font-semibold text-slate-900">
@@ -516,25 +667,22 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
                         Não encontrei o preço no fim da linha
                       </p>
                     ) : (
-                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-                        <select
-                          value={l.escolhido}
-                          onChange={(e) =>
-                            setEscolhas((prev) => ({ ...prev, [l.idx]: e.target.value }))
-                          }
-                          aria-label={`Item para "${l.nome}"`}
-                          className={`min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-sm outline-none transition focus:ring-2 focus:ring-[#079C9C]/20 ${
-                            l.valido
-                              ? 'border-emerald-300 bg-emerald-50/60 text-slate-800'
-                              : l.escolhido === IGNORAR
-                                ? 'border-slate-200 bg-slate-50 text-slate-500'
-                                : 'border-amber-300 bg-amber-50 text-slate-800'
-                          }`}
-                        >
-                          {opcoesItens(l.candidatos, l.escolhido)}
-                        </select>
+                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
+                        <div className="min-w-0 flex-1">
+                          <SeletorItem
+                            escolhido={l.escolhido}
+                            candidatos={l.candidatos}
+                            itens={itens}
+                            usados={usados}
+                            tom={tom}
+                            ariaLabel={`Item para "${l.nome}"`}
+                            onChange={(valor) =>
+                              setEscolhas((prev) => ({ ...prev, [l.idx]: valor }))
+                            }
+                          />
+                        </div>
 
-                        <span className="shrink-0 text-xs">
+                        <span className="shrink-0 text-xs sm:pt-2.5">
                           {l.valido ? (
                             <span className="inline-flex items-center gap-1.5 font-medium">
                               {l.parecido ? (
@@ -611,7 +759,14 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
 export default function ColarPrecosDialog({ open, ...resto }: Props) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && resto.onClose()}>
-      <DialogContent className="top-[5%] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[600px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100">
+      <DialogContent
+        // Esc dentro da pesquisa de itens só fecha a lista, não o diálogo
+        onEscapeKeyDown={(e) => {
+          const ativo = document.activeElement as HTMLElement | null
+          if (ativo && ativo.dataset.seletorBusca !== undefined) e.preventDefault()
+        }}
+        className="top-[5%] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[600px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100"
+      >
         <Conteudo {...resto} />
       </DialogContent>
     </Dialog>
