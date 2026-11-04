@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Plus, Search, X } from 'lucide-react'
+import { ArrowDownUp, ArrowLeft, Loader2, Plus, Search, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import { useComparacao } from '../hooks/useComparacao'
 import type { Fornecedor } from '../types'
@@ -27,6 +27,8 @@ function interpretar(texto: string): { name: string; quantity: number } {
 const normalizar = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
+type Ordem = 'original' | 'nome' | 'sem-preco'
+
 export default function ComparacaoDetalhe({ id }: { id: string }) {
   const c = useComparacao(id)
   const referencias = useReferencias(id)
@@ -40,12 +42,43 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
   const [adicionando, setAdicionando] = useState(false)
   const [erroItem, setErroItem] = useState('')
   const [busca, setBusca] = useState('')
+  const [ordem, setOrdem] = useState<Ordem>('original')
+  // "sem preço primeiro" fica congelado: se reordenasse a cada preço digitado,
+  // o item sumiria debaixo do cursor. O botão "Reordenar" atualiza.
+  const [ordemSemPreco, setOrdemSemPreco] = useState<string[]>([])
+  const buscaRef = useRef<HTMLInputElement>(null)
 
-  // a análise usa TODOS os itens: o filtro é só visual
+  // a análise usa TODOS os itens: filtro e ordem são só visuais
   const analise = useMemo(
     () => analisar(c.itens, c.fornecedores, c.precos),
     [c.itens, c.fornecedores, c.precos]
   )
+
+  // atalho: "/" ou Ctrl/Cmd+K foca a pesquisa
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement | null
+      const digitando =
+        !!alvo &&
+        (alvo.tagName === 'INPUT' ||
+          alvo.tagName === 'TEXTAREA' ||
+          alvo.tagName === 'SELECT' ||
+          alvo.isContentEditable)
+
+      const ctrlK = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'
+      const barra = e.key === '/' && !digitando && !e.ctrlKey && !e.metaKey && !e.altKey
+
+      if (ctrlK || barra) {
+        const campo = buscaRef.current
+        if (!campo) return
+        e.preventDefault()
+        campo.focus()
+        campo.select()
+      }
+    }
+    window.addEventListener('keydown', aoTeclar)
+    return () => window.removeEventListener('keydown', aoTeclar)
+  }, [])
 
   const itensFiltrados = useMemo(() => {
     const termos = normalizar(busca).split(/\s+/).filter(Boolean)
@@ -55,6 +88,46 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
       return termos.every((t) => nome.includes(t)) // "cimento cp" acha "Cimento CP-II"
     })
   }, [c.itens, busca])
+
+  const itensExibidos = useMemo(() => {
+    if (ordem === 'nome') {
+      return [...itensFiltrados].sort((a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })
+      )
+    }
+    if (ordem === 'sem-preco') {
+      const pos = new Map(ordemSemPreco.map((itemId, i) => [itemId, i]))
+      // itens novos (adicionados depois de ordenar) vão para o fim
+      return [...itensFiltrados].sort(
+        (a, b) => (pos.get(a.id) ?? 1e9) - (pos.get(b.id) ?? 1e9)
+      )
+    }
+    return itensFiltrados
+  }, [itensFiltrados, ordem, ordemSemPreco])
+
+  // quem tem mais fornecedores sem preço vem primeiro; completos ficam por último
+  const calcularSemPreco = () => {
+    const faltando = (itemId: string) =>
+      c.fornecedores.length - (analise.linhas.get(itemId)?.cotacoes ?? 0)
+    const ids = c.itens
+      .map((item, idx) => ({ id: item.id, idx, f: faltando(item.id) }))
+      .sort((a, b) => b.f - a.f || a.idx - b.idx)
+      .map((x) => x.id)
+    setOrdemSemPreco(ids)
+  }
+
+  const mudarOrdem = (nova: Ordem) => {
+    setOrdem(nova)
+    if (nova === 'sem-preco') calcularSemPreco()
+  }
+
+  // Enter na pesquisa: vai para o primeiro preço visível
+  const irParaPrimeiroPreco = () => {
+    const campos = Array.from(
+      document.querySelectorAll<HTMLInputElement>('[data-preco-col]')
+    ).filter((el) => el.offsetParent !== null)
+    campos[0]?.focus()
+  }
 
   const adicionarItem = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -148,41 +221,88 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
         </p>
       ) : (
         <>
-          {/* Pesquisar item */}
+          {/* Pesquisar e ordenar */}
           <div className="space-y-1.5">
-            <div className="relative md:max-w-xl">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setBusca('')
-                }}
-                type="search"
-                placeholder="Pesquisar item da lista"
-                aria-label="Pesquisar item da comparação"
-                className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 [&::-webkit-search-cancel-button]:hidden"
-              />
-              {busca && (
-                <button
-                  type="button"
-                  aria-label="Limpar pesquisa"
-                  onClick={() => setBusca('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center md:max-w-2xl">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  ref={buscaRef}
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      if (busca) setBusca('')
+                      else e.currentTarget.blur()
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      irParaPrimeiroPreco()
+                    }
+                  }}
+                  type="search"
+                  placeholder="Pesquisar item da lista"
+                  aria-label="Pesquisar item da comparação"
+                  aria-keyshortcuts="/ Control+K"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 [&::-webkit-search-cancel-button]:hidden"
+                />
+                {busca ? (
+                  <button
+                    type="button"
+                    aria-label="Limpar pesquisa"
+                    onClick={() => {
+                      setBusca('')
+                      buscaRef.current?.focus()
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : (
+                  <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] font-medium text-slate-400 md:block">
+                    /
+                  </kbd>
+                )}
+              </div>
+
+              <div className="relative sm:w-52 sm:shrink-0">
+                <ArrowDownUp className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <select
+                  value={ordem}
+                  onChange={(e) => mudarOrdem(e.target.value as Ordem)}
+                  aria-label="Ordenar itens"
+                  className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none transition focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
                 >
-                  <X className="size-4" />
-                </button>
+                  <option value="original">Ordem da lista</option>
+                  <option value="nome">Nome (A–Z)</option>
+                  <option value="sem-preco">Sem preço primeiro</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+              {busca.trim() && (
+                <span>
+                  Mostrando {itensFiltrados.length} de {c.itens.length}{' '}
+                  {c.itens.length === 1 ? 'item' : 'itens'}. Os totais abaixo consideram todos.
+                </span>
+              )}
+              {ordem === 'sem-preco' && (
+                <>
+                  <span>A ordem não muda enquanto você digita os preços.</span>
+                  <button
+                    type="button"
+                    onClick={calcularSemPreco}
+                    className="font-semibold text-[#079C9C] hover:underline"
+                  >
+                    Reordenar
+                  </button>
+                </>
               )}
             </div>
-            {busca.trim() && (
-              <p className="text-xs text-slate-400">
-                Mostrando {itensFiltrados.length} de {c.itens.length}{' '}
-                {c.itens.length === 1 ? 'item' : 'itens'}. Os totais abaixo consideram todos.
-              </p>
-            )}
           </div>
 
-          {itensFiltrados.length === 0 ? (
+          {itensExibidos.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-500">
               Nenhum item encontrado para “{busca}”.{' '}
               <button
@@ -196,7 +316,7 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
           ) : (
             <TabelaComparativa
               referencias={referencias}
-              itens={itensFiltrados}
+              itens={itensExibidos}
               fornecedores={c.fornecedores}
               precos={c.precos}
               analise={analise}
