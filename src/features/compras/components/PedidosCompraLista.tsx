@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ClipboardCheck,
   Download,
@@ -12,7 +13,6 @@ import {
 import { dataCurta, reais } from '@/features/loja/lib/formatar'
 import {
   listarPedidos,
-  obterPedido,
   resumoPedidos,
   type FiltroCompra,
   type PedidoCompra,
@@ -20,7 +20,6 @@ import {
 } from '../services/comprasService'
 import { PEDIDO_VAZIO, infoStatus, atrasado, diasDeAtraso, numeroPedido } from '../lib/compras'
 import PedidoCompraDialog, { type PedidoInicial } from './PedidoCompraDialog'
-import PedidoCompraDetalhe from './PedidoCompraDetalhe'
 import ImportarComparacaoDialog from './ImportarComparacaoDialog'
 
 interface Resultado {
@@ -48,6 +47,8 @@ export default function PedidosCompraLista({
   abrirId: string | null
   filtroInicial?: FiltroCompra
 }) {
+  const router = useRouter()
+
   const [termo, setTermo] = useState('')
   const [termoBusca, setTermoBusca] = useState('')
   const [filtro, setFiltro] = useState<FiltroCompra>(filtroInicial ?? 'todos')
@@ -57,12 +58,36 @@ export default function PedidosCompraLista({
   const [erro, setErro] = useState<string | null>(null)
   const [carregandoMais, setCarregandoMais] = useState(false)
 
-  const [detalhe, setDetalhe] = useState<PedidoCompra | null>(null)
   const [formulario, setFormulario] = useState<{ chave: number; inicial: PedidoInicial } | null>(null)
   const [importando, setImportando] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
 
   const chave = `${filtro}|${termoBusca}|${versao}`
+
+  // link antigo (?abrir=id): vai para a página do pedido
+  useEffect(() => {
+    if (abrirId) router.replace(`/pedidos-compra/${abrirId}`)
+  }, [abrirId, router])
+
+  // ao voltar da página do pedido, recupera a busca que estava na URL
+  // (precisa vir antes do efeito que escreve a URL)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('q')
+    if (q) {
+      setTermo(q)
+      setTermoBusca(q)
+    }
+  }, [])
+
+  // guarda filtro e busca na URL, sem criar entrada nova no histórico
+  useEffect(() => {
+    if (abrirId) return
+    const p = new URLSearchParams()
+    if (filtro !== 'todos') p.set('filtro', filtro)
+    if (termoBusca) p.set('q', termoBusca)
+    const qs = p.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }, [filtro, termoBusca, abrirId])
 
   useEffect(() => {
     const t = setTimeout(() => setTermoBusca(termo), 300)
@@ -97,20 +122,6 @@ export default function PedidosCompraLista({
     }
   }, [versao])
 
-  // veio de um link (por exemplo, do Comparar preços): abre o pedido
-  useEffect(() => {
-    if (!abrirId) return
-    let cancelado = false
-    obterPedido(abrirId)
-      .then((r) => {
-        if (!cancelado && r) setDetalhe(r.pedido)
-      })
-      .catch(() => {})
-    return () => {
-      cancelado = true
-    }
-  }, [abrirId])
-
   const carregarMais = async () => {
     if (!res || res.chave !== chave || carregandoMais) return
     setCarregandoMais(true)
@@ -136,14 +147,7 @@ export default function PedidosCompraLista({
   const abrirFormulario = (inicial: PedidoInicial) =>
     setFormulario({ chave: Date.now(), inicial })
 
-  const abrirPedidoPorId = async (id: string) => {
-    try {
-      const r = await obterPedido(id)
-      if (r) setDetalhe(r.pedido)
-    } catch {
-      // a lista já mostra o pedido; o detalhe abre ao clicar
-    }
-  }
+  const abrirPedido = (id: string) => router.push(`/pedidos-compra/${id}`)
 
   const carregando = res === null && erro === null
   const atualizando = res !== null && res.chave !== chave
@@ -310,7 +314,7 @@ export default function PedidosCompraLista({
             Crie um pedido novo ou importe os pedidos de uma comparação de preços.
           </p>
         </div>
-            ) : (
+      ) : (
         <div className={`mt-4 ${atualizando ? 'opacity-60' : ''}`}>
           {/* cabeçalho das colunas (só no PC) */}
           <div
@@ -338,7 +342,7 @@ export default function PedidosCompraLista({
                 <li key={p.id}>
                   <button
                     type="button"
-                    onClick={() => setDetalhe(p)}
+                    onClick={() => abrirPedido(p.id)}
                     title={detalhes || undefined}
                     className={`grid w-full grid-cols-2 items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-px hover:border-[#079C9C]/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#079C9C] ${COLUNAS}`}
                   >
@@ -382,7 +386,7 @@ export default function PedidosCompraLista({
           </ul>
         </div>
       )}
-      
+
       {temMais && (
         <div className="mt-4 flex justify-center">
           <button
@@ -397,34 +401,15 @@ export default function PedidosCompraLista({
         </div>
       )}
 
-      <PedidoCompraDetalhe
-        pedido={detalhe}
-        onClose={() => setDetalhe(null)}
-        onMudou={(a) => {
-          setDetalhe(null)
-          setVersao((v) => v + 1)
-          if (a) setAviso(a)
-        }}
-        onEditar={(inicial) => {
-          setDetalhe(null)
-          abrirFormulario(inicial)
-        }}
-        onDuplicar={(inicial) => {
-          setDetalhe(null)
-          abrirFormulario(inicial)
-        }}
-      />
-
       <PedidoCompraDialog
         key={formulario?.chave ?? 0}
         open={formulario !== null}
         inicial={formulario?.inicial ?? PEDIDO_VAZIO}
         onClose={() => setFormulario(null)}
-        onSalvo={(id, numero) => {
+        onSalvo={(id) => {
           setFormulario(null)
           setVersao((v) => v + 1)
-          setAviso(`Pedido ${numeroPedido(numero)} salvo.`)
-          abrirPedidoPorId(id)
+          abrirPedido(id)
         }}
       />
 
