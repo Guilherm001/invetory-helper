@@ -1,22 +1,25 @@
 // ---------- extração do texto do PDF ----------
 
-// lê um PDF e devolve uma linha de texto por linha visual da página
-export async function extrairLinhasDoPdf(arquivo: File): Promise<string[]> {
+async function abrirPdf(arquivo: File) {
   // import dinâmico: pdfjs só roda no navegador
   const pdfjs = await import('pdfjs-dist')
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.mjs',
     import.meta.url
   ).toString()
+  return pdfjs.getDocument({ data: await arquivo.arrayBuffer() }).promise
+}
 
-  const pdf = await pdfjs.getDocument({ data: await arquivo.arrayBuffer() }).promise
+type PdfDoc = Awaited<ReturnType<typeof abrirPdf>>
+
+// uma linha de texto por linha visual da página (agrupa pela altura y)
+async function linhasDoPdf(pdf: PdfDoc): Promise<string[]> {
   const linhas: string[] = []
 
   for (let p = 1; p <= pdf.numPages; p++) {
     const pagina = await pdf.getPage(p)
     const conteudo = await pagina.getTextContent()
 
-    // agrupa os pedaços de texto que estão na mesma altura (y)
     const grupos: { y: number; pecas: { x: number; s: string }[] }[] = []
     for (const it of conteudo.items) {
       if (!('str' in it) || !it.str.trim()) continue
@@ -40,6 +43,25 @@ export async function extrairLinhasDoPdf(arquivo: File): Promise<string[]> {
       })
   }
   return linhas
+}
+
+// todo o texto numa linha só, NA ORDEM EM QUE O PDF DESENHOU.
+// Relatórios de sistema desenham linha por linha, célula por célula, então esta ordem
+// não depende da altura de cada célula (que varia e quebra o agrupamento por y).
+async function textoCorrido(pdf: PdfDoc): Promise<string> {
+  const partes: string[] = []
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const pagina = await pdf.getPage(p)
+    const conteudo = await pagina.getTextContent()
+    for (const it of conteudo.items) {
+      if ('str' in it && it.str.trim()) partes.push(it.str.trim())
+    }
+  }
+  return partes.join(' ').replace(/\s+/g, ' ')
+}
+
+export async function extrairLinhasDoPdf(arquivo: File): Promise<string[]> {
+  return linhasDoPdf(await abrirPdf(arquivo))
 }
 
 // ---------- interpretação das linhas ----------
@@ -68,7 +90,7 @@ const PREFIXO_TABELA = /^\d{1,3}\s+(?:[A-Za-z]{1,3}-\d+|\d{4,})\s+(?=\S)/
 
 // cabeçalho, rodapé e total de orçamento/pedido: nunca são itens
 const LIXO =
-  /^(p[áa]gina\s+\d+\s+de\s+\d+|c[óo]digo\s+descri|item\s+ref|gerado em|total\s*:|\d+\s+itens?\s+total)|ltda\.?$/i
+  /^(p[áa]gina\s+\d+\s+de\s+\d+|c[óo]digo\s+descri|item\s+ref|gerado em|total\s*:|total\s+geral|\d+\s+itens?\s+total)|ltda\.?$/i
 
 const UNIDADES =
   '(?:caixas?|cx|unidades?|unid|un|pe[çc]as?|pcs?|pacotes?|pct|fardos?|sacos?|rolos?|kits?|latas?)'
@@ -77,10 +99,42 @@ function paraValor(s: string): number {
   return s.includes(',') ? Number(s.replace(/\./g, '').replace(',', '.')) : Number(s)
 }
 
+// ---------- formato "Pedido de Venda" (Item | Ref. | Prod. | Qtde. | Valor | Vl.Total) ----------
+// "9 T-5336 ALICATE TRAMONTINA UNIVERSAL 8 4 R$ 38,69 R$ 154,76"
+// Lê o texto corrido do PDF, então não importa como as células caíram em linhas visuais.
+
+const VALOR = String.raw`\d+(?:\.\d{3})*,\d{2}`
+const REGISTRO_TABELA = new RegExp(
+  String.raw`(?<!\S)\d{1,3}\s+(?:[A-Za-z]{1,3}-\d+|\d{4,})\s+` + // nº do item + referência
+    String.raw`((?:(?!R\$).)+?)\s+` + // descrição (nunca atravessa um "R$")
+    String.raw`(\d+(?:,\d+)?)\s+` + // quantidade
+    String.raw`R\$\s*(${VALOR})\s+` + // valor unitário
+    String.raw`R\$\s*(${VALOR})(?!\d)`, // valor total
+  'g'
+)
+
+export function interpretarPedidoTabela(texto: string): LinhaPdf[] {
+  const itens: LinhaPdf[] = []
+  for (const m of texto.matchAll(REGISTRO_TABELA)) {
+    const nome = m[1].replace(/\s+/g, ' ').trim()
+    if (!/[a-zà-ÿ]{3}/i.test(nome)) continue
+    itens.push({
+      nome,
+      embalagem: null,
+      quantidade: paraValor(m[2]),
+      unitario: paraValor(m[3]),
+      total: paraValor(m[4]),
+      unitarioPor: 'peca',
+    })
+  }
+  return itens
+}
+
+// ---------- formatos em linha (orçamentos, listas) ----------
+
 // "Cimento CP-II  20 caixas  4 caixas  32,50  130,00" -> LinhaPdf
 // também entende "Embalagem: 20 caixas" e "Quantidade: 4 caixas"
-// o formato de orçamento "0228199 COLA MADEIRA - 637 24 3,735 89,640"
-// e o pedido de venda "9 T-5336 ALICATE TRAMONTINA UNIVERSAL 8 4 R$ 38,69 R$ 154,76"
+// e o formato de orçamento "0228199 COLA MADEIRA - 637 24 3,735 89,640"
 export function interpretarLinhaPdf(bruta: string): LinhaPdf | null {
   const valores = [...bruta.matchAll(MONEY)]
   if (valores.length === 0) return null
@@ -164,9 +218,7 @@ export function interpretarLinhaPdf(bruta: string): LinhaPdf | null {
   return { nome, embalagem, quantidade, unitario, total, unitarioPor }
 }
 
-// lê o PDF e devolve só as linhas que têm preço
-export async function extrairItensDoPdf(arquivo: File): Promise<LinhaPdf[]> {
-  const linhas = await extrairLinhasDoPdf(arquivo)
+function itensPorLinha(linhas: string[]): LinhaPdf[] {
   const itens: LinhaPdf[] = []
   // pedaços de descrição vistos antes de uma linha que só tem números
   let pendente: string[] = []
@@ -195,6 +247,18 @@ export async function extrairItensDoPdf(arquivo: File): Promise<LinhaPdf[]> {
     }
   }
   return itens
+}
+
+// lê o PDF e devolve só as linhas que têm preço
+export async function extrairItensDoPdf(arquivo: File): Promise<LinhaPdf[]> {
+  const pdf = await abrirPdf(arquivo)
+
+  // 1) pedido de venda em tabela: lê o texto na ordem do PDF
+  const tabela = interpretarPedidoTabela(await textoCorrido(pdf))
+  if (tabela.length > 0) return tabela
+
+  // 2) demais formatos: linha a linha
+  return itensPorLinha(await linhasDoPdf(pdf))
 }
 
 // ---------- conversão ----------
