@@ -26,6 +26,15 @@ import {
   type LinhaPdf,
   type ModoPreco,
 } from '../utils/lerPdf'
+import {
+  IGNORAR,
+  SEM_ACHADO,
+  candidatosDe,
+  carregarVinculos,
+  montarIndice,
+  normalizarBusca,
+  salvarVinculos,
+} from '../utils/casarItens'
 
 interface Props {
   open: boolean
@@ -39,96 +48,7 @@ interface Props {
 const inputClass =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
 
-const IGNORAR = '__ignorar'
-
 // ---------- leitura do texto colado ----------
-
-const ROMANOS: Record<string, string> = {
-  ii: '2',
-  iii: '3',
-  iv: '4',
-  vi: '6',
-  vii: '7',
-  viii: '8',
-  ix: '9',
-}
-
-// palavras do nome, sem acento, maiúscula ou pontuação.
-// "CP2" e "CP-II" viram as mesmas palavras: "cp" e "2"
-function termosDe(s: string): string[] {
-  return s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/([a-z])(\d)/g, '$1 $2')
-    .replace(/(\d)([a-z])/g, '$1 $2')
-    .split(' ')
-    .filter(Boolean)
-    .map((t) => ROMANOS[t] ?? t)
-}
-
-const ehNumero = (t: string) => /^\d+$/.test(t)
-const singular = (t: string) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t)
-
-// número de trocas de letra entre duas palavras
-function distancia(a: string, b: string): number {
-  const d: number[] = Array.from({ length: b.length + 1 }, (_, j) => j)
-  for (let i = 1; i <= a.length; i++) {
-    let anterior = d[0]
-    d[0] = i
-    for (let j = 1; j <= b.length; j++) {
-      const guardado = d[j]
-      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, anterior + (a[i - 1] === b[j - 1] ? 0 : 1))
-      anterior = guardado
-    }
-  }
-  return d[b.length]
-}
-
-// quão parecidas são duas palavras: 1 = iguais, 0 = diferentes
-function parecenca(a: string, b: string): number {
-  if (a === b) return 1
-  // números só valem se forem iguais ("brita 1" não é "brita 2")
-  if (/\d/.test(a) || /\d/.test(b)) return 0
-
-  const sa = singular(a)
-  const sb = singular(b)
-  if (sa === sb) return 1
-
-  // abreviação: "cim" -> "cimento"
-  if (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) return 0.9
-
-  // erro de digitação: "cimneto" -> "cimento"
-  if (sa.length >= 4 && sb.length >= 4) {
-    const limite = Math.max(sa.length, sb.length) >= 7 ? 2 : 1
-    if (distancia(sa, sb) <= limite) return 0.85
-  }
-  return 0
-}
-
-// nota de 0 a 1 para "esta linha é este item"; 0 = não é
-function pontuar(q: string[], i: string[]): number {
-  if (q.length === 0 || i.length === 0) return 0
-
-  // números (medidas, bitolas) não podem se contradizer
-  const nq = q.filter(ehNumero)
-  const ni = i.filter(ehNumero)
-  if (nq.length > 0 && ni.length > 0) {
-    const qDentro = nq.every((n) => ni.includes(n))
-    const iDentro = ni.every((n) => nq.includes(n))
-    if (!qDentro && !iDentro) return 0
-  }
-
-  const melhor = (t: string, lista: string[]) => Math.max(...lista.map((x) => parecenca(t, x)))
-  const coberturaLinha = q.reduce((soma, t) => soma + melhor(t, i), 0) / q.length
-  const coberturaItem = i.reduce((soma, t) => soma + melhor(t, q), 0) / i.length
-
-  // um dos lados precisa estar quase todo explicado pelo outro
-  const forte = Math.max(coberturaLinha, coberturaItem)
-  if (forte < 0.85) return 0
-  return forte * 0.7 + Math.min(coberturaLinha, coberturaItem) * 0.3
-}
 
 // "32,50" | "32.50" | "1.234,56" | "1.234" | "32,505" -> número com 2 casas (arredonda)
 function paraNumero(s: string): number | null {
@@ -179,39 +99,6 @@ function lerLinha(bruta: string): Linha | null {
   if (partes.length > 0 && partes[partes.length - 1].toUpperCase() === 'R$') partes.pop()
   const nome = partes.join(' ').replace(/[\s:;=|–—-]+$/, '')
   return { bruta: t, nome, valor }
-}
-
-interface ItemNorm {
-  item: ItemComparacao
-  termos: string[]
-}
-
-interface Achado {
-  candidatos: ItemNorm[] // do mais ao menos provável
-  auto: string // id do item escolhido sozinho ('' = o usuário decide)
-  aproximado: boolean // casou por semelhança, não por nome igual
-}
-
-function candidatosDe(nome: string, itens: ItemNorm[]): Achado {
-  const vazio: Achado = { candidatos: [], auto: '', aproximado: false }
-  const q = termosDe(nome)
-  if (q.length === 0) return vazio
-
-  const pontuados = itens
-    .map((i) => ({ i, nota: pontuar(q, i.termos) }))
-    .filter((x) => x.nota > 0)
-    .sort((a, b) => b.nota - a.nota)
-  if (pontuados.length === 0) return vazio
-
-  const [topo, segundo] = pontuados
-  // escolhe sozinho só quando o primeiro é bom e está bem à frente do segundo
-  const claro = topo.nota >= 0.8 && (!segundo || topo.nota - segundo.nota >= 0.1)
-
-  return {
-    candidatos: pontuados.slice(0, 6).map((x) => x.i),
-    auto: claro ? topo.i.item.id : '',
-    aproximado: claro && topo.nota < 0.99,
-  }
 }
 
 // ---------- seletor de item com pesquisa ----------
@@ -266,10 +153,10 @@ function SeletorItem({
   // o item já escolhido nesta linha continua aparecendo; os usados em outras linhas somem
   const livre = (i: ItemComparacao) => i.id === escolhido || !usados.has(i.id)
 
-  const termosBusca = aberto ? termosDe(busca) : []
+  const termosBusca = aberto ? normalizarBusca(busca) : []
   const passa = (i: ItemComparacao) => {
     if (termosBusca.length === 0) return true
-    const nome = termosDe(i.name).join(' ')
+    const nome = normalizarBusca(i.name).join(' ')
     return termosBusca.every((t) => nome.includes(t))
   }
 
@@ -399,7 +286,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
     fornecedores.length === 1 ? fornecedores[0].id : ''
   )
   const [texto, setTexto] = useState('')
-  // escolhas manuais, por número da linha: id do item ou IGNORAR
+  // escolhas manuais, por número da linha: id do item, IGNORAR ou '' (limpar)
   const [escolhas, setEscolhas] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -449,11 +336,9 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
 
   const mapa = useMemo(() => montarMapa(precos), [precos])
 
-  const itensNorm = useMemo<ItemNorm[]>(
-    () =>
-      itens.map((item) => ({ item, termos: termosDe(item.name) })),
-    [itens]
-  )
+  // o que você já confirmou antes para este fornecedor (neste navegador)
+  const vinculos = useMemo(() => carregarVinculos(fornecedorId), [fornecedorId])
+  const indice = useMemo(() => montarIndice(itens), [itens])
 
   const linhas = useMemo(
     () =>
@@ -462,21 +347,19 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
         .map(lerLinha)
         .filter((l): l is Linha => l !== null)
         .map((l) => {
-          const r: Achado =
-            l.valor === null
-              ? { candidatos: [], auto: '', aproximado: false }
-              : candidatosDe(l.nome, itensNorm)
+          const r = l.valor === null ? SEM_ACHADO : candidatosDe(l.nome, indice, vinculos)
           return {
             ...l,
-            candidatos: r.candidatos.map((c) => c.item),
+            candidatos: r.candidatos,
             auto: r.auto,
             aproximado: r.aproximado,
+            lembrado: r.lembrado,
           }
         }),
-    [texto, itensNorm]
+    [texto, indice, vinculos]
   )
 
-  // item escolhido em cada linha: escolha manual > único candidato > nenhum
+  // item escolhido em cada linha: escolha manual > casamento automático > nenhum
   const linhasFinais = linhas.map((l, idx) => {
     const escolhido = escolhas[idx] ?? l.auto
     const valido = l.valor !== null && escolhido !== '' && escolhido !== IGNORAR
@@ -520,6 +403,20 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
       setSaving(false)
       return
     }
+
+    // aprende o que você confirmou (escolha manual ou casamento sem dúvida)
+    salvarVinculos(
+      fornecedorId,
+      itens,
+      linhasFinais
+        .filter(
+          (l) =>
+            l.valor !== null &&
+            l.escolhido !== '' &&
+            (escolhas[l.idx] !== undefined || !l.aproximado)
+        )
+        .map((l) => ({ nome: l.nome, itemId: l.escolhido }))
+    )
     onClose()
   }
 
@@ -690,7 +587,11 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-emerald-700">
                                   <Check className="size-3.5" />
-                                  {precoAtual !== undefined && !troca ? 'igual ao atual' : 'ok'}
+                                  {precoAtual !== undefined && !troca
+                                    ? 'igual ao atual'
+                                    : l.lembrado
+                                      ? 'lembrado'
+                                      : 'ok'}
                                 </span>
                               )}
                               {troca && (
