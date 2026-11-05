@@ -62,9 +62,13 @@ const MONEY =
 // código do produto no começo da linha: "0228199 COLA MADEIRA ..."
 const CODIGO = /^\d{5,}\s+/
 
-// cabeçalho, rodapé e total de orçamento: nunca são itens
+// tabela de pedido: nº do item + referência no começo da linha
+// "9 T-5336 ALICATE ..." | "6 15941 SOLDA ..."
+const PREFIXO_TABELA = /^\d{1,3}\s+(?:[A-Za-z]{1,3}-\d+|\d{4,})\s+(?=\S)/
+
+// cabeçalho, rodapé e total de orçamento/pedido: nunca são itens
 const LIXO =
-  /^(p[áa]gina\s+\d+\s+de\s+\d+|c[óo]digo\s+descri|gerado em|total\s*:)|ltda\.?$/i
+  /^(p[áa]gina\s+\d+\s+de\s+\d+|c[óo]digo\s+descri|item\s+ref|gerado em|total\s*:|\d+\s+itens?\s+total)|ltda\.?$/i
 
 const UNIDADES =
   '(?:caixas?|cx|unidades?|unid|un|pe[çc]as?|pcs?|pacotes?|pct|fardos?|sacos?|rolos?|kits?|latas?)'
@@ -75,7 +79,8 @@ function paraValor(s: string): number {
 
 // "Cimento CP-II  20 caixas  4 caixas  32,50  130,00" -> LinhaPdf
 // também entende "Embalagem: 20 caixas" e "Quantidade: 4 caixas"
-// e o formato de orçamento "0228199 COLA MADEIRA - 637 24 3,735 89,640"
+// o formato de orçamento "0228199 COLA MADEIRA - 637 24 3,735 89,640"
+// e o pedido de venda "9 T-5336 ALICATE TRAMONTINA UNIVERSAL 8 4 R$ 38,69 R$ 154,76"
 export function interpretarLinhaPdf(bruta: string): LinhaPdf | null {
   const valores = [...bruta.matchAll(MONEY)]
   if (valores.length === 0) return null
@@ -88,6 +93,10 @@ export function interpretarLinhaPdf(bruta: string): LinhaPdf | null {
   const total = penultimo ? paraValor(ultimo[1]) : null
 
   let resto = bruta.slice(0, (penultimo ?? ultimo).index ?? bruta.length)
+
+  // linha de tabela (tem unitário e total): tira nº do item e referência do começo
+  if (total !== null) resto = resto.replace(PREFIXO_TABELA, '')
+
   const achado = { embalagem: null as number | null, quantidade: null as number | null }
   const formatoOrcamento = CODIGO.test(bruta.trim())
 
@@ -173,13 +182,13 @@ export async function extrairItensDoPdf(arquivo: File): Promise<LinhaPdf[]> {
     }
 
     if ([...bruta.matchAll(MONEY)].length > 0) {
-      // linha só com números ("1 17,538 17,538"): a descrição veio antes
+      // linha só com números ("1 17,538 17,538" ou "2 R$ 10,77 R$ 21,54"): a descrição veio antes
       const junto = pendente.length
         ? interpretarLinhaPdf(`${pendente.join(' ')} ${bruta}`)
         : null
       if (junto) itens.push(junto)
       pendente = []
-    } else if (CODIGO.test(bruta)) {
+    } else if (CODIGO.test(bruta) || PREFIXO_TABELA.test(bruta)) {
       pendente = [bruta] // começo de um item
     } else if (pendente.length > 0) {
       pendente.push(bruta) // continuação da descrição
