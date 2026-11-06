@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { CheckCheck, Loader2, Search, X } from 'lucide-react'
+import { CheckCheck, Loader2, Search, Trash2, X } from 'lucide-react'
 import { useProducts } from '../hooks/useProducts'
 import { useSelection } from '../hooks/useSelection'
 import { useEhDono } from '../hooks/useEhDono'
 import { useEtapasFaltas } from '../hooks/useEtapasFaltas'
+import { dialogoAberto, digitando } from '../lib/teclado'
 import type { Product } from '../services/listService'
 import BotaoAdd from './addButton'
 import Corpo from './corpo'
@@ -23,8 +24,19 @@ import {
   type EtapaFalta,
 } from '@/features/compras/services/painelService'
 import { EtapasFaltasProvider } from './etapasFaltas'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../../../components/ui/alert-dialog'
 
 type Filtro = 'todos' | 'pendentes' | 'alta'
+type ModoSelecao = 'cotacao' | 'excluir'
 
 // true: um produto já comprado (Concluído) não bloqueia adicionar o mesmo de novo
 // false: qualquer produto que já está na lista bloqueia
@@ -131,10 +143,20 @@ export function Body() {
   )
   const mostrarEtapas = ehDono && disponivel
 
-  // cotação
+  // seleção (cotação ou exclusão)
   const sel = useSelection()
+  const [modo, setModo] = useState<ModoSelecao>('cotacao')
   const [showQtd, setShowQtd] = useState(false)
   const [gerando, setGerando] = useState(false)
+
+  // exclusão em massa
+  const [confirmarExcluir, setConfirmarExcluir] = useState(false)
+  const [excluindo, setExcluindo] = useState(false)
+
+  const iniciarSelecao = (m: ModoSelecao) => {
+    setModo(m)
+    sel.start()
+  }
 
   // pedido de compra a partir das faltas selecionadas
   const [pedidoForm, setPedidoForm] = useState<{
@@ -214,8 +236,41 @@ export function Body() {
     [products, sel.ids]
   )
 
+  // "todos" = todos que estão listados agora (respeita filtros e busca)
+  const idsVisiveis = useMemo(
+    () => produtosVisiveis.map((p) => p.id).filter((id): id is string => !!id),
+    [produtosVisiveis]
+  )
+  const todosMarcados =
+    idsVisiveis.length > 0 && idsVisiveis.every((id) => sel.ids.has(id))
+
+  const alternarTodos = () => {
+    if (todosMarcados) sel.removeMany(idsVisiveis)
+    else sel.addMany(idsVisiveis)
+  }
+
   const semResultado =
     buscaAtiva && !loading && !error && produtosVisiveis.length === 0
+
+  const excluirSelecionados = async () => {
+    if (excluindo || selecionados.length === 0) return
+    setExcluindo(true)
+    const n = selecionados.length
+    try {
+      await deleteMany(selecionados.map((p) => p.id!))
+      setAviso({ texto: `${n} ${n === 1 ? 'item excluído' : 'itens excluídos'}.` })
+      setConfirmarExcluir(false)
+      sel.cancel()
+    } catch (e) {
+      setConfirmarExcluir(false)
+      setAviso({
+        texto: `Não foi possível excluir: ${e instanceof Error ? e.message : 'erro desconhecido'}`,
+      })
+    } finally {
+      setExcluindo(false)
+      recarregarEtapas()
+    }
+  }
 
   const concluirRecebidas = async () => {
     if (concluindo || recebidas.length === 0) return
@@ -279,15 +334,13 @@ export function Body() {
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {})
   keyRef.current = (e) => {
     // telas abertas por cima cuidam do próprio teclado
-    if (showQtd || pedidoForm !== null) return
-    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
-
-    const alvo = e.target as HTMLElement | null
-    if (alvo?.closest('input, textarea, select, [contenteditable="true"]')) return
+    if (showQtd || pedidoForm !== null || confirmarExcluir) return
+    if (dialogoAberto()) return
+    if (digitando(e.target)) return
 
     // Ctrl/Cmd + Enter: enviar a seleção para o fornecedor
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      if (sel.selecting && selecionados.length > 0) {
+      if (sel.selecting && modo === 'cotacao' && selecionados.length > 0) {
         e.preventDefault()
         setShowQtd(true)
       }
@@ -310,10 +363,23 @@ export function Body() {
         break
       case 'c':
         if (sel.selecting) sel.cancel()
-        else sel.start()
+        else iniciarSelecao('cotacao')
+        break
+      case 'a':
+        if (sel.selecting) {
+          e.preventDefault()
+          alternarTodos()
+        }
+        break
+      case 'Delete':
+        if (sel.selecting && modo === 'excluir' && selecionados.length > 0) {
+          e.preventDefault()
+          setConfirmarExcluir(true)
+        }
         break
       case 'p':
-        if (ehDono && sel.selecting && selecionados.length > 0) criarPedidoDasFaltas()
+        if (ehDono && sel.selecting && modo === 'cotacao' && selecionados.length > 0)
+          criarPedidoDasFaltas()
         break
       case '1':
         setFiltro('todos')
@@ -438,7 +504,11 @@ export function Body() {
           {mostrarEtapas && (
             <select
               value={etapaAtiva}
-              onChange={(e) => setFiltroEtapa(e.target.value as FiltroEtapa)}
+              onChange={(e) => {
+                setFiltroEtapa(e.target.value as FiltroEtapa)
+                // devolve o foco à página para os atalhos continuarem valendo
+                e.currentTarget.blur()
+              }}
               aria-label="Etapa da compra"
               className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-700 outline-none focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
             >
@@ -498,14 +568,24 @@ export function Body() {
                 Cancelar <Kbd>Esc</Kbd>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={sel.start}
-                aria-keyshortcuts="c"
-                className={`flex h-8 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:border-[#079C9C] hover:text-[#079C9C] ${focoVisivel}`}
-              >
-                Cotação <Kbd>C</Kbd>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => iniciarSelecao('excluir')}
+                  className={`flex h-8 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:border-red-400 hover:text-red-600 ${focoVisivel}`}
+                >
+                  <Trash2 className="size-4" />
+                  Excluir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => iniciarSelecao('cotacao')}
+                  aria-keyshortcuts="c"
+                  className={`flex h-8 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:border-[#079C9C] hover:text-[#079C9C] ${focoVisivel}`}
+                >
+                  Cotação <Kbd>C</Kbd>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -584,7 +664,11 @@ export function Body() {
         <span>
           <Kbd>Enter</Kbd> {sel.selecting ? 'selecionar' : 'editar'}
         </span>
-        {!sel.selecting && (
+        {sel.selecting ? (
+          <span>
+            <Kbd>A</Kbd> selecionar todos
+          </span>
+        ) : (
           <span>
             <Kbd>Del</Kbd> excluir
           </span>
@@ -606,40 +690,105 @@ export function Body() {
 
       {/* Barra da seleção */}
       {sel.selecting && (
-        <div className="fixed inset-x-0 bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-20 flex items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 md:bottom-0 md:px-6">
-          <span className="text-sm text-slate-700" role="status">
-            {selecionados.length}{' '}
-            {selecionados.length === 1 ? 'selecionado' : 'selecionados'}
-          </span>
+        <div className="fixed inset-x-0 bottom-[calc(3.5rem+1px+env(safe-area-inset-bottom))] z-20 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 md:bottom-0 md:px-6">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={alternarTodos}
+              disabled={idsVisiveis.length === 0}
+              aria-keyshortcuts="a"
+              className={`flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:border-[#079C9C] hover:text-[#079C9C] disabled:opacity-40 ${focoVisivel}`}
+            >
+              {todosMarcados ? 'Desmarcar todos' : 'Selecionar todos'}
+              <Kbd>A</Kbd>
+            </button>
+            <span className="text-sm text-slate-700" role="status">
+              {selecionados.length}{' '}
+              {selecionados.length === 1 ? 'selecionado' : 'selecionados'}
+            </span>
+          </div>
+
           <div className="flex gap-2">
-            {ehDono && (
+            {modo === 'excluir' ? (
               <button
                 type="button"
                 disabled={selecionados.length === 0}
-                onClick={criarPedidoDasFaltas}
-                aria-keyshortcuts="p"
-                className={`flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:border-[#079C9C] hover:text-[#079C9C] disabled:opacity-40 ${focoVisivel}`}
+                onClick={() => setConfirmarExcluir(true)}
+                aria-keyshortcuts="Delete"
+                className={`flex h-9 items-center gap-2 rounded-md bg-red-600 px-3.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40 ${focoVisivel}`}
               >
-                <span className="hidden sm:inline">Criar pedido de compra</span>
-                <span className="sm:hidden">Criar pedido</span>
-                <Kbd>P</Kbd>
+                <Trash2 className="size-4" />
+                Excluir selecionados
+                <span className="hidden rounded border border-white/30 px-1.5 py-px font-sans text-[11px] leading-4 text-white/80 md:inline-block">
+                  Del
+                </span>
               </button>
+            ) : (
+              <>
+                {ehDono && (
+                  <button
+                    type="button"
+                    disabled={selecionados.length === 0}
+                    onClick={criarPedidoDasFaltas}
+                    aria-keyshortcuts="p"
+                    className={`flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 transition hover:border-[#079C9C] hover:text-[#079C9C] disabled:opacity-40 ${focoVisivel}`}
+                  >
+                    <span className="hidden sm:inline">Criar pedido de compra</span>
+                    <span className="sm:hidden">Criar pedido</span>
+                    <Kbd>P</Kbd>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={selecionados.length === 0}
+                  onClick={() => setShowQtd(true)}
+                  aria-keyshortcuts="Control+Enter"
+                  className={`flex h-9 items-center gap-2 rounded-md bg-[#079C9C] px-3.5 text-sm font-medium text-white transition hover:bg-[#068a8a] disabled:opacity-40 ${focoVisivel}`}
+                >
+                  Enviar para fornecedor
+                  <span className="hidden rounded border border-white/30 px-1.5 py-px font-sans text-[11px] leading-4 text-white/80 md:inline-block">
+                    Ctrl Enter
+                  </span>
+                </button>
+              </>
             )}
-            <button
-              type="button"
-              disabled={selecionados.length === 0}
-              onClick={() => setShowQtd(true)}
-              aria-keyshortcuts="Control+Enter"
-              className={`flex h-9 items-center gap-2 rounded-md bg-[#079C9C] px-3.5 text-sm font-medium text-white transition hover:bg-[#068a8a] disabled:opacity-40 ${focoVisivel}`}
-            >
-              Enviar para fornecedor
-              <span className="hidden rounded border border-white/30 px-1.5 py-px font-sans text-[11px] leading-4 text-white/80 md:inline-block">
-                Ctrl Enter
-              </span>
-            </button>
           </div>
         </div>
       )}
+
+      {/* Confirmação de exclusão em massa */}
+      <AlertDialog
+        open={confirmarExcluir}
+        onOpenChange={(aberto) => {
+          if (!aberto && !excluindo) setConfirmarExcluir(false)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Excluir {selecionados.length}{' '}
+              {selecionados.length === 1 ? 'produto' : 'produtos'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Os itens selecionados serão removidos da lista. Essa ação não pode ser
+              desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={excluindo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={excluindo}
+              onClick={(e) => {
+                e.preventDefault() // mantém aberto até terminar
+                excluirSelecionados()
+              }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {excluindo ? 'Excluindo…' : 'Excluir'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Tela de quantidades */}
       {showQtd && (

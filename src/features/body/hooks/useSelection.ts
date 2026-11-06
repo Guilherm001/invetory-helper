@@ -14,6 +14,18 @@ export function useSelection() {
       return next
     })
 
+  // marca vários de uma vez (selecionar todos)
+  const addMany = (novos: string[]) =>
+    setIds((prev) => new Set([...prev, ...novos]))
+
+  // desmarca vários de uma vez
+  const removeMany = (remover: string[]) =>
+    setIds((prev) => {
+      const next = new Set(prev)
+      remover.forEach((id) => next.delete(id))
+      return next
+    })
+
   const start = () => setSelecting(true)
 
   const cancel = () => {
@@ -21,5 +33,5 @@ export function useSelection() {
     setIds(new Set())
   }
 
-  return { selecting, ids, toggle, start, cancel }
+  return { selecting, ids, toggle, addMany, removeMany, start, cancel }
 }

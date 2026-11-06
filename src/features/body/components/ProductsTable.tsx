@@ -5,6 +5,7 @@ import { Check, Pencil, Trash2 } from 'lucide-react'
 import type { Product } from '../services/listService'
 import { useEtapasDasFaltas } from './etapasFaltas'
 import SeloEtapa from './SeloEtapa'
+import { dialogoAberto, digitando } from '../lib/teclado'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -82,9 +83,9 @@ export function ProductsTable({
 
     const alvo = e.target as HTMLElement | null
     // não atrapalha quem está digitando
-    if (alvo?.closest('input, textarea, select, [contenteditable="true"]')) return
-    // nem quando há um diálogo aberto
-    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+    if (digitando(alvo)) return
+    // nem quando há um diálogo realmente aberto
+    if (excluir !== null || dialogoAberto()) return
 
     const emBotao = !!alvo?.closest('button, a')
     const atual = products[idx]
@@ -196,7 +197,7 @@ export function ProductsTable({
                 if (selecting) onSelect(id)
                 else onEdit(product)
               }}
-              className={`group ${GRID} min-h-[3.25rem] cursor-pointer border-b border-slate-100 py-2 transition-colors ${
+              className={`group scroll-mb-28 scroll-mt-32 ${GRID} min-h-[3.25rem] cursor-pointer border-b border-slate-100 py-2 transition-colors ${
                 ativo ? 'shadow-[inset_2px_0_0_#079C9C]' : ''
               } ${
                 selecting && marcado
