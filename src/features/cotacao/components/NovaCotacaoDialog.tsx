@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ClipboardList, Loader2, X } from 'lucide-react'
+import { ClipboardList, Loader2, Plus, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
   Dialog,
@@ -32,8 +32,17 @@ interface Item {
   catalog_code: string | null
 }
 
+// sem largura aqui: cada campo define a sua
 const inputClass =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
+  'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
+
+// sem acento, minúsculo
+const normalizar = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 
 function Kbd({ children }: { children: string }) {
   return (
@@ -55,12 +64,16 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
     }))
   )
   const [aviso, setAviso] = useState('')
+  const [novoNome, setNovoNome] = useState('')
+  const [novaUnidade, setNovaUnidade] = useState('')
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   const buscaWrapRef = useRef<HTMLDivElement>(null)
+  const novoNomeRef = useRef<HTMLInputElement>(null)
   const qtdRefs = useRef<Map<string, HTMLInputElement>>(new Map())
   const focoPendente = useRef<string | null>(null)
+  const contadorAvulso = useRef(0)
 
   // carrega a biblioteca do PDF antes do clique
   useEffect(() => {
@@ -83,6 +96,11 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
     input?.select()
   }
 
+  const focarNovo = () => {
+    novoNomeRef.current?.focus()
+    novoNomeRef.current?.select()
+  }
+
   const adicionarDoCatalogo = (c: { name: string; unit: string | null; code: string }) => {
     const existente = itens.find((i) => i.catalog_code === c.code)
     if (existente) {
@@ -94,6 +112,38 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
     const key = `c:${c.code}`
     focoPendente.current = key
     setItens([...itens, { key, name: c.name, quantity: '', unit: c.unit, catalog_code: c.code }])
+  }
+
+  // item que não está no catálogo (produto novo que está sendo cotado)
+  const adicionarAvulso = () => {
+    const nome = novoNome.trim()
+    if (!nome) return
+
+    const existente = itens.find(
+      (i) => i.catalog_code === null && normalizar(i.name) === normalizar(nome)
+    )
+    if (existente) {
+      setAviso(`"${existente.name}" já está na lista.`)
+      qtdRefs.current.get(existente.key)?.focus()
+      return
+    }
+
+    setAviso('')
+    contadorAvulso.current += 1
+    const key = `n:${contadorAvulso.current}`
+    focoPendente.current = key
+    setItens([
+      ...itens,
+      {
+        key,
+        name: nome,
+        quantity: '',
+        unit: novaUnidade.trim() || null,
+        catalog_code: null,
+      },
+    ])
+    setNovoNome('')
+    setNovaUnidade('')
   }
 
   const atualizarQtd = (key: string, quantity: string) =>
@@ -164,6 +214,14 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
     }
   }
 
+  const teclaNovo = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      adicionarAvulso()
+    }
+  }
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -171,13 +229,24 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault()
           gerar()
+          return
+        }
+        // Alt+N: item novo / Alt+C: catálogo
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+          if (e.code === 'KeyN') {
+            e.preventDefault()
+            focarNovo()
+          } else if (e.code === 'KeyC') {
+            e.preventDefault()
+            focarBusca()
+          }
         }
       }}
     >
       <DialogHeader className="border-b border-slate-100 px-6 py-4 text-left">
         <DialogTitle className="text-base font-semibold text-slate-900">Nova cotação</DialogTitle>
         <DialogDescription className="text-sm text-slate-500">
-          Busque no catálogo e monte a lista.
+          Busque no catálogo ou digite um item novo.
         </DialogDescription>
       </DialogHeader>
 
@@ -197,7 +266,7 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
               e.preventDefault()
               focarBusca()
             }}
-            className={inputClass}
+            className={`${inputClass} w-full`}
             placeholder="Nome do fornecedor"
             autoFocus
           />
@@ -206,6 +275,39 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
         <div ref={buscaWrapRef} className="relative z-10 space-y-1.5">
           <span className="block text-xs font-medium text-slate-600">Adicionar do catálogo</span>
           <BuscaCatalogo onSelect={adicionarDoCatalogo} />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="cotacao-novo-nome" className="block text-xs font-medium text-slate-600">
+            Item fora do catálogo
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="cotacao-novo-nome"
+              ref={novoNomeRef}
+              value={novoNome}
+              onChange={(e) => setNovoNome(e.target.value)}
+              onKeyDown={teclaNovo}
+              enterKeyHint="done"
+              placeholder="Nome do produto"
+              className={`${inputClass} min-w-0 flex-1`}
+            />
+           
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                adicionarAvulso()
+                if (!novoNome.trim()) focarNovo()
+              }}
+              disabled={novoNome.trim() === ''}
+              aria-label="Adicionar item novo"
+              className="shrink-0 gap-1.5 border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-100"
+            >
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">Adicionar</span>
+            </Button>
+          </div>
           {aviso && <p className="text-xs font-medium text-amber-600">{aviso}</p>}
         </div>
       </div>
@@ -237,7 +339,14 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
             {itens.map((item, i) => (
               <li key={item.key} className="flex items-center gap-3 px-3 py-2">
-                <p className="min-w-0 flex-1 break-words text-sm text-slate-900">{item.name}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm text-slate-900">{item.name}</p>
+                  {item.catalog_code === null && (
+                    <span className="mt-0.5 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">
+                      Novo
+                    </span>
+                  )}
+                </div>
 
                 <input
                   ref={(el) => {
@@ -283,9 +392,17 @@ function Conteudo({ base, onClose, onCriada }: Omit<Props, 'open'>) {
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-6 py-3">
-        <div className="hidden items-center gap-x-4 gap-y-1 text-xs text-slate-400 md:flex md:flex-wrap">
+        <div className="hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 md:flex">
           <span className="flex items-center gap-1.5">
             <Kbd>Enter</Kbd> próximo
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Kbd>Alt</Kbd>
+            <Kbd>C</Kbd> catálogo
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Kbd>Alt</Kbd>
+            <Kbd>N</Kbd> item novo
           </span>
           <span className="flex items-center gap-1.5">
             <Kbd>Ctrl</Kbd>
