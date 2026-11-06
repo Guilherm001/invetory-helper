@@ -337,6 +337,16 @@ export async function excluirPedido(id: string) {
   if (error) throw traduz(error)
 }
 
+// tira um item do pedido (só item sem recebimento). Se o que sobrar já estiver todo recebido,
+// o pedido passa a "recebido".
+export async function excluirItemDoPedido(
+  itemId: string
+): Promise<{ status: StatusCompra; itens_restantes: number }> {
+  const { data, error } = await supabase.rpc('excluir_item_pedido_compra', { p_item_id: itemId })
+  if (error) throw traduz(error)
+  return data as { status: StatusCompra; itens_restantes: number }
+}
+
 // ---------- recebimento ----------
 
 export async function listarPedidosAReceber(): Promise<PedidoAReceber[]> {

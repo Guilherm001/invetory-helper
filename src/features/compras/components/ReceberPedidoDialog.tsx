@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertCircle, ChevronDown, Loader2 } from 'lucide-react'
+import { AlertCircle, ChevronDown, Loader2, Trash2 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import {
   Dialog,
@@ -15,6 +15,7 @@ import { numeroTexto, reais } from '@/features/loja/lib/formatar'
 import { lerPreco } from '@/features/comparar-precos/utils/melhorPreco'
 import {
   atualizarPrecosVenda,
+  excluirItemDoPedido,
   itensAReceber,
   obterPedido,
   precosDeVenda,
@@ -174,8 +175,8 @@ function Opcao({
 const CAMPO =
   'h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-right text-sm outline-none transition focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 disabled:bg-slate-50 disabled:text-slate-400'
 
-const GRADE = 'grid-cols-[minmax(0,1fr)_7rem]'
-const GRADE_PRECO = 'grid-cols-[minmax(0,1fr)_6.5rem_7rem_7rem_6.5rem_7.5rem]'
+const GRADE = 'grid-cols-[minmax(0,1fr)_7rem_2rem]'
+const GRADE_PRECO = 'grid-cols-[minmax(0,1fr)_6.5rem_7rem_7rem_6.5rem_7.5rem_2rem]'
 
 interface DadosPreco {
   carregando: boolean
@@ -195,8 +196,10 @@ function LinhaItem({
   estoque,
   modoPreco,
   preco,
+  podeExcluir,
   onChange,
   onTecla,
+  onExcluir,
 }: {
   item: ItemAReceber
   r: number
@@ -205,8 +208,10 @@ function LinhaItem({
   estoque: boolean
   modoPreco: boolean
   preco: DadosPreco | null
+  podeExcluir: boolean
   onChange: (valor: string) => void
   onTecla: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  onExcluir: () => void
 }) {
   const falta = faltaDe(item)
   const concluido = falta === 0
@@ -359,6 +364,21 @@ function LinhaItem({
       )}
 
       {celulasPreco}
+
+      {podeExcluir ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onExcluir}
+          title="Excluir item do pedido (Alt+Del)"
+          aria-label={`Excluir ${item.produto_nome} do pedido`}
+          className="flex size-8 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 className="size-4" />
+        </button>
+      ) : (
+        <span />
+      )}
     </li>
   )
 }
@@ -381,6 +401,7 @@ function Conteudo({
   onRecebido: (aviso: string) => void
 }) {
   const tabelaRef = useRef<HTMLDivElement>(null)
+  const focouInicial = useRef(false)
 
   const [itens, setItens] = useState<ItemAReceber[] | null>(null)
   const [erroCarga, setErroCarga] = useState('')
@@ -390,6 +411,7 @@ function Conteudo({
   const [obs, setObs] = useState('')
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [excluindo, setExcluindo] = useState(false)
   const [pedindoSenha, setPedindoSenha] = useState(false)
 
   // nota fiscal (opcional)
@@ -444,12 +466,13 @@ function Conteudo({
     }
   }, [])
 
-  // foco no primeiro campo quando a lista aparece
+  // foco no primeiro campo quando a lista aparece (só na primeira vez)
   useEffect(() => {
-    if (!itens || itens.length === 0) return
-    const id = requestAnimationFrame(() =>
+    if (!itens || itens.length === 0 || focouInicial.current) return
+    const id = requestAnimationFrame(() => {
+      focouInicial.current = true
       tabelaRef.current?.querySelector<HTMLInputElement>('[data-cell]')?.focus()
-    )
+    })
     return () => cancelAnimationFrame(id)
   }, [itens])
 
@@ -578,6 +601,46 @@ function Conteudo({
     })
   }
 
+  /* ----- excluir item do pedido (só o dono, e só item sem recebimento) ----- */
+
+  const excluirItem = async (item: ItemAReceber) => {
+    if (!ehDono || excluindo || salvando || item.quantidade_recebida > 0) return
+    if (!window.confirm(`Excluir "${item.produto_nome}" do pedido? Não dá para desfazer.`)) return
+
+    const posicao = linhas.findIndex((l) => l.item.id === item.id)
+    setExcluindo(true)
+    setErro('')
+    try {
+      const r = await excluirItemDoPedido(item.id)
+
+      // o que sobrou já foi todo recebido: o pedido fecha como recebido
+      if (r.status === 'recebido') {
+        onRecebido(
+          `Pedido ${numeroPedido(pedido.numero)}: "${item.produto_nome}" excluído. Os itens restantes já estavam recebidos, então o pedido ficou como recebido.`
+        )
+        return
+      }
+
+      setItens((prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev))
+      setChegou(({ [item.id]: _c, ...resto }) => resto)
+      setVenda(({ [item.id]: _v, ...resto }) => resto)
+
+      // o foco vai para o item que ocupou o lugar
+      requestAnimationFrame(() => {
+        const campos = Array.from(
+          tabelaRef.current?.querySelectorAll<HTMLInputElement>('[data-cell]') ?? []
+        ).filter((x) => !x.disabled)
+        const alvo = campos.find((x) => Number(x.dataset.r) >= posicao) ?? campos[campos.length - 1]
+        alvo?.focus()
+        alvo?.select()
+      })
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível excluir o item')
+    } finally {
+      setExcluindo(false)
+    }
+  }
+
   /* ----- teclado na tabela ----- */
 
   // devolve false quando não há para onde ir
@@ -614,6 +677,13 @@ function Conteudo({
   }
 
   const tecla = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Alt+Del: exclui o item da linha
+    if (e.altKey && e.key === 'Delete') {
+      e.preventDefault()
+      const l = linhas[Number(e.currentTarget.dataset.r)]
+      if (l) excluirItem(l.item)
+      return
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return
     const el = e.currentTarget
 
@@ -1081,6 +1151,7 @@ function Conteudo({
                           <span className="text-right">Novo preço</span>
                         </>
                       )}
+                      <span />
                     </div>
 
                     <ul>
@@ -1107,6 +1178,8 @@ function Conteudo({
                             modoPreco={revisarPreco}
                             onChange={(v) => definir(item.id, v)}
                             onTecla={tecla}
+                            podeExcluir={ehDono && item.quantidade_recebida === 0}
+                            onExcluir={() => excluirItem(item)}
                             preco={
                               comPreco
                                 ? {
@@ -1179,6 +1252,11 @@ function Conteudo({
               <p className="hidden border-t border-slate-100 bg-slate-50 px-6 py-1.5 text-[11px] text-slate-500 md:block">
                 <Kbd>Enter</Kbd> <Kbd>↓</Kbd> próxima linha · <Kbd>↑</Kbd> linha anterior ·{' '}
                 <Kbd>←</Kbd> <Kbd>→</Kbd> colunas · <Kbd>T</Kbd> no campo Chegou = chegou tudo do item ·{' '}
+                {ehDono && (
+                  <>
+                    <Kbd>Alt+Del</Kbd> exclui o item do pedido ·{' '}
+                  </>
+                )}
                 <Kbd>Esc</Kbd> fecha
               </p>
             )}
