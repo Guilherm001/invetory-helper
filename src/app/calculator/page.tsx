@@ -1,8 +1,8 @@
-import  { CalculatorTabs } from "@/features/calculators";
+import  {CalculatorTabs} from "@/features/calculators/Calculatortabs";
 
 export default function CalculatorsPage() {
     return (
 
-        <CalculatorTabs/>
+        <CalculatorTabs />
     )
 }

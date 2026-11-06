@@ -30,6 +30,10 @@ export interface Contexto {
   desconto: number
   /** Valor da opção escolhida no select (se existir). */
   opcao?: number
+  /** Margem de perda em % (0 se não houver). */
+  perda: number
+  /** Espessura da camada em cm (só nas calculadoras que pedem espessura). */
+  espessura?: number
 }
 
 export interface ResultadoConfig {
@@ -40,6 +44,8 @@ export interface ResultadoConfig {
   casas?: number
   /** Aplica a margem de perda (só vale para quantidades inteiras). */
   aplicaPerda?: boolean
+  /** Se retornar false, este resultado não aparece. */
+  visivel?: (ctx: Contexto) => boolean
   calcular: (ctx: Contexto) => number
   /** "Memória de cálculo" mostrada abaixo do resultado. */
   detalhe?: (ctx: Contexto) => string
@@ -72,16 +78,21 @@ interface CardProps {
   /** Índice da opção já selecionada. Sem isso, o usuário é obrigado a escolher. */
   selectPadrao?: number
 
+  /** Mostra o campo opcional "espessura (cm)". */
+  labelEspessura?: string
+  /** Espessura padrão (cm) quando o campo fica em branco. Recebe o `value` da opção escolhida. */
+  espessuraPadrao?: (opcao?: number) => number
+
   /** Se informado, mostra o campo "área a descontar" (portas, janelas...). */
   labelDesconto?: string
   /** Se informado, mostra a margem de perda (%) com esse valor inicial. */
   perdaPadrao?: number
 
-  /** O primeiro item é o resultado principal (destaque). */
+  /** O primeiro item visível é o resultado principal (destaque). */
   resultados: ResultadoConfig[]
   labelBotao?: string
   /** Premissas da calculadora, exibidas junto ao resultado. */
-  observacao?: string
+  observacao?: string | ((ctx: Contexto) => string)
   /** Rótulo do campo de perda (padrão: "Margem de perda (quebras e cortes)"). */
   labelPerda?: string
   /** Bloco de comparação entre alternativas (ex.: tamanhos de régua). */
@@ -90,7 +101,7 @@ interface CardProps {
 
 /* ───────────────────────── internos ───────────────────────── */
 
-type Campo = "comprimento" | "largura" | "largura2" | "opcao" | "desconto" | "perda"
+type Campo = "comprimento" | "largura" | "largura2" | "opcao" | "espessura" | "desconto" | "perda"
 type Form = Record<Campo, string>
 type Erros = Partial<Record<Campo, string>>
 
@@ -106,9 +117,11 @@ interface Calculo {
   comparacao?: ComparacaoResultado
   itens: ItemResultado[]
   resumo: string
+  observacao?: string
 }
 
 const LIMITE = 10000
+const LIMITE_ESPESSURA = 100 // cm
 
 const inputBase =
   "w-full rounded-md border bg-white px-3 py-2.5 text-base shadow-sm focus:outline-none focus:ring-1 sm:text-sm"
@@ -187,6 +200,8 @@ export default function CardCalculator({
   selectLabel,
   selectOptions,
   selectPadrao,
+  labelEspessura,
+  espessuraPadrao,
   labelDesconto,
   perdaPadrao,
   resultados,
@@ -209,11 +224,13 @@ export default function CardCalculator({
       ? "perda"
       : labelDesconto
         ? "desconto"
-        : selectOptions
-          ? "opcao"
-          : labelLargura2
-            ? "largura2"
-            : "largura"
+        : labelEspessura
+          ? "espessura"
+          : selectOptions
+            ? "opcao"
+            : labelLargura2
+              ? "largura2"
+              : "largura"
   const hint = (campo: Campo) => (campo === ultimoCampo ? "done" : "next")
 
   const formInicial = (): Form => ({
@@ -221,6 +238,7 @@ export default function CardCalculator({
     largura: "",
     largura2: "",
     desconto: "",
+    espessura: "",
     perda: perdaPadrao !== undefined ? String(perdaPadrao) : "",
     opcao: selectPadrao !== undefined ? String(selectPadrao) : "",
   })
@@ -231,6 +249,11 @@ export default function CardCalculator({
   const [calculo, setCalculo] = useState<Calculo | null>(null)
   const [ajustesAbertos, setAjustesAbertos] = useState(false)
   const [copiado, setCopiado] = useState(false)
+
+  // espessura padrão do serviço escolhido (aparece como dica no campo de espessura)
+  const opcaoAtual = form.opcao !== "" ? selectOptions?.[Number(form.opcao)]?.value : undefined
+  const espessuraAtual =
+    labelEspessura && (!selectOptions || opcaoAtual !== undefined) ? espessuraPadrao?.(opcaoAtual) : undefined
 
   const painelRef = useRef<HTMLDivElement>(null)
 
@@ -292,6 +315,14 @@ export default function CardCalculator({
       erros.opcao = "Selecione uma opção."
     }
 
+    // espessura é opcional: em branco usa a padrão do serviço
+    let espessura = espessuraAtual
+    if (labelEspessura && form.espessura.trim() !== "") {
+      espessura = parseNumero(form.espessura)
+      if (Number.isNaN(espessura) || espessura <= 0) erros.espessura = "Use um valor maior que zero."
+      else if (espessura > LIMITE_ESPESSURA) erros.espessura = "Valor muito alto. Informe a espessura em centímetros."
+    }
+
     const area = comprimento * larguraMedia
     if (
       desconto > 0 &&
@@ -304,7 +335,7 @@ export default function CardCalculator({
       erros.desconto = "O desconto deve ser menor que a área."
     }
 
-    return { erros, comprimento, larguraMedia, desconto, perda, usaLargura2, area }
+    return { erros, comprimento, larguraMedia, desconto, perda, usaLargura2, area, espessura }
   }
 
   const aoEnviar = (e: FormEvent<HTMLFormElement>) => {
@@ -313,7 +344,7 @@ export default function CardCalculator({
     setErros(v.erros)
     setErroGeral(null)
 
-    const ordem: Campo[] = ["comprimento", "largura", "largura2", "opcao", "desconto", "perda"]
+    const ordem: Campo[] = ["comprimento", "largura", "largura2", "opcao", "espessura", "desconto", "perda"]
     const primeiroErro = ordem.find((c) => v.erros[c])
     if (primeiroErro) {
       setCalculo(null)
@@ -329,48 +360,54 @@ export default function CardCalculator({
       area: v.area - v.desconto,
       desconto: v.desconto,
       opcao: opcaoSelecionada?.value,
+      perda: v.perda,
+      espessura: v.espessura,
     }
 
     try {
-      const itens: ItemResultado[] = resultados.map((r) => {
-        const casas = r.casas ?? 0
-        const bruto = r.calcular(ctx)
-        if (!Number.isFinite(bruto)) throw new Error("valor inválido")
+      const itens: ItemResultado[] = resultados
+        .filter((r) => r.visivel?.(ctx) ?? true)
+        .map((r) => {
+          const casas = r.casas ?? 0
+          const bruto = r.calcular(ctx)
+          if (!Number.isFinite(bruto)) throw new Error("valor inválido")
 
-        const detalhes: string[] = []
-        const base = r.detalhe?.(ctx)
-        if (base) detalhes.push(base)
+          const detalhes: string[] = []
+          const base = r.detalhe?.(ctx)
+          if (base) detalhes.push(base)
 
-        let valor: number
-        if (casas > 0) {
-          valor = Math.round(bruto * 10 ** casas) / 10 ** casas
-        } else if (r.aplicaPerda && v.perda > 0) {
-          const semPerda = cima(bruto)
-          valor = cima(bruto * (1 + v.perda / 100))
-          detalhes.push(`${formatar(semPerda, 0)} + ${v.perda.toLocaleString("pt-BR")}% de perda`)
-        } else {
-          valor = cima(bruto)
-        }
+          let valor: number
+          if (casas > 0) {
+            valor = Math.round(bruto * 10 ** casas) / 10 ** casas
+          } else if (r.aplicaPerda && v.perda > 0) {
+            const semPerda = cima(bruto)
+            valor = cima(bruto * (1 + v.perda / 100))
+            detalhes.push(`${formatar(semPerda, 0)} + ${v.perda.toLocaleString("pt-BR")}% de perda`)
+          } else {
+            valor = cima(bruto)
+          }
 
-        return {
-          label: r.label,
-          texto: formatar(valor, casas, true),
-          unidade: r.unidade,
-          icone: r.icone,
-          detalhe: detalhes.join(" · ") || undefined,
-        }
-      })
+          return {
+            label: r.label,
+            texto: formatar(valor, casas, true),
+            unidade: r.unidade,
+            icone: r.icone,
+            detalhe: detalhes.join(" · ") || undefined,
+          }
+        })
 
       const partes = [
         `Medidas: ${formatar(v.comprimento)} m × ${formatar(v.larguraMedia)} m${v.usaLargura2 ? " (largura média)" : ""}`,
       ]
       if (v.desconto > 0) partes.push(`desconto de ${formatar(v.desconto)} m²`)
       if (opcaoSelecionada) partes.push(opcaoSelecionada.label)
+      if (labelEspessura && v.espessura !== undefined) partes.push(`espessura de ${formatar(v.espessura)} cm`)
       if (perdaPadrao !== undefined && v.perda > 0) partes.push(`perda de ${v.perda.toLocaleString("pt-BR")}%`)
 
       const comparacao = comparar?.({ ...ctx, perda: v.perda })
+      const obs = typeof observacao === "function" ? observacao(ctx) : observacao
 
-      setCalculo({ itens, comparacao, resumo: partes.join(" · ") })
+      setCalculo({ itens, comparacao, resumo: partes.join(" · "), observacao: obs })
     } catch {
       setCalculo(null)
       setErroGeral("Não foi possível calcular. Confira os valores informados.")
@@ -502,6 +539,20 @@ export default function CardCalculator({
                     </p>
                   )}
                 </div>
+              )}
+
+              {labelEspessura && (
+                <CampoNumerico
+                  id={idDe("espessura")}
+                  label={labelEspessura}
+                  value={form.espessura}
+                  onChange={(v) => atualizar("espessura", v)}
+                  placeholder={espessuraAtual !== undefined ? `Padrão: ${formatar(espessuraAtual)}` : "Ex: 2"}
+                  sufixo="cm"
+                  opcional
+                  erro={erros.espessura}
+                  enterKeyHint={hint("espessura")}
+                />
               )}
 
               {temAjustes && (
@@ -690,7 +741,7 @@ export default function CardCalculator({
                 </div>
 
                 <p className="text-xs text-slate-500">
-                  {observacao ? `${observacao} ` : ""}
+                  {calculo.observacao ? `${calculo.observacao} ` : ""}
                   Valores estimados: confirme as quantidades com seu fornecedor antes de comprar.
                 </p>
               </div>

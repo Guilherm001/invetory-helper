@@ -1,7 +1,8 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../components/ui/tabs"
-import { Blocks, Grid3X3, PanelTop } from "lucide-react"
+import { Blocks, Grid3X3, Layers, PanelTop } from "lucide-react"
+import CalculatorCimento from "./calculatorCimento"
 import CalculatorForros from "./calculatorForros"
 import CalculatorLaje from "./calculatorLaje"
 import CalculatorTijolo from "./calculatorTijolo"
@@ -15,7 +16,7 @@ export function CalculatorTabs() {
       <Tabs defaultValue="laje" className="w-full">
         <TabsList
           variant="default"
-          className="grid h-auto w-full grid-cols-3 rounded-xl border border-slate-200 bg-white p-0 shadow-sm"
+          className="grid h-auto w-full grid-cols-4 rounded-xl border border-slate-200 bg-white p-0 shadow-sm"
         >
           <TabsTrigger value="laje" className={triggerClass}>
             <Grid3X3 className="size-5 sm:size-6" aria-hidden="true" />
@@ -30,6 +31,11 @@ export function CalculatorTabs() {
             <span className="sm:hidden">Blocos</span>
             <span className="hidden sm:inline">Tijolos e blocos</span>
           </TabsTrigger>
+          <TabsTrigger value="cimento" className={triggerClass}>
+            <Layers className="size-5 sm:size-6" aria-hidden="true" />
+            <span className="sm:hidden">Cimento</span>
+            <span className="hidden sm:inline">Cimento e areia</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="laje" className="mt-6">
@@ -40,6 +46,9 @@ export function CalculatorTabs() {
         </TabsContent>
         <TabsContent value="blocos" className="mt-6">
           <CalculatorTijolo />
+        </TabsContent>
+        <TabsContent value="cimento" className="mt-6">
+          <CalculatorCimento />
         </TabsContent>
       </Tabs>
     </div>
