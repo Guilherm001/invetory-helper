@@ -1,57 +1,62 @@
-import CardCalculator from "./card";
-import Image from "next/image";
+"use client"
 
-export default function CalculatotLaje() {
+import Image from "next/image"
+import CardCalculator, { type ResultadoConfig } from "./card"
+import { cima, formatar } from "./calculadora-utils"
 
- 
+const ESPACAMENTO_TRILHOS = 0.43 // m entre trilhos
+const LAJOTAS_POR_M2 = 11.5
 
-  const calcularLajota = (comprimento: number, largura:number) => {
-    return (comprimento * largura)* 11.5;
-  }
+const calcularTrilhos = (largura: number) => cima(largura / ESPACAMENTO_TRILHOS)
 
-  const calcularTrilho = (largura:number) => {
-    return Math.ceil(largura / 0.43)
-  }
+// a laje é cobrada por trilho inteiro, então a área cobrada é maior ou igual à área real
+const calcularAreaCobrada = (comprimento: number, largura: number) =>
+  calcularTrilhos(largura) * ESPACAMENTO_TRILHOS * comprimento
 
-   const calcularArea = (comprimento: number, largura: number) => {
+const resultados: ResultadoConfig[] = [
+  {
+    label: "Área total a cobrar",
+    unidade: "m²",
+    casas: 2,
+    calcular: ({ comprimento, largura }) => calcularAreaCobrada(comprimento, largura),
+    detalhe: ({ comprimento, largura }) =>
+      `${calcularTrilhos(largura)} trilhos × ${formatar(ESPACAMENTO_TRILHOS)} m × ${formatar(comprimento)} m`,
+  },
+  {
+    label: "Lajotas",
+    unidade: "un.",
+    icone: <Image src="/download (1).svg" width={30} height={30} alt="Lajota" />,
+    aplicaPerda: true,
+    calcular: ({ comprimento, largura }) => calcularAreaCobrada(comprimento, largura) * LAJOTAS_POR_M2,
+    detalhe: ({ comprimento, largura }) =>
+      `${formatar(calcularAreaCobrada(comprimento, largura))} m² × ${formatar(LAJOTAS_POR_M2)} lajotas/m²`,
+  },
+  {
+    label: "Trilhos",
+    unidade: "un.",
+    icone: <Image src="/download (2).svg" width={30} height={30} alt="Trilho" />,
+    calcular: ({ largura }) => calcularTrilhos(largura),
+    detalhe: ({ largura }) => `${formatar(largura)} m ÷ ${formatar(ESPACAMENTO_TRILHOS)} m, arredondado para cima`,
+  },
+  {
+    label: "Trilho em metros lineares",
+    unidade: "m",
+    casas: 2,
+    calcular: ({ comprimento, largura }) => calcularTrilhos(largura) * comprimento,
+    detalhe: ({ comprimento, largura }) => `${calcularTrilhos(largura)} trilhos × ${formatar(comprimento)} m`,
+  },
+]
 
-    const resultadoTrilho = calcularTrilho(largura)
-
-    return (resultadoTrilho * 0.43) * comprimento;
-
-  };
-
+export default function CalculatorLaje() {
   return (
-    <div>
-      <CardCalculator
-        titulo="Calculadora de Laje"
-
-        label_comprimento="Digite comprimento (tamanho dos trilhos)"
-        label_largura="Digite a largura"
-
-        placeholder_comprimento="Comprimento"
-        placeholder_largura="Largura"
-
-        label_button="Calcular"
-
-        result_resposta1="Área total a cobrar"
-
-        calcularFuncao={calcularArea}
-        descricao_resultado1=" "
-
-        icone2={
-          <Image src="/download (1).svg" width={30} height={30} alt="Forro" />
-            }
-        calcularFuncao2={calcularLajota} 
-        descricao_resultado2="Lajotas"
-        
-        icone3={
-          <Image src="/download (2).svg" width={30} height={30} alt="Forro" />
-            }
-        calcularFuncao3={calcularTrilho}
-        descricao_resultado3="Trilhos"
-        
-      />
-    </div>
-  );
+    <CardCalculator
+      titulo="Calculadora de Laje"
+      descricao="Calcule a área a cobrar, as lajotas e os trilhos."
+      labelComprimento="Comprimento (tamanho dos trilhos)"
+      labelLargura="Largura"
+      perdaPadrao={5}
+      resultados={resultados}
+      observacao={`Trilhos a cada ${formatar(ESPACAMENTO_TRILHOS)} m e ${formatar(LAJOTAS_POR_M2)} lajotas por m². A perda se aplica só às lajotas.`}
+    />
+  )
 }

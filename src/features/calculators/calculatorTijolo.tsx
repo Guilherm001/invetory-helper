@@ -1,70 +1,48 @@
-import CardCalculator from "./card";
+"use client"
+
+import CardCalculator, { type OpcaoSelect, type ResultadoConfig } from "./card"
+import { formatar } from "./calculadora-utils"
+
+// value = blocos por m² de parede
+const blocos: OpcaoSelect[] = [
+  { label: "Cerâmico 09 x 19 x 19", value: 25 },
+  { label: "Cerâmico 11,5 x 14 x 24", value: 27 },
+  { label: "Cerâmico 14 x 19 x 29", value: 17 },
+  { label: "Cimento 09 x 19 x 39", value: 12.5 },
+  { label: "Cimento 14 x 19 x 39", value: 12.5 },
+  { label: "Cimento 19 x 19 x 39", value: 12.5 },
+]
+
+const resultados: ResultadoConfig[] = [
+  {
+    label: "Área da parede",
+    unidade: "m²",
+    casas: 2,
+    calcular: ({ area }) => area,
+    detalhe: ({ comprimento, largura, desconto }) =>
+      `${formatar(comprimento)} m × ${formatar(largura)} m${desconto > 0 ? ` − ${formatar(desconto)} m² de vãos` : ""}`,
+  },
+  {
+    label: "Quantidade necessária",
+    unidade: "blocos",
+    aplicaPerda: true,
+    calcular: ({ area, opcao }) => area * (opcao ?? 0),
+    detalhe: ({ area, opcao }) => `${formatar(area)} m² × ${formatar(opcao ?? 0)} blocos/m²`,
+  },
+]
 
 export default function CalculatorTijolo() {
-
-  const calcularArea = (
-    comprimento: number,
-    altura: number
-  ) => {
-    return comprimento * altura;
-  };
-
-  const blocos = [
-    {
-      label: "Cerâmico 09 x 19 x 19",
-      value: 25,
-    },
-    {
-      label: "Cerâmico 11,5 x 14 x 24",
-      value: 27,
-    },
-    {
-      label: "Cerâmico 14 x 19 x 29",
-      value: 17,
-    },
-    {
-      label: "Cimento 09 x 19 x 39",
-      value: 12.5,
-    },
-    {
-      label: "Cimento 14 x 19 x 39",
-      value: 12.5,
-    },
-    {
-      label: "Cimento 19 x 19 x 39",
-      value: 12.5,
-    },
-  ];
-
-  const calcularBlocos = (
-    comprimento: number,
-    altura: number,
-    blocosPorM2: number = 0
-  ) => {
-    const area = comprimento * altura;
-
-    return Math.ceil(area * blocosPorM2);
-  };
-
   return (
     <CardCalculator
       titulo="Calculadora de Blocos"
-
-      label_comprimento="Comprimento da parede"
-      label_largura="Altura da parede"
-      label_button="Calcular"
-
+      descricao="Descubra quantos blocos ou tijolos comprar para a sua parede."
+      labelComprimento="Comprimento da parede"
+      labelLargura="Altura da parede"
       selectLabel="Tipo de bloco"
       selectOptions={blocos}
-
-      calcularFuncao={calcularArea}
-      calcularFuncao2={calcularBlocos}
-
-      result_resposta1="Área total"
-      descricao_resultado1="m²"
-
-      result_resposta2="Quantidade necessária"
-      descricao_resultado2="Blocos"
+      labelDesconto="Vãos de portas e janelas (m²)"
+      perdaPadrao={10}
+      resultados={resultados}
     />
-  );
+  )
 }
