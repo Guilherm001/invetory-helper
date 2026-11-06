@@ -136,6 +136,12 @@ export interface ResultadoRecebimento {
   recebido_por: string
 }
 
+// novo preço de venda de um produto do catálogo
+export interface AlteracaoPrecoVenda {
+  codigo: string
+  preco: number
+}
+
 export const TAMANHO_PAGINA = 20
 
 const COLUNAS =
@@ -394,6 +400,38 @@ export async function listarRecebimentos(pedidoId: string): Promise<Recebimento[
     ...r,
     itens: (r.itens ?? []).map((i) => ({ item_id: i.item_id, quantidade: num(i.quantidade) })),
   }))
+}
+
+// ---------- preço de venda do catálogo (só o dono) ----------
+
+interface LinhaPrecoVenda {
+  codigo: string
+  preco_venda: number | string | null
+}
+
+// preço de venda atual de cada produto, por código. Produto sem preço fica de fora.
+export async function precosDeVenda(codigos: string[]): Promise<Map<string, number>> {
+  const lista = Array.from(new Set(codigos.filter(Boolean)))
+  if (lista.length === 0) return new Map()
+
+  const { data, error } = await supabase.rpc('precos_venda_produtos', { p_codigos: lista })
+  if (error) throw traduz(error)
+
+  return new Map(
+    ((data ?? []) as LinhaPrecoVenda[])
+      .filter((r) => r.preco_venda != null)
+      .map((r) => [r.codigo, Number(r.preco_venda)] as const)
+  )
+}
+
+// grava o novo preço de venda; tudo ou nada
+export async function atualizarPrecosVenda(alteracoes: AlteracaoPrecoVenda[]): Promise<void> {
+  if (alteracoes.length === 0) return
+
+  const { error } = await supabase.rpc('atualizar_precos_venda', {
+    p_alteracoes: alteracoes,
+  })
+  if (error) throw traduz(error)
 }
 
 // ---------- alerta de variação de preço ----------
