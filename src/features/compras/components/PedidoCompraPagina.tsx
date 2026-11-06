@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -11,10 +11,13 @@ import {
   Copy,
   FileDown,
   Loader2,
+  MoreHorizontal,
   PackageCheck,
   Pencil,
   Trash2,
+  Undo2,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import { dataCurta, dataHora, hoje, numeroTexto, reais } from '@/features/loja/lib/formatar'
@@ -84,6 +87,8 @@ const ACOES: Record<StatusCompra, Acao[]> = {
   ],
 }
 
+// ---------- peças ----------
+
 function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
@@ -105,16 +110,194 @@ function Cartao({
   return (
     <section className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
       {titulo && (
-        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          {titulo}
-        </h4>
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{titulo}</h4>
       )}
       {children}
     </section>
   )
 }
 
-const btnSec = 'gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="rounded border border-slate-300 bg-slate-50 px-1 font-sans text-[10px] font-semibold text-slate-500">
+      {children}
+    </kbd>
+  )
+}
+
+const ETAPAS: { status: StatusCompra; rotulo: string }[] = [
+  { status: 'rascunho', rotulo: 'Rascunho' },
+  { status: 'enviado', rotulo: 'Enviado' },
+  { status: 'confirmado', rotulo: 'Confirmado' },
+  { status: 'recebido', rotulo: 'Recebido' },
+]
+
+// linha do tempo: onde o pedido está e quando passou por cada etapa
+function Etapas({ pedido }: { pedido: PedidoCompra }) {
+  if (pedido.status === 'cancelado') {
+    return (
+      <p className="flex items-center gap-2 text-sm font-semibold text-red-700">
+        <X className="size-4" />
+        Pedido cancelado{pedido.cancelado_em ? ` em ${dataHora(pedido.cancelado_em)}` : ''}
+      </p>
+    )
+  }
+
+  const datas: Partial<Record<StatusCompra, string | null>> = {
+    rascunho: pedido.criado_em,
+    enviado: pedido.enviado_em,
+    confirmado: pedido.confirmado_em,
+    recebido: pedido.recebido_em,
+  }
+  const atual = ETAPAS.findIndex((e) => e.status === pedido.status)
+
+  return (
+    <ol className="flex">
+      {ETAPAS.map((e, i) => {
+        const feita = i < atual || (pedido.status === 'recebido' && i === atual)
+        const agora = i === atual && pedido.status !== 'recebido'
+        const data = datas[e.status]
+
+        return (
+          <li key={e.status} className="relative flex flex-1 flex-col items-center text-center">
+            {i < ETAPAS.length - 1 && (
+              <span
+                className={`absolute left-1/2 top-3 h-0.5 w-full ${i < atual ? 'bg-[#079C9C]' : 'bg-slate-200'}`}
+              />
+            )}
+            <span
+              className={`relative z-10 flex size-6 items-center justify-center rounded-full border-2 text-xs font-bold ${
+                feita
+                  ? 'border-[#079C9C] bg-[#079C9C] text-white'
+                  : agora
+                    ? 'border-[#079C9C] bg-white text-[#079C9C]'
+                    : 'border-slate-200 bg-white text-slate-300'
+              }`}
+            >
+              {feita ? <Check className="size-3.5" /> : i + 1}
+            </span>
+            <span
+              className={`mt-1 text-xs font-semibold ${
+                feita || agora ? 'text-slate-800' : 'text-slate-400'
+              }`}
+            >
+              {e.rotulo}
+              {agora && pedido.recebido_parcial ? ' (parcial)' : ''}
+            </span>
+            <span className="text-[11px] text-slate-400">
+              {data ? new Date(data).toLocaleDateString('pt-BR') : '—'}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+// ---------- menu "Mais ações" (abre e navega por teclado) ----------
+
+interface ItemMenu {
+  chave: string
+  rotulo: string
+  icone: LucideIcon
+  onClick: () => void
+  atalho?: string
+  perigo?: boolean
+  desabilitado?: boolean
+  separador?: boolean // linha antes deste item
+}
+
+function MenuAcoes({ itens, ocupado }: { itens: ItemMenu[]; ocupado: boolean }) {
+  const [aberto, setAberto] = useState(false)
+  const raiz = useRef<HTMLDivElement>(null)
+  const botao = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!aberto) return
+    const fora = (e: MouseEvent) => {
+      if (!raiz.current?.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [aberto])
+
+  useEffect(() => {
+    if (aberto) raiz.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus()
+  }, [aberto])
+
+  const fechar = () => {
+    setAberto(false)
+    botao.current?.focus()
+  }
+
+  const teclas = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      fechar()
+      return
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    const lista = Array.from(
+      raiz.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []
+    )
+    const i = lista.indexOf(document.activeElement as HTMLElement)
+    const prox = e.key === 'ArrowDown' ? (i + 1) % lista.length : (i - 1 + lista.length) % lista.length
+    lista[prox]?.focus()
+  }
+
+  return (
+    <div ref={raiz} className="relative" onKeyDown={teclas}>
+      <Button
+        ref={botao}
+        type="button"
+        variant="outline"
+        onClick={() => setAberto((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={aberto}
+        className="gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+      >
+        {ocupado ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
+        Mais
+      </Button>
+
+      {aberto && (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1.5 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {itens.map((it) => {
+            const Icone = it.icone
+            return (
+              <div key={it.chave}>
+                {it.separador && <div className="my-1 border-t border-slate-100" />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={it.desabilitado}
+                  onClick={() => {
+                    setAberto(false)
+                    it.onClick()
+                  }}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm outline-none transition focus:bg-slate-100 disabled:opacity-50 ${
+                    it.perigo ? 'text-red-600 hover:bg-red-50 focus:bg-red-50' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icone className="size-4 shrink-0" />
+                  <span className="flex-1">{it.rotulo}</span>
+                  {it.atalho && <Kbd>{it.atalho}</Kbd>}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- página ----------
 
 export default function PedidoCompraPagina({ id }: { id: string }) {
   const router = useRouter()
@@ -129,9 +312,14 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
   const [versao, setVersao] = useState(0)
   const [agindo, setAgindo] = useState(false)
   const [gerandoPdf, setGerandoPdf] = useState(false)
-  const [copiado, setCopiado] = useState(false)
   const [recebendo, setRecebendo] = useState(false)
   const [formulario, setFormulario] = useState<{ chave: number; inicial: PedidoInicial } | null>(null)
+
+  // atalhos de teclado: o efeito lê sempre a versão mais recente daqui
+  const atalhos = useRef<{ receber: (() => void) | null; editar: (() => void) | null }>({
+    receber: null,
+    editar: null,
+  })
 
   const carregar = useCallback(async () => {
     try {
@@ -169,6 +357,27 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
     }
   }, [])
 
+  // R = receber mercadoria, E = editar (só fora de campos e sem janela aberta)
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const alvo = e.target as HTMLElement | null
+      if (alvo && (alvo.closest('input, textarea, select, [contenteditable="true"]') || alvo.isContentEditable)) return
+      if (document.querySelector('[role="dialog"]')) return
+
+      const k = e.key.toLowerCase()
+      if (k === 'r' && atalhos.current.receber) {
+        e.preventDefault()
+        atalhos.current.receber()
+      } else if (k === 'e' && atalhos.current.editar) {
+        e.preventDefault()
+        atalhos.current.editar()
+      }
+    }
+    window.addEventListener('keydown', aoTeclar)
+    return () => window.removeEventListener('keydown', aoTeclar)
+  }, [])
+
   // recarrega o pedido e mostra o aviso (usado depois de receber, ajustar, mudar status...)
   const mudou = async (a?: string) => {
     await carregar()
@@ -183,10 +392,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
       <div className="w-full pb-16">
         <div className="mt-7 flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-200 py-16 text-center">
           <p className="text-sm font-medium text-slate-600">Pedido não encontrado.</p>
-          <Link
-            href="/pedidos-compra"
-            className="text-sm font-semibold text-[#079C9C] hover:underline"
-          >
+          <Link href="/pedidos-compra" className="text-sm font-semibold text-[#079C9C] hover:underline">
             Voltar para os pedidos
           </Link>
         </div>
@@ -202,10 +408,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
               {erro}
             </p>
-            <Link
-              href="/pedidos-compra"
-              className="text-sm font-semibold text-[#079C9C] hover:underline"
-            >
+            <Link href="/pedidos-compra" className="text-sm font-semibold text-[#079C9C] hover:underline">
               Voltar para os pedidos
             </Link>
           </div>
@@ -246,14 +449,6 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
   const valorRecebido = (itens ?? []).reduce((s, i) => s + i.quantidade_recebida * i.preco_unitario, 0)
   const pctRecebido = soma > 0 ? Math.round((valorRecebido / soma) * 100) : 0
   const itemPorId = new Map((itens ?? []).map((i) => [i.id, i]))
-
-  const eventos: [string, string | null][] = [
-    [`Criado${pedido.criado_por_nome ? ` por ${pedido.criado_por_nome}` : ''}`, pedido.criado_em],
-    ['Enviado ao fornecedor', pedido.enviado_em],
-    ['Confirmado pelo fornecedor', pedido.confirmado_em],
-    ['Recebido', pedido.recebido_em],
-    ['Cancelado', pedido.cancelado_em],
-  ]
 
   // ---------- ações ----------
 
@@ -296,8 +491,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
     if (!itens) return
     try {
       await navigator.clipboard.writeText(textoWhatsApp(pedido, itens, empresa))
-      setCopiado(true)
-      setTimeout(() => setCopiado(false), 2500)
+      setAviso('Pedido copiado: é só colar no WhatsApp.')
     } catch {
       setErro('Não foi possível copiar o texto.')
     }
@@ -342,9 +536,52 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
     })
   }
 
+  // ---------- quais botões ficam à vista e quais vão para o menu ----------
+
+  const principal = podeReceber ? null : (acoes.find((a) => a.tipo === 'principal') ?? null)
+  const confirmou =
+    pedido.status === 'enviado' ? (acoes.find((a) => a.status === 'confirmado') ?? null) : null
+  const noMenu = acoes.filter((a) => a !== principal && a !== confirmou)
+  const noMenuNormais = noMenu.filter((a) => a.tipo !== 'perigo')
+  const noMenuPerigo = noMenu.filter((a) => a.tipo === 'perigo')
+
+  atalhos.current = {
+    receber: podeReceber && !agindo ? () => setRecebendo(true) : null,
+    editar: podeEditar && !!itens && !agindo ? editar : null,
+  }
+
+  const menu: ItemMenu[] = [
+    ...(podeEditar
+      ? [{ chave: 'editar', rotulo: 'Editar pedido', icone: Pencil, atalho: 'E', onClick: editar, desabilitado: !itens || agindo }]
+      : []),
+    { chave: 'duplicar', rotulo: 'Duplicar pedido', icone: Copy, onClick: duplicar, desabilitado: !itens || agindo },
+    { chave: 'whats', rotulo: 'Copiar para o WhatsApp', icone: ClipboardCopy, onClick: copiar, desabilitado: !itens || agindo },
+    { chave: 'pdf', rotulo: 'Baixar ou compartilhar PDF', icone: FileDown, onClick: pdf, desabilitado: !itens || agindo || gerandoPdf },
+    ...noMenuNormais.map((a, idx) => ({
+      chave: `s-${a.status}`,
+      rotulo: a.rotulo,
+      icone: Undo2,
+      onClick: () => mudarStatus(a),
+      desabilitado: agindo,
+      separador: idx === 0,
+    })),
+    ...noMenuPerigo.map((a, idx) => ({
+      chave: `p-${a.status}`,
+      rotulo: a.rotulo,
+      icone: X,
+      onClick: () => mudarStatus(a),
+      perigo: true,
+      desabilitado: agindo,
+      separador: idx === 0,
+    })),
+    ...(podeExcluir
+      ? [{ chave: 'excluir', rotulo: 'Excluir pedido', icone: Trash2, onClick: excluir, perigo: true, desabilitado: agindo, separador: noMenuPerigo.length === 0 }]
+      : []),
+  ]
+
   return (
     <div className="w-full pb-16">
-      {/* topo: título e ações sempre à vista */}
+      {/* topo: título e as ações principais sempre à vista */}
       <div className="sticky top-0 z-20 mt-4 border-b border-slate-200 bg-white/95 py-3 backdrop-blur">
         <Link
           href="/pedidos-compra"
@@ -354,7 +591,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
           Pedidos de compra
         </Link>
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <h3 className="text-2xl font-bold text-slate-900 md:text-3xl">
@@ -370,10 +607,17 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
                 </span>
               )}
             </div>
-            <p className="mt-0.5 truncate text-sm text-slate-500">{pedido.fornecedor_nome}</p>
+            <p className="mt-0.5 truncate text-sm text-slate-500">
+              {pedido.fornecedor_nome}
+              {pedido.criado_em
+                ? ` · criado${pedido.criado_por_nome ? ` por ${pedido.criado_por_nome}` : ''} em ${new Date(
+                    pedido.criado_em
+                  ).toLocaleDateString('pt-BR')}`
+                : ''}
+            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <div className="flex flex-wrap items-center gap-2">
             {podeReceber && (
               <Button
                 type="button"
@@ -383,89 +627,35 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
               >
                 <PackageCheck className="size-4" />
                 Receber mercadoria
+                <span className="rounded bg-white/20 px-1 text-[10px] font-semibold">R</span>
               </Button>
             )}
 
-            {acoes.map((a) => (
+            {principal && (
               <Button
-                key={a.status}
                 type="button"
-                variant={a.tipo === 'principal' ? 'default' : 'outline'}
-                onClick={() => mudarStatus(a)}
+                onClick={() => mudarStatus(principal)}
                 disabled={agindo}
-                className={
-                  a.tipo === 'principal'
-                    ? 'gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90'
-                    : a.tipo === 'perigo'
-                      ? 'border-red-200 bg-white text-red-600 hover:bg-red-50'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                }
+                className="gap-2 bg-[#079C9C] text-white hover:bg-[#079C9C]/90"
               >
-                {agindo && a.tipo === 'principal' && <Loader2 className="size-4 animate-spin" />}
-                {a.rotulo}
+                {agindo && <Loader2 className="size-4 animate-spin" />}
+                {principal.rotulo}
               </Button>
-            ))}
+            )}
 
-            <span className="mx-1 hidden h-6 w-px bg-slate-200 lg:block" />
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={copiar}
-              disabled={!itens || agindo}
-              className={btnSec}
-            >
-              {copiado ? <Check className="size-4" /> : <ClipboardCopy className="size-4" />}
-              {copiado ? 'Copiado!' : 'WhatsApp'}
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={pdf}
-              disabled={!itens || agindo || gerandoPdf}
-              className={btnSec}
-            >
-              {gerandoPdf ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />}
-              PDF
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={duplicar}
-              disabled={!itens || agindo}
-              className={btnSec}
-            >
-              <Copy className="size-4" />
-              Duplicar
-            </Button>
-
-            {podeEditar && (
+            {confirmou && (
               <Button
                 type="button"
                 variant="outline"
-                onClick={editar}
-                disabled={!itens || agindo}
-                className={btnSec}
+                onClick={() => mudarStatus(confirmou)}
+                disabled={agindo}
+                className="border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
               >
-                <Pencil className="size-4" />
-                Editar
+                {confirmou.rotulo}
               </Button>
             )}
 
-            {podeExcluir && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={excluir}
-                disabled={agindo}
-                className="gap-2 border-red-200 bg-white text-red-600 hover:bg-red-50"
-              >
-                <Trash2 className="size-4" />
-                Excluir
-              </Button>
-            )}
+            <MenuAcoes itens={menu} ocupado={gerandoPdf || agindo} />
           </div>
         </div>
       </div>
@@ -515,14 +705,22 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
         </p>
       )}
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+      {/* onde o pedido está */}
+      <Cartao className="mt-4">
+        <Etapas pedido={pedido} />
+      </Cartao>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
         {/* ---------- coluna principal ---------- */}
         <div className="min-w-0 space-y-5">
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-4 py-3">
+            <div className="flex items-baseline justify-between gap-3 border-b border-slate-100 px-4 py-3">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Itens{itens ? ` (${itens.length})` : ''}
               </h4>
+              {valorRecebido > 0 && (
+                <span className="text-xs font-semibold text-slate-500">{pctRecebido}% recebido</span>
+              )}
             </div>
 
             {itens === null ? (
@@ -616,35 +814,40 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
         </div>
 
         {/* ---------- coluna lateral ---------- */}
-        <aside className="min-w-0 space-y-5 lg:sticky lg:top-36">
+        <aside className="min-w-0 space-y-5 lg:sticky lg:top-28">
           <Cartao titulo="Valores">
             <div className="space-y-1">
               {itens && <Linha rotulo="Subtotal" valor={reais(soma)} />}
               {pedido.frete > 0 && <Linha rotulo="Frete" valor={reais(pedido.frete)} />}
-              {pedido.desconto > 0 && (
-                <Linha rotulo="Desconto" valor={`- ${reais(pedido.desconto)}`} />
-              )}
+              {pedido.desconto > 0 && <Linha rotulo="Desconto" valor={`- ${reais(pedido.desconto)}`} />}
               <div className="flex items-baseline justify-between border-t border-slate-100 pt-2">
                 <span className="text-sm font-semibold text-slate-700">Total</span>
                 <span className="text-2xl font-bold text-[#079C9C]">{reais(pedido.total)}</span>
               </div>
-              {valorRecebido > 0 && (
-                <div className="flex items-baseline justify-between pt-1 text-sm">
+            </div>
+
+            {valorRecebido > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <div className="flex items-baseline justify-between text-sm">
                   <span className="text-slate-600">Recebido (em itens)</span>
                   <span className="font-semibold text-slate-800">
                     {reais(valorRecebido)} · {pctRecebido}%
                   </span>
                 </div>
-              )}
-            </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-[#079C9C]"
+                    style={{ width: `${Math.min(pctRecebido, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </Cartao>
 
-          <Cartao titulo="Entrega e pagamento">
+          <Cartao titulo="Detalhes">
             <div className="space-y-1.5">
               <Linha rotulo="Fornecedor" valor={pedido.fornecedor_nome} />
-              {pedido.fornecedor_contato && (
-                <Linha rotulo="Contato" valor={pedido.fornecedor_contato} />
-              )}
+              {pedido.fornecedor_contato && <Linha rotulo="Contato" valor={pedido.fornecedor_contato} />}
               {pedido.previsao_entrega && (
                 <Linha rotulo="Entrega prevista" valor={dataCurta(pedido.previsao_entrega)} />
               )}
@@ -654,28 +857,27 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
                   valor={`${pedido.prazo_dias} ${pedido.prazo_dias === 1 ? 'dia' : 'dias'}`}
                 />
               )}
-              {pedido.condicao_pagamento && (
-                <Linha rotulo="Pagamento" valor={pedido.condicao_pagamento} />
-              )}
+              {pedido.condicao_pagamento && <Linha rotulo="Pagamento" valor={pedido.condicao_pagamento} />}
             </div>
+
+            {pedido.observacao?.trim() && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Observações
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-slate-700">{pedido.observacao.trim()}</p>
+              </div>
+            )}
           </Cartao>
 
-          {pedido.observacao?.trim() && (
-            <Cartao titulo="Observações">
-              <p className="whitespace-pre-wrap text-sm text-slate-700">{pedido.observacao.trim()}</p>
-            </Cartao>
-          )}
-
           {recebimentos && recebimentos.length > 0 && (
-            <Cartao titulo="Recebimentos">
+            <Cartao titulo={`Recebimentos (${recebimentos.length})`}>
               <ul className="space-y-2">
                 {recebimentos.map((r) => (
                   <li key={r.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="font-semibold text-slate-800">{dataHora(r.recebido_em)}</span>
-                      <span className="truncate text-xs text-slate-500">
-                        {r.recebido_por_nome ?? '—'}
-                      </span>
+                      <span className="truncate text-xs text-slate-500">{r.recebido_por_nome ?? '—'}</span>
                     </div>
                     <ul className="mt-1 space-y-0.5 text-slate-600">
                       {r.itens.map((x) => {
@@ -700,19 +902,6 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
               </ul>
             </Cartao>
           )}
-
-          <Cartao titulo="Histórico">
-            <ul className="space-y-1 text-sm text-slate-600">
-              {eventos
-                .filter(([, quando]) => quando)
-                .map(([rotulo, quando]) => (
-                  <li key={rotulo} className="flex justify-between gap-3">
-                    <span>{rotulo}</span>
-                    <span className="shrink-0 text-slate-400">{dataHora(quando as string)}</span>
-                  </li>
-                ))}
-            </ul>
-          </Cartao>
         </aside>
       </div>
 

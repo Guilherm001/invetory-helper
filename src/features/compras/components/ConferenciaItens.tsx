@@ -7,6 +7,7 @@ import {
   Link2,
   Loader2,
   Pencil,
+  Plus,
   Sparkles,
   Unlink,
 } from 'lucide-react'
@@ -24,7 +25,7 @@ import { calcularAjustes, conferirItens } from '../lib/conferenciaNota'
 import { chaveNota } from '../lib/casamento'
 import { chaveItem } from '../lib/compras'
 import type { ItemNota } from '../lib/nfe'
-import AjustarPedidoDialog from './AjustarPedidoDialog'
+import AjustarPedidoDialog, { type AbaAjuste } from './AjustarPedidoDialog'
 
 const arred2 = (n: number) => Math.round(n * 100) / 100
 
@@ -97,7 +98,7 @@ export default function ConferenciaItens({
   const [selN, setSelN] = useState<string | null>(null) // chave do item da nota
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [erro, setErro] = useState('')
-  const [ajustando, setAjustando] = useState(false)
+  const [dialogo, setDialogo] = useState<{ aba: AbaAjuste; notas: string[] } | null>(null)
 
   // código de barras dos produtos do pedido, para ligar com os itens do XML
   const codigosTexto = itens.map((i) => i.produto_codigo ?? '').filter(Boolean).join('\u0000')
@@ -143,12 +144,34 @@ export default function ConferenciaItens({
   const semPar = c.soPedido.length + c.soNota.length
   const problemas = c.precoDifere + c.qtdDifere + semPar
 
-  // só dá para fechar o total com a nota se tudo tem par dos dois lados
-  const podeFecharTotal = semPar === 0 && c.notasSemXml === 0 && c.pares.length > 0
+  // dá para fechar o total com a nota se nada do pedido ficou sem par
+  // (os itens que só vieram na nota podem ser adicionados na própria janela de ajuste)
+  const podeFecharTotal =
+    c.soPedido.length === 0 && c.notasSemXml === 0 && c.pares.length + c.soNota.length > 0
   const podeAjustar = ['enviado', 'confirmado', 'recebido'].includes(pedido.status)
 
   const pedidoSel = c.soPedido.find((p) => p.id === selP) ?? null
   const notaSel = c.soNota.find((n) => chaveNota(n) === selN) ?? null
+
+  const abaInicialBanner: AbaAjuste =
+    ajustes.length > 0 ? 'ajustes' : c.soNota.length > 0 ? 'novos' : 'preco'
+
+  const mensagemBanner = [
+    ajustes.length > 0
+      ? `A nota tem preço ou quantidade diferente do pedido em ${ajustes.length} ${
+          ajustes.length === 1 ? 'item' : 'itens'
+        }.`
+      : '',
+    c.soNota.length > 0
+      ? `${c.soNota.length} ${
+          c.soNota.length === 1 ? 'item veio' : 'itens vieram'
+        } na nota e não ${c.soNota.length === 1 ? 'está' : 'estão'} no pedido.`
+      : '',
+    ajustes.length === 0 && c.soNota.length === 0 ? 'Itens conferem com a nota.' : '',
+    'Ajuste o pedido e defina o preço de venda.',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   const ligar = async (p: ItemPedidoCompra, n: ItemNota, marca: string) => {
     setOcupado(marca)
@@ -239,19 +262,16 @@ export default function ConferenciaItens({
           )}
 
           {/* ajustar o pedido pela nota */}
-          {ajustes.length > 0 && podeAjustar && (
+          {podeAjustar && (c.pares.length > 0 || c.soNota.length > 0) && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#079C9C]/40 bg-[#079C9C]/5 px-3 py-2.5">
-              <p className="text-sm text-slate-700">
-                A nota tem preço ou quantidade diferente do pedido em{' '}
-                <strong>{ajustes.length}</strong> {ajustes.length === 1 ? 'item' : 'itens'}.
-              </p>
+              <p className="min-w-0 flex-1 text-sm text-slate-700">{mensagemBanner}</p>
               <button
                 type="button"
-                onClick={() => setAjustando(true)}
+                onClick={() => setDialogo({ aba: abaInicialBanner, notas: [] })}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95"
               >
                 <Pencil className="size-4" />
-                Ajustar o pedido pela nota
+                Ajustar pedido e preços
               </button>
             </div>
           )}
@@ -328,9 +348,7 @@ export default function ConferenciaItens({
                             {l.pedido.unidade ? ` ${l.pedido.unidade}` : ''}
                           </p>
                           {l.recebidoDiferente && (
-                            <p className="text-xs font-semibold text-amber-600">
-                              diferente da nota
-                            </p>
+                            <p className="text-xs font-semibold text-amber-600">diferente da nota</p>
                           )}
                         </Lado>
                       </div>
@@ -360,12 +378,25 @@ export default function ConferenciaItens({
           {/* itens sem par */}
           {semPar > 0 && (
             <section className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3">
-              <div>
-                <h5 className="text-sm font-semibold text-slate-800">Itens sem par ({semPar})</h5>
-                <p className="text-xs text-slate-500">
-                  O sistema não reconheceu estes itens. Ligue o item do pedido ao item da nota que
-                  é o mesmo produto: da próxima vez, com este fornecedor, ele já será reconhecido.
-                </p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <h5 className="text-sm font-semibold text-slate-800">Itens sem par ({semPar})</h5>
+                  <p className="text-xs text-slate-500">
+                    O sistema não reconheceu estes itens. Ligue o item do pedido ao item da nota que é o
+                    mesmo produto, ou, se o item só veio na nota, adicione ao pedido.
+                  </p>
+                </div>
+                {podeAjustar && c.soNota.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setDialogo({ aba: 'novos', notas: c.soNota.map(chaveNota) })}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#079C9C] bg-white px-3 py-1.5 text-xs font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10 active:scale-95"
+                  >
+                    <Plus className="size-3.5" />
+                    Adicionar {c.soNota.length === 1 ? 'o item' : `os ${c.soNota.length} itens`} da nota ao
+                    pedido
+                  </button>
+                )}
               </div>
 
               {/* prováveis pares */}
@@ -508,6 +539,24 @@ export default function ConferenciaItens({
                 </div>
               </div>
 
+              {/* um item da nota escolhido, nenhum do pedido: adicionar */}
+              {notaSel && !pedidoSel && podeAjustar && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#079C9C] bg-white p-3">
+                  <p className="min-w-0 flex-1 text-xs text-slate-600">
+                    Escolha também um item do pedido para ligar, ou adicione{' '}
+                    <strong>{notaSel.nome}</strong> ao pedido.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setDialogo({ aba: 'novos', notas: [chaveNota(notaSel)] })}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95"
+                  >
+                    <Plus className="size-4" />
+                    Adicionar ao pedido
+                  </button>
+                </div>
+              )}
+
               {pedidoSel && notaSel && (
                 <div className="space-y-2 rounded-lg border border-[#079C9C] bg-white p-3">
                   <p className="text-xs font-semibold text-slate-600">Ligar estes dois itens?</p>
@@ -543,15 +592,18 @@ export default function ConferenciaItens({
       )}
 
       <AjustarPedidoDialog
-        aberto={ajustando}
+        aberto={dialogo !== null}
         pedido={pedido}
         itens={itens}
-        ajustes={ajustes}
+        pares={c.pares}
+        soNota={c.soNota}
         podeFecharTotal={podeFecharTotal}
         totalNotas={totalNotas}
-        onClose={() => setAjustando(false)}
+        abaInicial={dialogo?.aba ?? 'ajustes'}
+        notasPreMarcadas={dialogo?.notas ?? []}
+        onClose={() => setDialogo(null)}
         onAplicado={(aviso) => {
-          setAjustando(false)
+          setDialogo(null)
           onAjustado(aviso)
         }}
       />
