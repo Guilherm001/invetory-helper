@@ -82,6 +82,8 @@ interface CardProps {
   labelEspessura?: string
   /** Espessura padrão (cm) quando o campo fica em branco. Recebe o `value` da opção escolhida. */
   espessuraPadrao?: (opcao?: number) => number
+  /** Se retornar false, esconde o campo de espessura para a opção escolhida (espessura fixa). */
+  espessuraVisivel?: (opcao?: number) => boolean
 
   /** Se informado, mostra o campo "área a descontar" (portas, janelas...). */
   labelDesconto?: string
@@ -202,6 +204,7 @@ export default function CardCalculator({
   selectPadrao,
   labelEspessura,
   espessuraPadrao,
+  espessuraVisivel,
   labelDesconto,
   perdaPadrao,
   resultados,
@@ -254,6 +257,9 @@ export default function CardCalculator({
   const opcaoAtual = form.opcao !== "" ? selectOptions?.[Number(form.opcao)]?.value : undefined
   const espessuraAtual =
     labelEspessura && (!selectOptions || opcaoAtual !== undefined) ? espessuraPadrao?.(opcaoAtual) : undefined
+
+  // campo de espessura só aparece quando o serviço permite alterar a espessura
+  const mostrarEspessura = Boolean(labelEspessura) && (espessuraVisivel?.(opcaoAtual) ?? true)
 
   const painelRef = useRef<HTMLDivElement>(null)
 
@@ -315,9 +321,10 @@ export default function CardCalculator({
       erros.opcao = "Selecione uma opção."
     }
 
-    // espessura é opcional: em branco usa a padrão do serviço
+    // espessura é opcional: em branco usa a padrão do serviço.
+    // Se o campo está escondido (espessura fixa), ignora qualquer valor digitado antes.
     let espessura = espessuraAtual
-    if (labelEspessura && form.espessura.trim() !== "") {
+    if (labelEspessura && mostrarEspessura && form.espessura.trim() !== "") {
       espessura = parseNumero(form.espessura)
       if (Number.isNaN(espessura) || espessura <= 0) erros.espessura = "Use um valor maior que zero."
       else if (espessura > LIMITE_ESPESSURA) erros.espessura = "Valor muito alto. Informe a espessura em centímetros."
@@ -401,7 +408,7 @@ export default function CardCalculator({
       ]
       if (v.desconto > 0) partes.push(`desconto de ${formatar(v.desconto)} m²`)
       if (opcaoSelecionada) partes.push(opcaoSelecionada.label)
-      if (labelEspessura && v.espessura !== undefined) partes.push(`espessura de ${formatar(v.espessura)} cm`)
+      if (mostrarEspessura && v.espessura !== undefined) partes.push(`espessura de ${formatar(v.espessura)} cm`)
       if (perdaPadrao !== undefined && v.perda > 0) partes.push(`perda de ${v.perda.toLocaleString("pt-BR")}%`)
 
       const comparacao = comparar?.({ ...ctx, perda: v.perda })
@@ -541,7 +548,7 @@ export default function CardCalculator({
                 </div>
               )}
 
-              {labelEspessura && (
+              {mostrarEspessura && labelEspessura && (
                 <CampoNumerico
                   id={idDe("espessura")}
                   label={labelEspessura}
