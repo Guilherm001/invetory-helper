@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import {
   Check,
@@ -30,6 +31,11 @@ interface Props {
 
 const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
 
+const BASE =
+  'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#079C9C] focus-visible:ring-offset-1 disabled:opacity-60 md:py-2'
+const BTN_SECUNDARIO = `${BASE} border border-slate-300 bg-white text-slate-700 hover:bg-slate-50`
+const BTN_PRIMARIO = `${BASE} bg-[#079C9C] text-white hover:bg-[#079C9C]/90`
+
 // texto pronto para colar no WhatsApp ou e-mail
 function textoDoPedido(p: PedidoSugerido) {
   const linhas = p.itens.map(({ item, preco, subtotal }) => {
@@ -43,6 +49,28 @@ function textoDoPedido(p: PedidoSugerido) {
     '',
     `Total: ${formatarReais(p.subtotal)}`,
   ].join('\n')
+}
+
+function Indicador({
+  icone,
+  titulo,
+  destaque = false,
+  children,
+}: {
+  icone: ReactNode
+  titulo: string
+  destaque?: boolean
+  children: ReactNode
+}) {
+  return (
+    <div className={`p-4 ${destaque ? 'bg-emerald-50' : ''}`}>
+      <p className="flex items-center gap-2 text-sm text-slate-500">
+        {icone}
+        {titulo}
+      </p>
+      {children}
+    </div>
+  )
 }
 
 export default function ResumoEconomia({
@@ -109,21 +137,21 @@ export default function ResumoEconomia({
     }
   }
 
+  const temEconomia = economia !== null && economia > 0
   const semDiferenca = economia !== null && economia <= 0
   const umSoFornecedor = pedidos.length === 1
 
   return (
-    <section className="space-y-5" aria-label="Resumo da comparação">
-      {/* Cartões */}
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Trophy className="size-4 text-[#079C9C]" />
-            Melhor fornecedor único
-          </div>
+    <section className="space-y-6" aria-label="Resumo da comparação">
+      {/* Indicadores: uma faixa só, divididos por linhas */}
+      <div className="grid divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white md:grid-cols-3 md:divide-x md:divide-y-0">
+        <Indicador
+          icone={<Trophy className="size-4 text-[#079C9C]" />}
+          titulo="Melhor fornecedor único"
+        >
           {melhorUnico ? (
             <>
-              <p className="mt-1 text-2xl font-bold text-slate-900">
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
                 {formatarReais(melhorUnico.total)}
               </p>
               <p className="truncate text-sm text-slate-500" title={melhorUnico.fornecedor.name}>
@@ -138,16 +166,15 @@ export default function ResumoEconomia({
           ) : (
             <p className="mt-2 text-sm text-slate-400">Preencha alguns preços para ver.</p>
           )}
-        </div>
+        </Indicador>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Scale className="size-4 text-[#079C9C]" />
-            Menor preço de cada item
-          </div>
+        <Indicador
+          icone={<Scale className="size-4 text-[#079C9C]" />}
+          titulo="Menor preço de cada item"
+        >
           {totalMisto !== null ? (
             <>
-              <p className="mt-1 text-2xl font-bold text-slate-900">
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
                 {formatarReais(totalMisto)}
               </p>
               <p className="text-sm text-slate-500">
@@ -161,27 +188,18 @@ export default function ResumoEconomia({
           ) : (
             <p className="mt-2 text-sm text-slate-400">Preencha alguns preços para ver.</p>
           )}
-        </div>
+        </Indicador>
 
-        <div
-          className={`rounded-xl border p-4 shadow-sm ${
-            economia !== null && economia > 0
-              ? 'border-emerald-300 bg-emerald-50'
-              : 'border-slate-200 bg-white'
-          }`}
+        <Indicador
+          icone={
+            <PiggyBank className={`size-4 ${temEconomia ? 'text-emerald-600' : 'text-[#079C9C]'}`} />
+          }
+          titulo="Economia"
+          destaque={temEconomia}
         >
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <PiggyBank
-              className={`size-4 ${
-                economia !== null && economia > 0 ? 'text-emerald-600' : 'text-[#079C9C]'
-              }`}
-            />
-            Economia
-          </div>
-
-          {economia !== null && economia > 0 ? (
+          {temEconomia && economia !== null ? (
             <>
-              <p className="mt-1 text-2xl font-bold text-emerald-700">
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
                 {formatarReais(economia)}
               </p>
               <p className="text-sm text-emerald-700/80">
@@ -201,12 +219,12 @@ export default function ResumoEconomia({
           ) : (
             <p className="mt-2 text-sm text-slate-400">Preencha alguns preços para ver.</p>
           )}
-        </div>
+        </Indicador>
       </div>
 
       {/* Ranking */}
       {comPrecos.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
           <h4 className="mb-3 text-sm font-semibold text-slate-700">Total por fornecedor</h4>
           <ul className="space-y-3">
             {comPrecos.map((t, i) => {
@@ -226,14 +244,14 @@ export default function ResumoEconomia({
                       )}
                     </span>
                     <span
-                      className={`shrink-0 font-semibold ${
+                      className={`shrink-0 font-semibold tabular-nums ${
                         melhor ? 'text-emerald-700' : 'text-slate-800'
                       }`}
                     >
                       {formatarReais(t.total)}
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                     <div
                       className={`h-full rounded-full ${
                         melhor ? 'bg-emerald-500' : 'bg-[#079C9C]/50'
@@ -272,7 +290,7 @@ export default function ResumoEconomia({
                 type="button"
                 onClick={() => compras.criar(semPedido, 'todos')}
                 disabled={compras.criando !== null}
-                className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#079C9C] px-3 py-2 text-sm font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10 active:scale-95 disabled:opacity-60"
+                className={`${BTN_PRIMARIO} shrink-0`}
               >
                 {compras.criando === 'todos' ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -285,7 +303,10 @@ export default function ResumoEconomia({
           </div>
 
           {(erroAcao || compras.erro) && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600"
+            >
               {erroAcao || compras.erro}
             </p>
           )}
@@ -293,13 +314,14 @@ export default function ResumoEconomia({
           <div className="grid gap-3 lg:grid-cols-2">
             {pedidos.map((p) => {
               const criado = compras.criados.get(p.fornecedor.id)
+              const foiCopiado = copiado === p.fornecedor.id
 
               return (
                 <div
                   key={p.fornecedor.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className="rounded-lg border border-slate-200 bg-white p-4"
                 >
-                  <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p
                         className="truncate font-semibold text-slate-900"
@@ -314,17 +336,15 @@ export default function ResumoEconomia({
                       </p>
                     </div>
 
-                    <div className="flex gap-2 sm:shrink-0 sm:gap-1.5">
+                    <div className="flex gap-2 sm:shrink-0">
                       <button
                         type="button"
                         onClick={() => copiar(p)}
-                        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-semibold transition active:scale-95 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs ${
-                          copiado === p.fornecedor.id
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                            : 'border-[#079C9C] text-[#079C9C] hover:bg-[#079C9C]/10'
+                        className={`${BTN_SECUNDARIO} flex-1 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs ${
+                          foiCopiado ? '!border-emerald-300 !bg-emerald-50 !text-emerald-700' : ''
                         }`}
                       >
-                        {copiado === p.fornecedor.id ? (
+                        {foiCopiado ? (
                           <>
                             <Check className="size-4 sm:size-3.5" />
                             Copiado
@@ -341,7 +361,7 @@ export default function ResumoEconomia({
                         type="button"
                         onClick={() => baixarPdf(p)}
                         disabled={gerandoPdf !== null}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#079C9C] px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#079C9C]/90 active:scale-95 disabled:opacity-60 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs"
+                        className={`${BTN_SECUNDARIO} flex-1 sm:flex-none sm:px-2.5 sm:py-1.5 sm:text-xs`}
                       >
                         {gerandoPdf === p.fornecedor.id ? (
                           <>
@@ -360,7 +380,7 @@ export default function ResumoEconomia({
                     </div>
                   </div>
 
-                  <ul className="divide-y divide-slate-100 text-sm">
+                  <ul className="divide-y divide-slate-100 border-t border-slate-100 text-sm">
                     {p.itens.map(({ item, preco, subtotal }) => (
                       <li
                         key={item.id}
@@ -370,13 +390,13 @@ export default function ResumoEconomia({
                           className="min-w-0 break-words text-slate-700 sm:truncate"
                           title={item.name}
                         >
-                          <span className="font-semibold text-[#079C9C]">
+                          <span className="font-medium tabular-nums text-slate-900">
                             {numero(item.quantity)}
                             {item.unit ? ` ${item.unit}` : ''}
                           </span>{' '}
                           {item.name}
                         </span>
-                        <span className="shrink-0 text-xs text-slate-500 sm:text-right sm:text-sm">
+                        <span className="shrink-0 text-xs tabular-nums text-slate-500 sm:text-right sm:text-sm">
                           {formatarReais(preco)}
                           <span className="ml-2 text-sm font-medium text-slate-800">
                             {formatarReais(subtotal)}
@@ -386,9 +406,11 @@ export default function ResumoEconomia({
                     ))}
                   </ul>
 
-                  <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-sm">
-                    <span className="font-semibold text-slate-600">Subtotal</span>
-                    <span className="font-bold text-slate-900">{formatarReais(p.subtotal)}</span>
+                  <div className="flex justify-between border-t border-slate-200 pt-2 text-sm">
+                    <span className="font-medium text-slate-600">Subtotal</span>
+                    <span className="font-semibold tabular-nums text-slate-900">
+                      {formatarReais(p.subtotal)}
+                    </span>
                   </div>
 
                   {compras.podeCriar && (
@@ -396,7 +418,7 @@ export default function ResumoEconomia({
                       {criado ? (
                         <Link
                           href={`/pedidos-compra?abrir=${criado.id}`}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                          className={`${BASE} w-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`}
                         >
                           <CheckCircle2 className="size-4" />
                           Pedido {numeroPedido(criado.numero)} · {STATUS_INFO[criado.status].texto}
@@ -406,7 +428,7 @@ export default function ResumoEconomia({
                           type="button"
                           onClick={() => compras.criar([p], p.fornecedor.id)}
                           disabled={compras.criando !== null}
-                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#079C9C] px-3 py-2.5 text-sm font-semibold text-[#079C9C] transition hover:bg-[#079C9C]/10 active:scale-95 disabled:opacity-60"
+                          className={`${BTN_PRIMARIO} w-full`}
                         >
                           {compras.criando === p.fornecedor.id ? (
                             <Loader2 className="size-4 animate-spin" />
