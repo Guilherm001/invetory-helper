@@ -99,6 +99,9 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
   podeColarRef.current = podeColar
   const fornecedoresRef = useRef(c.fornecedores)
   fornecedoresRef.current = c.fornecedores
+  const dialogAbertoRef = useRef(false)
+  dialogAbertoRef.current = dialogFornecedor.open || colarAberto
+  const ultimoPrecoRef = useRef<HTMLInputElement | null>(null)
 
   const rolarParaResumo = () => {
     const reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -112,10 +115,21 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
 
   // Atalhos: / ou Ctrl/Cmd+K = pesquisar · I = novo item · F = fornecedor · C = colar preços
   //          M = alternar modo · 1–9 = preencher o fornecedor N · R = ver resumo
+  //          ↑ ↓ ← → ou Enter, sem nada focado = entrar nos preços
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
-      // com um diálogo aberto, nenhum atalho da página vale
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      if (!e.key) return // o autofill do navegador dispara keydown sem tecla
+
+      // com um diálogo ABERTO, nenhum atalho da página vale. Só conta o que está aberto:
+      // qualquer elemento role="dialog" escondido na página não pode travar os atalhos.
+      if (
+        dialogAbertoRef.current ||
+        document.querySelector(
+          '[role="alertdialog"][data-state="open"], [role="dialog"][data-state="open"]'
+        )
+      ) {
+        return
+      }
 
       // AltGr (teclados ABNT2) conta como Ctrl+Alt: não é um modificador de verdade
       const modificador =
@@ -139,6 +153,27 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
           alvo.tagName === 'SELECT' ||
           alvo.isContentEditable)
       if (digitando) return
+
+      // Sem nada focado, as setas só rolariam a página: levam para os preços.
+      // Volta à última célula usada; se não houver, vai para o primeiro preço vazio.
+      const semFoco = !document.activeElement || document.activeElement === document.body
+      if (
+        semFoco &&
+        !e.shiftKey &&
+        ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)
+      ) {
+        const campos = camposDePreco()
+        if (campos.length > 0) {
+          e.preventDefault()
+          const anterior = ultimoPrecoRef.current
+          const alvo =
+            anterior && campos.includes(anterior)
+              ? anterior
+              : (campos.find((el) => el.value === '') ?? campos[0])
+          alvo.focus()
+        }
+        return
+      }
 
       // 1–9: abre o modo por fornecedor já no fornecedor escolhido
       if (/^[1-9]$/.test(e.key)) {
@@ -190,8 +225,16 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
           break
       }
     }
+    const aoFocar = (e: FocusEvent) => {
+      const el = e.target
+      if (el instanceof HTMLInputElement && el.dataset.precoCol) ultimoPrecoRef.current = el
+    }
     window.addEventListener('keydown', aoTeclar)
-    return () => window.removeEventListener('keydown', aoTeclar)
+    document.addEventListener('focusin', aoFocar)
+    return () => {
+      window.removeEventListener('keydown', aoTeclar)
+      document.removeEventListener('focusin', aoFocar)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

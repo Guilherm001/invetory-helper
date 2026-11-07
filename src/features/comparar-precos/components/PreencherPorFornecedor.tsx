@@ -245,7 +245,7 @@ export default function PreencherPorFornecedor({
       <p className="hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 md:flex">
         <span>
           <Kbd>↑</Kbd>
-          <Kbd>↓</Kbd> ou <Kbd>Enter</Kbd> descem pela lista
+          <Kbd>↓</Kbd> ou <Kbd>Enter</Kbd> descem pela lista (fora de um campo, entram nela)
         </span>
         <span>
           <Kbd>Esc</Kbd> cancelar

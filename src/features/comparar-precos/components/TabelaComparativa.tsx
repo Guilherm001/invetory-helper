@@ -418,19 +418,20 @@ export default function TabelaComparativa({
       </div>
 
       {/* ===================== DESKTOP ===================== */}
-      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white md:block">
-        <table className="w-full border-collapse text-sm">
+      {/* Rolagem própria: cabeçalho e totais ficam fixos enquanto você desce pela lista */}
+      <div className="hidden max-h-[calc(100dvh-17rem)] min-h-[16rem] overflow-auto rounded-lg border border-slate-200 bg-white md:block">
+        <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 align-bottom">
+            <tr className="align-bottom">
               <th
                 scope="col"
-                className="sticky left-0 z-10 min-w-[240px] bg-slate-50 px-4 py-2.5 text-left text-xs font-medium text-slate-500"
+                className="sticky left-0 top-0 z-30 min-w-[220px] border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-xs font-medium text-slate-500"
               >
                 Item
               </th>
               <th
                 scope="col"
-                className="w-28 px-3 py-2.5 text-left text-xs font-medium text-slate-500"
+                className="sticky top-0 z-20 w-24 border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-xs font-medium text-slate-500"
               >
                 Qtd.
               </th>
@@ -439,7 +440,7 @@ export default function TabelaComparativa({
                 <th
                   key={f.id}
                   scope="col"
-                  className="min-w-[160px] px-3 py-2.5 text-left font-normal"
+                  className="sticky top-0 z-20 min-w-[148px] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-left font-normal"
                 >
                   <div className="flex items-start justify-between gap-1">
                     <div className="min-w-0">
@@ -486,23 +487,10 @@ export default function TabelaComparativa({
                   </div>
                 </th>
               ))}
-
-              <th className="w-36 px-3 py-2.5">
-                <button
-                  type="button"
-                  onClick={onAdicionarFornecedor}
-                  aria-keyshortcuts="F"
-                  className={`flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-[#079C9C] hover:text-[#079C9C] ${FOCO}`}
-                >
-                  <Plus className="size-3.5" />
-                  Fornecedor
-                  <Kbd>F</Kbd>
-                </button>
-              </th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {itens.map((item) => {
               const linha = analise.linhas.get(item.id)
               const referencia = refDe(item)
@@ -511,7 +499,7 @@ export default function TabelaComparativa({
                 <tr key={item.id} className="group">
                   <th
                     scope="row"
-                    className="sticky left-0 z-10 bg-white px-4 py-2 text-left align-top font-normal group-hover:bg-slate-50"
+                    className="sticky left-0 z-10 border-b border-slate-100 bg-white px-4 py-2 text-left align-top font-normal group-hover:bg-slate-50"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 pt-1.5 font-medium text-slate-900">{item.name}</p>
@@ -538,7 +526,7 @@ export default function TabelaComparativa({
                     </div>
                   </th>
 
-                  <td className="px-3 py-2 align-top group-hover:bg-slate-50">
+                  <td className="border-b border-slate-100 px-3 py-2 align-top group-hover:bg-slate-50">
                     <QuantidadeInput
                       valor={item.quantity}
                       unidade={item.unit}
@@ -555,7 +543,10 @@ export default function TabelaComparativa({
                       fornecedores.length > 1 && preco !== undefined && linha?.cotacoes === 1
 
                     return (
-                      <td key={f.id} className="px-3 py-2 align-top group-hover:bg-slate-50">
+                      <td
+                        key={f.id}
+                        className="border-b border-slate-100 px-3 py-2 align-top group-hover:bg-slate-50"
+                      >
                         <CelulaPreco
                           valor={preco}
                           destaque={destaque}
@@ -568,29 +559,30 @@ export default function TabelaComparativa({
                       </td>
                     )
                   })}
-
-                  <td className="group-hover:bg-slate-50" />
                 </tr>
               )
             })}
           </tbody>
 
           <tfoot>
-            <tr className="border-t border-slate-200 bg-slate-50">
+            <tr>
               <th
                 scope="row"
-                className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-600"
+                className="sticky bottom-0 left-0 z-30 border-t border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-600"
               >
                 Total
               </th>
-              <td />
+              <td className="sticky bottom-0 z-20 border-t border-slate-200 bg-slate-50" />
 
               {fornecedores.map((f) => {
                 const t = totalDe(f.id)
                 const melhor = analise.melhorUnico?.fornecedor.id === f.id
 
                 return (
-                  <td key={f.id} className="px-3 py-3 align-top">
+                  <td
+                    key={f.id}
+                    className="sticky bottom-0 z-20 border-t border-slate-200 bg-slate-50 px-3 py-3 align-top"
+                  >
                     <p
                       className={`text-base font-semibold tabular-nums ${
                         melhor ? 'text-emerald-700' : 'text-slate-800'
@@ -616,8 +608,6 @@ export default function TabelaComparativa({
                   </td>
                 )
               })}
-
-              <td />
             </tr>
           </tfoot>
         </table>
@@ -628,7 +618,7 @@ export default function TabelaComparativa({
           <Kbd>↑</Kbd>
           <Kbd>↓</Kbd>
           <Kbd>←</Kbd>
-          <Kbd>→</Kbd> mover entre preços
+          <Kbd>→</Kbd> mover entre preços (fora de um campo, entram na tabela)
         </span>
         <span>
           <Kbd>Enter</Kbd> salvar e descer
@@ -641,6 +631,12 @@ export default function TabelaComparativa({
           <Kbd>Esc</Kbd> cancelar
         </span>
         <span>Campo vazio apaga o preço</span>
+        <span>
+          <Kbd>1</Kbd>–<Kbd>9</Kbd> preencher um fornecedor
+        </span>
+        <span>
+          <Kbd>M</Kbd> alternar modo
+        </span>
       </p>
     </div>
   )
