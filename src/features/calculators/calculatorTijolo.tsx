@@ -23,14 +23,29 @@ const MARGEM_PERDA = 1.2 // +20% para perdas na obra
 const AREIA_M3_POR_M3_MASSA = 1.1 // m³ de areia para 1 m³ de massa pronta
 const AREIA_KG_POR_M3 = 1500
 
-// até esse total (kg) recomenda o saco de 25 kg; acima, o de 50 kg
+// faixas do cimento:
+//   abaixo de 16 kg  → mostra só os kg
+//   de 16 a 25 kg    → saco de 25 kg
+//   acima de 25 kg   → saco de 50 kg
+const LIMITE_CIMENTO_AVULSO_KG = 16
 const LIMITE_SACO_PEQUENO_KG = 25
+
+// faixas da areia:
+//   até 40 sacos     → mostra os sacos de 18 kg
+//   acima de 40      → mostra em m³ (arredondado para cima de 0,25 em 0,25)
+const LIMITE_AREIA_SACOS = 40
+const PASSO_AREIA_M3 = 0.25
 
 const areiaKg = ({ area, opcaoExtra }: Contexto) =>
   ((area * (opcaoExtra ?? 0) * MARGEM_PERDA) / 1000) * AREIA_M3_POR_M3_MASSA * AREIA_KG_POR_M3
 
 const sacosAreia = (ctx: Contexto) => areiaKg(ctx) / SACO_AREIA_KG
+const areiaM3 = (ctx: Contexto) => areiaKg(ctx) / AREIA_KG_POR_M3
 const cimentoKg = (ctx: Contexto) => sacosAreia(ctx) * CIMENTO_POR_SACO_AREIA_KG
+
+// arredonda o m³ para cima no passo definido (0,25 → 0,25 / 0,5 / 0,75 / 1...)
+const areiaM3Arredondado = (ctx: Contexto) =>
+  Math.ceil(areiaM3(ctx) / PASSO_AREIA_M3 - 1e-9) * PASSO_AREIA_M3
 
 const detalheCimento = (ctx: Contexto) =>
   `${formatar(cimentoKg(ctx), 1)} kg no total · ${formatar(CIMENTO_POR_SACO_AREIA_KG)} kg para cada saco de areia`
@@ -51,11 +66,19 @@ const resultados: ResultadoConfig[] = [
     calcular: ({ area, opcao }) => area * (opcao ?? 0),
     detalhe: ({ area, opcao }) => `${formatar(area)} m² × ${formatar(opcao ?? 0)} blocos/m²`,
   },
-  // cimento: só um dos dois cards aparece, conforme o total em kg
+  // cimento: só um dos três cards aparece, conforme o total em kg
   {
     label: "Cimento",
-    unidade: "sacos de 25 kg",
-    visivel: (ctx) => cimentoKg(ctx) <= LIMITE_SACO_PEQUENO_KG,
+    unidade: "kg",
+    visivel: (ctx) => cimentoKg(ctx) < LIMITE_CIMENTO_AVULSO_KG,
+    calcular: (ctx) => cimentoKg(ctx), // arredonda para cima em kg inteiros
+    detalhe: () => `${formatar(CIMENTO_POR_SACO_AREIA_KG)} kg para cada saco de areia`,
+  },
+  {
+    label: "Cimento",
+    unidade: "saco de 25 kg",
+    visivel: (ctx) =>
+      cimentoKg(ctx) >= LIMITE_CIMENTO_AVULSO_KG && cimentoKg(ctx) <= LIMITE_SACO_PEQUENO_KG,
     calcular: (ctx) => cimentoKg(ctx) / 25,
     detalhe: detalheCimento,
   },
@@ -66,11 +89,22 @@ const resultados: ResultadoConfig[] = [
     calcular: (ctx) => cimentoKg(ctx) / 50,
     detalhe: detalheCimento,
   },
+  // areia: só um dos dois cards aparece, conforme a quantidade de sacos
   {
     label: "Areia",
     unidade: "sacos",
+    visivel: (ctx) => sacosAreia(ctx) <= LIMITE_AREIA_SACOS,
     calcular: (ctx) => sacosAreia(ctx),
     detalhe: (ctx) => `${formatar(areiaKg(ctx), 0)} kg de areia · sacos de ${formatar(SACO_AREIA_KG)} kg`,
+  },
+  {
+    label: "Areia",
+    unidade: "m³",
+    casas: 2,
+    visivel: (ctx) => sacosAreia(ctx) > LIMITE_AREIA_SACOS,
+    calcular: (ctx) => areiaM3Arredondado(ctx),
+    detalhe: (ctx) =>
+      `≈ ${formatar(Math.ceil(sacosAreia(ctx)), 0)} sacos de ${formatar(SACO_AREIA_KG)} kg · ${formatar(areiaKg(ctx), 0)} kg`,
   },
 ]
 
