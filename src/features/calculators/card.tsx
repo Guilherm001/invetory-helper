@@ -17,6 +17,8 @@ import { cima, formatar, parseNumero } from "./calculadora-utils"
 export interface OpcaoSelect {
   label: string
   value: number
+  /** Dado extra da opção (cada calculadora define o significado). */
+  extra?: number
 }
 
 /** Dados já validados que cada calculadora recebe. */
@@ -30,6 +32,8 @@ export interface Contexto {
   desconto: number
   /** Valor da opção escolhida no select (se existir). */
   opcao?: number
+  /** Valor `extra` da opção escolhida no select (se existir). */
+  opcaoExtra?: number
   /** Margem de perda em % (0 se não houver). */
   perda: number
   /** Espessura da camada em cm (só nas calculadoras que pedem espessura). */
@@ -367,6 +371,7 @@ export default function CardCalculator({
       area: v.area - v.desconto,
       desconto: v.desconto,
       opcao: opcaoSelecionada?.value,
+      opcaoExtra: opcaoSelecionada?.extra,
       perda: v.perda,
       espessura: v.espessura,
     }
@@ -446,18 +451,18 @@ export default function CardCalculator({
 
   const textoCompartilhar = calculo
     ? [
-        `*${titulo}*`,
-        calculo.resumo,
-        "",
-        ...calculo.itens.map((i) => `${i.label}: ${i.texto}${i.unidade ? ` ${i.unidade}` : ""}`),
-        ...(calculo.comparacao
-          ? [
-              "",
-              `${calculo.comparacao.titulo}: ${calculo.comparacao.destaque}`,
-              ...(calculo.comparacao.destaqueDetalhe ? [calculo.comparacao.destaqueDetalhe] : []),
-            ]
-          : []),
-      ].join("\n")
+      `*${titulo}*`,
+      calculo.resumo,
+      "",
+      ...calculo.itens.map((i) => `${i.label}: ${i.texto}${i.unidade ? ` ${i.unidade}` : ""}`),
+      ...(calculo.comparacao
+        ? [
+          "",
+          `${calculo.comparacao.titulo}: ${calculo.comparacao.destaque}`,
+          ...(calculo.comparacao.destaqueDetalhe ? [calculo.comparacao.destaqueDetalhe] : []),
+        ]
+        : []),
+    ].join("\n")
     : ""
 
   const copiar = async () => {
@@ -632,9 +637,8 @@ export default function CardCalculator({
           <div
             ref={painelRef}
             aria-live="polite"
-            className={`w-full scroll-mt-40 rounded-xl border border-slate-200 bg-gray-100 p-4 shadow-sm lg:basis-2/3 lg:p-6 ${
-              calculo ? "" : "hidden lg:flex lg:items-center lg:justify-center"
-            }`}
+            className={`w-full scroll-mt-40 rounded-xl border border-slate-200 bg-gray-100 p-4 shadow-sm lg:basis-2/3 lg:p-6 ${calculo ? "" : "hidden lg:flex lg:items-center lg:justify-center"
+              }`}
           >
             {!calculo || !principal ? (
               <div className="flex flex-col items-center gap-2 py-10 text-center text-slate-400">

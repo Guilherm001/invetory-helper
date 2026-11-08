@@ -75,12 +75,12 @@ export default async function RootLayout({
             <div className="flex items-center justify-between">
               <Link
                 href={user ? "/loja" : "/"}
-                className="px-4 py-2 md:px-0 md:py-0"
+                className="px-4 py-1.5 md:px-6 md:py-1"
               >
                 <img
                   src="/logo.png"
                   alt="Logo"
-                  className="h-16 w-auto md:h-40"
+                  className="h-10 w-auto md:h-20"
                 />
               </Link>
 
@@ -89,7 +89,7 @@ export default async function RootLayout({
                   {nome && (
                     <span
                       title={nome}
-                      className="max-w-[170px] truncate text-sm text-gray-500 md:max-w-[240px] md:text-base"
+                      className="max-w-[170px] truncate text-sm text-gray-500 md:max-w-[240px]"
                     >
                       Olá,{" "}
                       <span className="font-semibold text-gray-800">{nome}</span>
