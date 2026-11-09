@@ -93,7 +93,8 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
 
   // Atalhos: / ou Ctrl/Cmd+K = pesquisar · I = novo item · F = fornecedor · C = colar preços
   //          M = alternar modo · 1–9 = preencher o fornecedor N · R = ver resumo
-  //          ↑ ↓ ← → ou Enter, sem nada focado = entrar nos preços
+  //          Enter, sem nada focado = entrar nos preços
+  //          ↑ ↓ ← →, sem nada focado = voltar à última célula usada (senão, rolam a página)
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
       if (!e.key) return // o autofill do navegador dispara keydown sem tecla
@@ -132,25 +133,28 @@ export default function ComparacaoDetalhe({ id }: { id: string }) {
           alvo.isContentEditable)
       if (digitando) return
 
-      // Sem nada focado, as setas só rolariam a página: levam para os preços.
-      // Volta à última célula usada; se não houver, vai para o primeiro preço vazio.
+      // Sem nada focado:
+      // - Enter entra nos preços (não rola a página, então não há o que perder);
+      // - as setas só entram se já houve uma célula de preço usada e ela ainda está
+      //   na tela. Caso contrário, deixam a página rolar normalmente.
       const semFoco = !document.activeElement || document.activeElement === document.body
-      if (
-        semFoco &&
-        !e.shiftKey &&
-        ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)
-      ) {
-        const campos = camposDePreco()
-        if (campos.length > 0) {
-          e.preventDefault()
+      if (semFoco && !e.shiftKey) {
+        const ehSeta = ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)
+        if (ehSeta || e.key === 'Enter') {
+          const campos = camposDePreco()
           const anterior = ultimoPrecoRef.current
-          const alvo =
-            anterior && campos.includes(anterior)
-              ? anterior
-              : (campos.find((el) => el.value === '') ?? campos[0])
-          alvo.focus()
+          const voltarPara = anterior && campos.includes(anterior) ? anterior : null
+
+          if (voltarPara) {
+            e.preventDefault()
+            voltarPara.focus()
+          } else if (e.key === 'Enter' && campos.length > 0) {
+            e.preventDefault()
+            ;(campos.find((el) => el.value === '') ?? campos[0]).focus()
+          }
+          // seta sem célula anterior: não faz nada, a página rola
+          return
         }
-        return
       }
 
       // 1–9: abre o modo por fornecedor já no fornecedor escolhido
