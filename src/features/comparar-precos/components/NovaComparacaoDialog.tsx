@@ -16,6 +16,8 @@ import type { Product } from '@/features/body/services/listService'
 // ajuste o caminho se a pasta da feature de cotações tiver outro nome
 import { listCotacoes, type CotacaoSalva } from '@/features/cotacao/services/cotacaoService'
 import type { NovoItemComparacao } from '../types'
+import { interpretar, normalizar, numero } from '../utils/formatacao'
+import Kbd from './Kbd'
 
 interface Props {
   open: boolean
@@ -53,31 +55,10 @@ const inputClass =
 const linhaClass =
   'flex w-full items-center gap-3 px-3 py-2 text-left outline-none transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:shadow-[inset_3px_0_0_#079C9C]'
 
-// sem acento, minúsculo
-const normalizar = (s: string) =>
-  s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-
-const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
-
 // quantidade da cotação vem como texto ("10", "2,5")
 const lerQtd = (q: string) => {
   const n = Number(String(q).trim().replace(',', '.'))
   return Number.isFinite(n) && n > 0 ? n : 1
-}
-
-// "10 cimento" ou "10x cimento" -> quantidade 10
-function interpretar(texto: string): { name: string; quantity: number } {
-  const t = texto.trim().replace(/^[-•*]\s*/, '')
-  const m = t.match(/^(\d+)\s*x\s*(.+)$/i) || t.match(/^(\d+)\s+(.+)$/)
-  if (m) {
-    const q = Number(m[1])
-    if (q >= 1) return { name: m[2].trim(), quantity: q }
-  }
-  return { name: t, quantity: 1 }
 }
 
 type Comparavel = { catalog_code: string | null; name: string }
@@ -85,14 +66,6 @@ const mesmoItem = (a: Comparavel, b: Comparavel) =>
   a.catalog_code && b.catalog_code
     ? a.catalog_code === b.catalog_code
     : normalizar(a.name) === normalizar(b.name)
-
-function Kbd({ children }: { children: string }) {
-  return (
-    <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-sans text-[11px] font-medium leading-none text-slate-500">
-      {children}
-    </kbd>
-  )
-}
 
 // quantidade editável: aceita digitar, "+" e "-"
 function QtdInput({

@@ -1,4 +1,5 @@
 import { formatarReais, type PedidoSugerido } from './melhorPreco'
+import { numero } from './formatacao'
 
 type Cor = [number, number, number]
 const VERDE: Cor = [30, 158, 72]
@@ -8,8 +9,6 @@ const CINZA_MARCA: Cor = [107, 114, 128]
 const CINZA_ESCURO: Cor = [30, 41, 59]
 const CINZA: Cor = [100, 116, 139]
 const LINHA: Cor = [226, 232, 240]
-
-const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
 
 // "Depósito Central" -> "deposito-central"
 const slug = (s: string) =>

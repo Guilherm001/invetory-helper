@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { FormEvent } from 'react'
 import Link from 'next/link'
 import { ArrowDownUp, ArrowLeft, ClipboardPaste, Loader2, Plus, Search, X } from 'lucide-react'
 import { Button } from '../../../../components/ui/button'
 import { useComparacao } from '../hooks/useComparacao'
 import type { Fornecedor } from '../types'
 import { analisar, chave, montarMapa } from '../utils/melhorPreco'
+import { interpretar, normalizar } from '../utils/formatacao'
+import { FOCO } from '../utils/estilos'
 import TabelaComparativa from './TabelaComparativa'
 import PreencherPorFornecedor from './PreencherPorFornecedor'
 import BarraResumo from './BarraResumo'
@@ -15,38 +17,14 @@ import ResumoEconomia from './ResumoEconomia'
 import FornecedorDialog from './FornecedorDialog'
 import ColarPrecosDialog from './ColarPrecosDialog'
 import { camposDePreco } from './CelulaPreco'
+import Kbd from './Kbd'
 import { useReferencias } from '@/features/historico-precos/hooks/useReferencias'
-
-// "10 cimento" ou "10x cimento" -> quantidade 10
-function interpretar(texto: string): { name: string; quantity: number } {
-  const t = texto.trim()
-  const m = t.match(/^(\d+)\s*x\s*(.+)$/i) || t.match(/^(\d+)\s+(.+)$/)
-  if (m) {
-    const q = Number(m[1])
-    if (q >= 1) return { name: m[2].trim(), quantity: q }
-  }
-  return { name: t, quantity: 1 }
-}
-
-// ignora maiúsculas e acentos: "areia media" encontra "Areia Média"
-const normalizar = (s: string) =>
-  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 type Ordem = 'original' | 'nome' | 'sem-preco'
 type Modo = 'tabela' | 'fornecedor'
 
 const CAMPO =
   'w-full rounded-md border border-slate-200 bg-white text-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
-
-const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#079C9C]'
-
-function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[11px] font-medium text-slate-400">
-      {children}
-    </kbd>
-  )
-}
 
 export default function ComparacaoDetalhe({ id }: { id: string }) {
   const c = useComparacao(id)

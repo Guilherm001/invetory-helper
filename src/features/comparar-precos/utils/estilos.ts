@@ -1,0 +1,1 @@
+export const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#079C9C]'

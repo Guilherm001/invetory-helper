@@ -18,6 +18,7 @@ import {
 import type { Fornecedor, ItemComparacao } from '../types'
 import { formatarReais, type Analise, type PedidoSugerido } from '../utils/melhorPreco'
 import { gerarPedidoPdf, precarregarPdf } from '../utils/gerarPedidoPdf'
+import { numero } from '../utils/formatacao'
 import { usePedidosDaComparacao } from '@/features/compras/hooks/usePedidosDaComparacao'
 import { STATUS_INFO, numeroPedido } from '@/features/compras/lib/compras'
 
@@ -28,8 +29,6 @@ interface Props {
   nomeComparacao?: string
   comparacaoId?: string
 }
-
-const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
 
 const BASE =
   'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#079C9C] focus-visible:ring-offset-1 disabled:opacity-60 md:py-2'

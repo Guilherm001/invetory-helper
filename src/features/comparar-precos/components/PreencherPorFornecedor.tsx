@@ -1,14 +1,17 @@
 'use client'
 
 import { useRef } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent } from 'react'
 import { Check, Clock, Pencil, Plus, Trophy } from 'lucide-react'
 import IndicadorHistorico from '@/features/historico-precos/components/IndicadorHistorico'
 import { chaveDoProduto } from '@/features/historico-precos/utils/estatisticas'
 import type { Referencia } from '@/features/historico-precos/utils/referencias'
 import type { Fornecedor, ItemComparacao, Preco } from '../types'
 import { chave, formatarReais, montarMapa, type Analise } from '../utils/melhorPreco'
+import { numero } from '../utils/formatacao'
+import { FOCO } from '../utils/estilos'
 import CelulaPreco, { camposDePreco } from './CelulaPreco'
+import Kbd from './Kbd'
 
 interface Props {
   itens: ItemComparacao[] // itens exibidos (já filtrados e ordenados)
@@ -22,18 +25,6 @@ interface Props {
   onDefinirPreco: (itemId: string, fornecedorId: string, valor: number | null) => Promise<void>
   onEditarFornecedor: (fornecedor: Fornecedor) => void
   onAdicionarFornecedor: () => void
-}
-
-const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
-
-const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#079C9C]'
-
-function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="mr-0.5 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[11px] font-medium text-slate-500">
-      {children}
-    </kbd>
-  )
 }
 
 export default function PreencherPorFornecedor({

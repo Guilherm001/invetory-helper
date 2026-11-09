@@ -20,7 +20,10 @@ import { chaveDoProduto } from '@/features/historico-precos/utils/estatisticas'
 import type { Referencia } from '@/features/historico-precos/utils/referencias'
 import type { Fornecedor, ItemComparacao, Preco } from '../types'
 import { chave, formatarReais, montarMapa, type Analise } from '../utils/melhorPreco'
+import { numero } from '../utils/formatacao'
+import { FOCO } from '../utils/estilos'
 import CelulaPreco from './CelulaPreco'
+import Kbd from './Kbd'
 
 interface Props {
   itens: ItemComparacao[]
@@ -36,19 +39,8 @@ interface Props {
   onAdicionarFornecedor: () => void
 }
 
-const numero = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace('.', ','))
-
-const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#079C9C]'
 const BTN_ICONE = `rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 ${FOCO}`
 const BTN_ICONE_PERIGO = `rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400`
-
-function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="mr-0.5 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[11px] font-medium text-slate-500">
-      {children}
-    </kbd>
-  )
-}
 
 // pergunta antes de apagar
 function Confirmar({

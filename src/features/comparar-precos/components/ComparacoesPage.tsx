@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, Scale, Search, Trash2 } from 'lucide-react'
@@ -19,20 +19,11 @@ import {
 import { useProducts } from '@/features/body/hooks/useProducts'
 import { useComparacoes } from '../hooks/useComparacoes'
 import type { ComparacaoResumo } from '../types'
+import { normalizar } from '../utils/formatacao'
+import Kbd from './Kbd'
 import NovaComparacaoDialog from './NovaComparacaoDialog'
 
 const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_110px_90px_120px]'
-
-const normalizar = (s: string) =>
-  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-
-function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[11px] font-medium text-slate-500">
-      {children}
-    </kbd>
-  )
-}
 
 export default function ComparacoesPage() {
   const router = useRouter()
