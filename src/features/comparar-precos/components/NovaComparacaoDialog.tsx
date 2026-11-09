@@ -67,7 +67,7 @@ const mesmoItem = (a: Comparavel, b: Comparavel) =>
     ? a.catalog_code === b.catalog_code
     : normalizar(a.name) === normalizar(b.name)
 
-// quantidade editável: aceita digitar, "+" e "-"
+// quantidade editável: digite e confirme ao sair do campo (ou Enter); "+" e "-" ajustam na hora
 function QtdInput({
   valor,
   label,
@@ -81,8 +81,17 @@ function QtdInput({
   onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>, vazio: boolean) => void
   refCb: (el: HTMLInputElement | null) => void
 }) {
+  // null = não está editando: mostra o valor que vem de fora
   const [txt, setTxt] = useState<string | null>(null)
   const mostrado = txt ?? numero(valor)
+
+  const confirmar = () => {
+    if (txt === null) return
+    const n = Number(txt.replace(',', '.'))
+    setTxt(null)
+    // vazio ou inválido: descarta e volta ao valor anterior
+    if (txt.trim() !== '' && Number.isFinite(n) && n > 0 && n !== valor) onCommit(n)
+  }
 
   return (
     <input
@@ -92,13 +101,8 @@ function QtdInput({
       aria-label={label}
       placeholder="Qtd"
       onFocus={(e) => e.currentTarget.select()}
-      onBlur={() => setTxt(null)}
-      onChange={(e) => {
-        const v = e.target.value
-        setTxt(v)
-        const n = Number(v.replace(',', '.'))
-        if (v.trim() !== '' && Number.isFinite(n) && n > 0) onCommit(n)
-      }}
+      onBlur={confirmar}
+      onChange={(e) => setTxt(e.target.value)}
       onKeyDown={(e) => {
         if (e.ctrlKey || e.metaKey || e.altKey) return
         if (e.key === '+') {
@@ -150,6 +154,8 @@ function Conteudo({ produtos, onClose, onCriar }: Omit<Props, 'open'>) {
   const focoPendente = useRef<string | null>(null)
   const focoNaAba = useRef(false)
   const abaAnterior = useRef<Aba>('produtos')
+  // sempre aponta para a versão mais recente de handleCriar (usada pelo Ctrl+Enter)
+  const criarRef = useRef<() => void>(() => {})
 
   const focarPainel = () =>
     painelRef.current?.querySelector<HTMLElement>('input, textarea')?.focus()
@@ -413,7 +419,7 @@ function Conteudo({ produtos, onClose, onCriar }: Omit<Props, 'open'>) {
 
     if (e.key === 'Enter') {
       e.preventDefault()
-      focarPainel()
+      focarPainel() // tira o foco do campo, o que confirma a quantidade digitada
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
       const prox = itens[i + 1]
@@ -470,6 +476,7 @@ function Conteudo({ produtos, onClose, onCriar }: Omit<Props, 'open'>) {
       setSaving(false)
     }
   }
+  criarRef.current = handleCriar
 
   const total = itens.length + linhas.length
 
@@ -479,7 +486,9 @@ function Conteudo({ produtos, onClose, onCriar }: Omit<Props, 'open'>) {
       onKeyDown={(e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault()
-          handleCriar()
+          // tira o foco para confirmar uma quantidade em edição e espera o estado atualizar
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+          setTimeout(() => criarRef.current(), 0)
           return
         }
         if (!e.altKey || e.ctrlKey || e.metaKey) return
