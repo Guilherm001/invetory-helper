@@ -91,39 +91,143 @@ function Kbd({ children }: { children: React.ReactNode }) {
   )
 }
 
-// ---------- busca no catálogo (teclado: ↑ ↓ Enter Esc) ----------
+// ---------- busca no catálogo ----------
+
+const MAX_RESULTADOS = 60
+const MAX_PAGINAS = 8
+const SALTO_PAGINA = 8
+
+const semAcento = (s: string) =>
+  s
+    .split('')
+    .map((c) => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '')[0] ?? c)
+    .join('')
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// junta várias páginas da busca até chegar em MAX_RESULTADOS
+async function buscarVarios(termo: string, cancelado: () => boolean): Promise<ProdutoLoja[]> {
+  const vistos = new Set<ProdutoLoja['id']>()
+  const lista: ProdutoLoja[] = []
+  let tamanhoPagina = 0
+
+  for (let pagina = 0; pagina < MAX_PAGINAS && lista.length < MAX_RESULTADOS; pagina++) {
+    const r = await buscarProdutos({ termo, pagina, soComEstoque: false })
+    if (cancelado() || r.itens.length === 0) break
+    if (pagina === 0) tamanhoPagina = r.itens.length
+
+    let novos = 0
+    for (const p of r.itens) {
+      if (!vistos.has(p.id)) {
+        vistos.add(p.id)
+        lista.push(p)
+        novos++
+      }
+    }
+
+    // última página, ou o serviço repetiu os mesmos itens
+    if (novos === 0 || r.itens.length < tamanhoPagina) break
+  }
+
+  return lista.slice(0, MAX_RESULTADOS)
+}
+
+// se o nome inteiro não achar nada, tira a última palavra e tenta de novo
+async function buscarComFallback(termo: string, cancelado: () => boolean) {
+  let atual = termo.trim()
+  for (;;) {
+    const itens = await buscarVarios(atual, cancelado)
+    if (cancelado() || itens.length > 0) return { itens, usado: atual }
+    const palavras = atual.split(/\s+/)
+    if (palavras.length <= 1) return { itens: [] as ProdutoLoja[], usado: atual }
+    atual = palavras.slice(0, -1).join(' ')
+  }
+}
+
+// marca no texto as palavras que a pessoa digitou (sem diferenciar acento ou maiúscula)
+function Destaque({ texto, termo }: { texto: string; termo: string }) {
+  const palavras = semAcento(termo)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((p) => p.length >= 2)
+  if (palavras.length === 0) return <>{texto}</>
+
+  const base = semAcento(texto).toLowerCase()
+  const re = new RegExp(palavras.map(escapeRe).join('|'), 'g')
+  const partes: React.ReactNode[] = []
+  let ultimo = 0
+
+  for (const m of base.matchAll(re)) {
+    const i = m.index ?? 0
+    if (m[0].length === 0 || i < ultimo) continue
+    if (i > ultimo) partes.push(texto.slice(ultimo, i))
+    partes.push(
+      <mark key={i} className="rounded-sm bg-yellow-200/80 text-inherit">
+        {texto.slice(i, i + m[0].length)}
+      </mark>
+    )
+    ultimo = i + m[0].length
+  }
+  partes.push(texto.slice(ultimo))
+  return <>{partes}</>
+}
 
 function BuscaCatalogo({
   inicial,
+  nomeNota,
+  resumoNota,
   onEscolher,
   onFechar,
 }: {
   inicial: string
+  nomeNota: string
+  resumoNota: string
   onEscolher: (p: ProdutoLoja) => void
   onFechar: () => void
 }) {
   const [termo, setTermo] = useState(inicial)
   const [res, setRes] = useState<ProdutoLoja[]>([])
+  const [usado, setUsado] = useState('')
   const [ativo, setAtivo] = useState(0)
   const [buscando, setBuscando] = useState(false)
+
+  const raiz = useRef<HTMLDivElement>(null)
+  const listaRef = useRef<HTMLUListElement>(null)
+  const itemRefs = useRef<(HTMLLIElement | null)[]>([])
+  // só rola a lista quando a pessoa navega pelo teclado (o mouse não deve causar rolagem)
+  const porTeclado = useRef(false)
+
+  // traz o painel para a área visível ao abrir
+  useEffect(() => {
+    const id = requestAnimationFrame(() => raiz.current?.scrollIntoView({ block: 'nearest' }))
+    return () => cancelAnimationFrame(id)
+  }, [])
 
   useEffect(() => {
     const t = termo.trim()
     if (t.length < 2) {
       setRes([])
+      setUsado('')
+      setBuscando(false)
       return
     }
     let cancelado = false
     setBuscando(true)
     const timer = setTimeout(async () => {
       try {
-        const r = await buscarProdutos({ termo: t, pagina: 0, soComEstoque: false })
+        const r = await buscarComFallback(t, () => cancelado)
         if (!cancelado) {
-          setRes(r.itens.slice(0, 8))
+          porTeclado.current = false
+          setRes(r.itens)
+          setUsado(r.usado)
           setAtivo(0)
+          if (listaRef.current) listaRef.current.scrollTop = 0
         }
       } catch {
-        if (!cancelado) setRes([])
+        if (!cancelado) {
+          setRes([])
+          setUsado(t)
+        }
       } finally {
         if (!cancelado) setBuscando(false)
       }
@@ -134,75 +238,175 @@ function BuscaCatalogo({
     }
   }, [termo])
 
+  // mantém o item ativo sempre visível dentro da lista
+  useEffect(() => {
+    if (!porTeclado.current) return
+    const lista = listaRef.current
+    const el = itemRefs.current[ativo]
+    if (!lista || !el) return
+    const topo = el.offsetTop
+    const base = topo + el.offsetHeight
+    if (topo < lista.scrollTop) lista.scrollTop = topo
+    else if (base > lista.scrollTop + lista.clientHeight) lista.scrollTop = base - lista.clientHeight
+  }, [ativo, res])
+
+  const ir = (fn: (i: number) => number) => {
+    porTeclado.current = true
+    setAtivo((i) => Math.max(0, Math.min(fn(i), Math.max(res.length - 1, 0))))
+  }
+
+  const t = termo.trim()
+  const trocouTermo = usado !== '' && usado !== t && res.length > 0
+
+  let status: React.ReactNode = null
+  if (t.length < 2) {
+    status = 'Digite pelo menos 2 letras para buscar.'
+  } else if (buscando && res.length === 0) {
+    status = 'Buscando...'
+  } else if (res.length === 0) {
+    status = 'Nenhum produto encontrado. Tente outra palavra, o código ou o código de barras.'
+  } else if (trocouTermo) {
+    status = (
+      <>
+        Nada com <strong>“{t}”</strong>. Mostrando resultados para <strong>“{usado}”</strong> ·{' '}
+        {res.length}
+        {res.length >= MAX_RESULTADOS ? '+' : ''}
+      </>
+    )
+  } else {
+    status = (
+      <>
+        {res.length}
+        {res.length >= MAX_RESULTADOS ? '+' : ''} {res.length === 1 ? 'resultado' : 'resultados'}
+        {res.length >= MAX_RESULTADOS && ' · refine a busca para ver outros'}
+      </>
+    )
+  }
+
   return (
-    <div className="space-y-2 rounded-lg border border-[#079C9C]/40 bg-white p-2.5">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-        <input
-          autoFocus
-          value={termo}
-          onChange={(e) => setTermo(e.target.value)}
-          onFocus={(e) => e.target.select()}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setAtivo((i) => Math.min(i + 1, Math.max(res.length - 1, 0)))
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setAtivo((i) => Math.max(i - 1, 0))
-            } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
-              e.preventDefault()
-              if (res[ativo]) onEscolher(res[ativo])
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              onFechar()
-            }
-          }}
-          placeholder="Buscar no catálogo (código, barras ou descrição) · ↑↓ Enter · Esc fecha"
-          aria-label="Buscar produto no catálogo"
-          className={`${campo} pl-9 pr-9`}
-        />
-        {buscando ? (
-          <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-slate-400" />
-        ) : (
-          <button
-            type="button"
-            onClick={onFechar}
-            aria-label="Fechar busca"
-            tabIndex={-1}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
-          >
-            <X className="size-4" />
-          </button>
-        )}
+    <div
+      ref={raiz}
+      className="overflow-hidden rounded-xl border border-[#079C9C]/50 bg-white shadow-lg"
+    >
+      {/* qual item da nota está sendo ligado */}
+      <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+        <p className="min-w-0 text-xs text-slate-600">
+          <span className="mr-1.5 font-bold uppercase tracking-wide text-slate-400">Item da nota</span>
+          <strong className="break-words text-slate-800">{nomeNota}</strong>
+          <span className="text-slate-500"> · {resumoNota}</span>
+        </p>
+        <button
+          type="button"
+          onClick={onFechar}
+          aria-label="Fechar busca"
+          tabIndex={-1}
+          className="shrink-0 rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
+      <div className="p-3 pb-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input
+            autoFocus
+            value={termo}
+            onChange={(e) => setTermo(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                ir((i) => i + 1)
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                ir((i) => i - 1)
+              } else if (e.key === 'PageDown') {
+                e.preventDefault()
+                ir((i) => i + SALTO_PAGINA)
+              } else if (e.key === 'PageUp') {
+                e.preventDefault()
+                ir((i) => i - SALTO_PAGINA)
+              } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault()
+                if (res[ativo]) onEscolher(res[ativo])
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                onFechar()
+              }
+            }}
+            placeholder="Código, código de barras ou descrição do produto"
+            aria-label="Buscar produto no catálogo"
+            role="combobox"
+            aria-expanded={res.length > 0}
+            aria-controls="aj-busca-lista"
+            aria-activedescendant={res[ativo] ? `aj-busca-${ativo}` : undefined}
+            className={`${campo} h-10 pl-9 pr-9`}
+          />
+          {buscando && (
+            <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-slate-400" />
+          )}
+        </div>
+        <p className="mt-1.5 text-xs text-slate-500">{status}</p>
       </div>
 
       {res.length > 0 && (
-        <ul className="max-h-52 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-          {res.map((p, i) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                tabIndex={-1}
-                onMouseEnter={() => setAtivo(i)}
+        <ul
+          id="aj-busca-lista"
+          ref={listaRef}
+          role="listbox"
+          className="relative max-h-[22rem] divide-y divide-slate-100 overflow-y-auto border-t border-slate-200"
+        >
+          {res.map((p, i) => {
+            const marcado = i === ativo
+            return (
+              <li
+                key={p.id}
+                id={`aj-busca-${i}`}
+                ref={(el) => {
+                  itemRefs.current[i] = el
+                }}
+                role="option"
+                aria-selected={marcado}
+                onMouseMove={() => {
+                  porTeclado.current = false
+                  setAtivo(i)
+                }}
                 onClick={() => onEscolher(p)}
-                className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition ${
-                  i === ativo ? 'bg-[#079C9C]/10' : 'hover:bg-slate-50'
+                className={`flex cursor-pointer items-center justify-between gap-3 border-l-4 px-3 py-2.5 transition-colors ${
+                  marcado ? 'border-[#079C9C] bg-[#079C9C]/10' : 'border-transparent'
                 }`}
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-900">{p.name}</span>
-                  <span className="block text-xs text-slate-500">
-                    Cód. {p.code}
-                    {p.unit ? ` · ${p.unit}` : ''}
+                  <span className="block text-sm font-semibold leading-snug text-slate-900">
+                    <Destaque texto={p.name} termo={usado || t} />
+                  </span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                    <span>
+                      Cód. <Destaque texto={String(p.code)} termo={usado || t} />
+                    </span>
+                    {p.unit && (
+                      <span className="rounded bg-slate-100 px-1.5 py-px font-semibold text-slate-600">
+                        {p.unit}
+                      </span>
+                    )}
                   </span>
                 </span>
-                {i === ativo && <span className="shrink-0 text-[11px] font-semibold text-[#047a7a]">Enter</span>}
-              </button>
-            </li>
-          ))}
+                {marcado && (
+                  <span className="shrink-0 rounded border border-[#079C9C]/40 bg-white px-1.5 py-0.5 text-[11px] font-semibold text-[#047a7a]">
+                    Enter
+                  </span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
+
+      <p className="border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-500">
+        <Kbd>↑</Kbd> <Kbd>↓</Kbd> navegar · <Kbd>PgUp</Kbd> <Kbd>PgDn</Kbd> pular {SALTO_PAGINA} ·{' '}
+        <Kbd>Enter</Kbd> escolher · <Kbd>Esc</Kbd> fechar
+      </p>
     </div>
   )
 }
@@ -1129,9 +1333,11 @@ function Conteudo({
                       </div>
 
                       {buscandoKey === k && (
-                        <div className="mt-2 pl-11">
+                        <div className="mt-2">
                           <BuscaCatalogo
                             inicial={n.nome}
+                            nomeNota={n.nome}
+                            resumoNota={`${numeroTexto(n.quantidade)}${n.unidade ? ` ${n.unidade}` : ''} × ${reais4(n.preco)}`}
                             onFechar={() => fecharBusca(k)}
                             onEscolher={(prod) => {
                               setNovo(k, {
