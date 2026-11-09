@@ -752,7 +752,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
                     return (
                       <li
                         key={i.id}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 px-4 py-3 xl:grid-cols-[4.5rem_minmax(0,1fr)_6rem_6.5rem_6rem] xl:items-center"
+                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 px-4 py-3 transition-colors hover:bg-slate-50 xl:grid-cols-[4.5rem_minmax(0,1fr)_6rem_6.5rem_6rem] xl:items-center"
                       >
                         <span className="hidden text-sm font-bold text-[#079C9C] xl:block">
                           {numeroTexto(i.quantidade)}
