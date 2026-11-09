@@ -710,7 +710,8 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
         <Etapas pedido={pedido} />
       </Cartao>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
+      {/* duas colunas (principal + lateral) só em telas bem largas (xl) */}
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
         {/* ---------- coluna principal ---------- */}
         <div className="min-w-0 space-y-5">
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -730,7 +731,8 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
               </p>
             ) : (
               <>
-                <div className="hidden grid-cols-[6rem_minmax(0,1fr)_7rem_8rem_7rem] gap-x-3 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 md:grid">
+                {/* cabeçalho da tabela: só aparece em telas largas (xl) */}
+                <div className="hidden grid-cols-[4.5rem_minmax(0,1fr)_6rem_6.5rem_6rem] gap-x-3 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 xl:grid">
                   <span>Qtd</span>
                   <span>Item</span>
                   <span className="text-right">Preço un.</span>
@@ -750,16 +752,16 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
                     return (
                       <li
                         key={i.id}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 px-4 py-3 md:grid-cols-[6rem_minmax(0,1fr)_7rem_8rem_7rem] md:items-center"
+                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 px-4 py-3 xl:grid-cols-[4.5rem_minmax(0,1fr)_6rem_6.5rem_6rem] xl:items-center"
                       >
-                        <span className="hidden text-sm font-bold text-[#079C9C] md:block">
+                        <span className="hidden text-sm font-bold text-[#079C9C] xl:block">
                           {numeroTexto(i.quantidade)}
                           {un}
                         </span>
 
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-900">{i.produto_nome}</p>
-                          <p className="text-xs text-slate-500 md:hidden">
+                          <p className="break-words text-sm font-medium text-slate-900">{i.produto_nome}</p>
+                          <p className="text-xs text-slate-500 xl:hidden">
                             {numeroTexto(i.quantidade)}
                             {un} × {reais4(i.preco_unitario)}
                           </p>
@@ -767,7 +769,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
                             <p className="text-xs text-slate-400">Cód. {i.produto_codigo}</p>
                           )}
                           {i.quantidade_recebida > 0 && (
-                            <p className={`text-xs font-semibold md:hidden ${corRecebido}`}>
+                            <p className={`text-xs font-semibold xl:hidden ${corRecebido}`}>
                               Recebido {textoRecebido}
                             </p>
                           )}
@@ -778,19 +780,19 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
                           )}
                         </div>
 
-                        <span className="hidden text-right text-sm text-slate-600 md:block">
+                        <span className="hidden text-right text-sm text-slate-600 xl:block">
                           {reais4(i.preco_unitario)}
                         </span>
 
                         <span
-                          className={`hidden text-right text-xs font-semibold md:block ${
+                          className={`hidden text-right text-xs font-semibold xl:block ${
                             i.quantidade_recebida > 0 ? corRecebido : 'text-slate-300'
                           }`}
                         >
                           {i.quantidade_recebida > 0 ? textoRecebido : '—'}
                         </span>
 
-                        <span className="self-start text-right text-sm font-semibold text-slate-900 md:self-auto">
+                        <span className="self-start whitespace-nowrap text-right text-sm font-semibold text-slate-900 xl:self-auto">
                           {reais(i.subtotal)}
                         </span>
                       </li>
@@ -814,7 +816,7 @@ export default function PedidoCompraPagina({ id }: { id: string }) {
         </div>
 
         {/* ---------- coluna lateral ---------- */}
-        <aside className="min-w-0 space-y-5 lg:sticky lg:top-28">
+        <aside className="min-w-0 space-y-5 xl:sticky xl:top-28">
           <Cartao titulo="Valores">
             <div className="space-y-1">
               {itens && <Linha rotulo="Subtotal" valor={reais(soma)} />}
