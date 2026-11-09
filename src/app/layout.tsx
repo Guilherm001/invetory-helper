@@ -1,14 +1,8 @@
 ﻿import type { Metadata, Viewport } from "next";
+import { Suspense, cache } from "react";
 import Link from "next/link";
 import "./globals.css";
-import {
-  FileText,
-  Truck,
-  ClipboardCheck,
-  HardHat,
-  BarChart3,
-  Settings,
-} from "lucide-react";
+import { Settings } from "lucide-react";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { LogoutButton } from "@/features/logout/logout-button";
 import { NavLinks } from "@/features/nav/nav-links";
@@ -27,21 +21,43 @@ export const viewport: Viewport = {
 };
 
 // ideias para o futuro (ainda sem página)
-const EM_BREVE = [
-  { label: "Configurações", icon: Settings },
-];
+const EM_BREVE = [{ label: "Configurações", icon: Settings }];
 
 function nomeDoUsuario(user: {
-  email?: string
-  user_metadata?: Record<string, unknown>
+  email?: string;
+  user_metadata?: Record<string, unknown>;
 }) {
-  const meta = user.user_metadata ?? {}
+  const meta = user.user_metadata ?? {};
   const nome =
     (typeof meta.full_name === "string" && meta.full_name.trim()) ||
     (typeof meta.name === "string" && meta.name.trim()) ||
     user.email?.split("@")[0] ||
-    ""
-  return nome
+    "";
+  return nome;
+}
+
+// cache() do React: a consulta roda no máximo 1x por requisição,
+// mesmo que mais de um componente peça a informação
+const getEhDono = cache(async (userId: string) => {
+  const supabase = await createSupabaseServer();
+  const { data: perfil } = await supabase
+    .from("perfis")
+    .select("papel")
+    .eq("id", userId)
+    .maybeSingle();
+  return perfil?.papel === "dono";
+});
+
+// Esses dois componentes esperam a consulta do perfil, mas dentro de <Suspense>:
+// o resto da página (header, conteúdo) não fica bloqueado esperando por ela.
+async function MenuLateral({ userId }: { userId: string }) {
+  const ehDono = await getEhDono(userId);
+  return <NavLinks ehDono={ehDono} />;
+}
+
+async function MenuMobile({ userId, nome }: { userId: string; nome: string }) {
+  const ehDono = await getEhDono(userId);
+  return <MobileNav ehDono={ehDono} nome={nome} logout={<LogoutButton />} />;
 }
 
 export default async function RootLayout({
@@ -50,22 +66,22 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  const nome = user ? nomeDoUsuario(user) : ""
+  // getClaims() valida o JWT localmente (sem ir à rede do Supabase) quando o
+  // projeto usa chaves de assinatura assimétricas. Aqui serve só para a UI;
+  // a proteção real das rotas fica no proxy + RLS/ações.
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
 
-  // só o dono vê o link "Equipe"
-  let ehDono = false
-  if (user) {
-    const { data: perfil } = await supabase
-      .from("perfis")
-      .select("papel")
-      .eq("id", user.id)
-      .maybeSingle()
-    ehDono = perfil?.papel === "dono"
-  }
+  const userId = claims?.sub ?? null;
+  const nome = claims
+    ? nomeDoUsuario({
+        email: typeof claims.email === "string" ? claims.email : undefined,
+        user_metadata:
+          (claims.user_metadata as Record<string, unknown> | undefined) ??
+          undefined,
+      })
+    : "";
 
   return (
     <html lang="pt-BR">
@@ -74,7 +90,7 @@ export default async function RootLayout({
           <header className="sticky top-0 z-20 border-b border-gray-200 bg-white pt-[env(safe-area-inset-top)]">
             <div className="flex items-center justify-between">
               <Link
-                href={user ? "/loja" : "/"}
+                href={userId ? "/loja" : "/"}
                 className="px-4 py-1.5 md:px-6 md:py-1"
               >
                 <img
@@ -84,7 +100,7 @@ export default async function RootLayout({
                 />
               </Link>
 
-              {user && (
+              {userId && (
                 <div className="flex min-w-0 items-center gap-3 pr-4 md:pr-8">
                   {nome && (
                     <span
@@ -107,12 +123,16 @@ export default async function RootLayout({
 
           <div className="flex min-h-0 flex-1">
             {/* só no desktop: sidebar com os links */}
-            {user && (
+            {userId && (
               <aside className="hidden w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-slate-50 p-4 md:block">
                 <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Menu
                 </p>
-                <NavLinks ehDono={ehDono} />
+
+                {/* enquanto o papel carrega, mostra o menu sem o link "Equipe" */}
+                <Suspense fallback={<NavLinks ehDono={false} />}>
+                  <MenuLateral userId={userId} />
+                </Suspense>
 
                 {/* ideias para o futuro */}
                 <div className="mt-6 border-t border-slate-200 pt-4">
@@ -142,7 +162,19 @@ export default async function RootLayout({
           </div>
 
           {/* só no celular: barra de baixo com o "Mais" */}
-          {user && <MobileNav ehDono={ehDono} nome={nome} logout={<LogoutButton />} />}
+          {userId && (
+            <Suspense
+              fallback={
+                <MobileNav
+                  ehDono={false}
+                  nome={nome}
+                  logout={<LogoutButton />}
+                />
+              }
+            >
+              <MenuMobile userId={userId} nome={nome} />
+            </Suspense>
+          )}
         </main>
       </body>
     </html>

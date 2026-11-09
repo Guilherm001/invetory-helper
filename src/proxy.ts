@@ -57,10 +57,12 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // getUser() valida o token no Supabase e renova a sessão se precisar
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims() valida a assinatura do JWT localmente (sem chamada de rede
+  // a cada clique) e renova a sessão quando o token está perto de expirar.
+  // Se o projeto ainda usa a chave legada (HS256), ele cai automaticamente
+  // para a validação via rede, então nada quebra.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims ?? null
 
   const { pathname } = request.nextUrl
   const isProtected = PROTEGIDAS.some(
