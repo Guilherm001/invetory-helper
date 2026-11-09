@@ -57,20 +57,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.7,
     borderBottomColor: LINHA,
   },
-  colQtd: { width: 80, fontFamily: 'Helvetica-Bold' },
+  colNum: { width: 32, fontFamily: 'Helvetica-Bold', fontSize: 11, color: VERDE },
   colItem: { flex: 1, paddingRight: 12 },
+  colQtd: { width: 75, fontFamily: 'Helvetica-Bold' },
   colPreco: { width: 95, alignItems: 'flex-end' },
   campoPreco: { width: 85, height: 13, borderBottomWidth: 0.7, borderBottomColor: LINHA_PREENCHER },
-
-  // ---------- resposta do fornecedor ----------
-  resposta: { marginTop: 30 },
-  respostaTitulo: { fontFamily: 'Helvetica-Bold', fontSize: 8, color: CINZA, marginBottom: 14 },
-  respostaLinha: { flexDirection: 'row', marginBottom: 18 },
-  campo: { flex: 1 },
-  campoGap: { width: 20 },
-  campoRotulo: { fontSize: 9, color: CINZA },
-  campoLinha: { height: 16, borderBottomWidth: 0.7, borderBottomColor: LINHA_PREENCHER },
-  campoLinhaObs: { height: 20, borderBottomWidth: 0.7, borderBottomColor: LINHA_PREENCHER },
 
   // ---------- rodapé ----------
   footer: {
@@ -129,46 +120,25 @@ export default function CotacaoPdf({ data }: { data: CotacaoData }) {
 
         {/* tabela */}
         <View style={styles.thead} fixed>
-          <Text style={[styles.th, { width: 80 }]}>QTD</Text>
+          <Text style={[styles.th, { width: 32 }]}>Nº</Text>
           <Text style={[styles.th, { flex: 1 }]}>ITEM</Text>
+          <Text style={[styles.th, { width: 75 }]}>QTD</Text>
           <Text style={[styles.th, { width: 95, textAlign: 'right' }]}>PREÇO UN.</Text>
         </View>
 
         {data.itens.map((item, i) => (
           <View key={i} style={styles.row} wrap={false}>
+            <Text style={styles.colNum}>{i + 1}</Text>
+            <Text style={styles.colItem}>{item.name}</Text>
             <Text style={styles.colQtd}>
               {item.quantity}
               {item.unit ? ` ${item.unit}` : ''}
             </Text>
-            <Text style={styles.colItem}>{item.name}</Text>
             <View style={styles.colPreco}>
               <View style={styles.campoPreco} />
             </View>
           </View>
         ))}
-
-        {/* resposta do fornecedor */}
-        <View style={styles.resposta} wrap={false}>
-          <Text style={styles.respostaTitulo}>RESPOSTA DO FORNECEDOR</Text>
-
-          <View style={styles.respostaLinha}>
-            <View style={styles.campo}>
-              <Text style={styles.campoRotulo}>Prazo de entrega</Text>
-              <View style={styles.campoLinha} />
-            </View>
-            <View style={styles.campoGap} />
-            <View style={styles.campo}>
-              <Text style={styles.campoRotulo}>Condição de pagamento</Text>
-              <View style={styles.campoLinha} />
-            </View>
-          </View>
-
-          <View>
-            <Text style={styles.campoRotulo}>Observações</Text>
-            <View style={styles.campoLinhaObs} />
-            <View style={styles.campoLinhaObs} />
-          </View>
-        </View>
 
         {/* rodapé */}
         <View style={styles.footer} fixed>
