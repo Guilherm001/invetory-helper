@@ -54,10 +54,12 @@ const inputClass =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 md:text-sm'
 
 const celula =
-  'h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-base outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/30 md:text-sm'
+  'h-9 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 text-base outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/30 md:text-sm'
 
-const LINHA =
-  'grid grid-cols-[1fr_1fr_auto] items-center gap-x-2 gap-y-1.5 md:grid-cols-[minmax(0,1fr)_6.5rem_7.5rem_6.5rem_4.5rem]'
+// Colunas (desktop): item | qtd | preço un. | subtotal | ações
+// No celular: nome em linha própria, qtd e preço lado a lado, subtotal + ações embaixo.
+const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_7rem_8rem_7rem_6.5rem]'
+const LINHA = `grid grid-cols-2 items-center gap-x-2 gap-y-1.5 ${COLUNAS}`
 
 const CONDICOES = ['À vista', '7 dias', '14 dias', '28 dias', '30/60 dias']
 
@@ -79,12 +81,28 @@ interface ItemForm {
   codigo: string
   nome: string
   unidade: string | null
-  qtd: string
+  qtd: string // em UNIDADES; se "emCaixas" estiver ligado, em CAIXAS
   preco: string // preço da unidade; se "porCaixa" estiver preenchido, é o preço da CAIXA
   porCaixa: string // unidades por caixa ('' = preço já é por unidade)
   caixaAberta: boolean
+  emCaixas: boolean // true = a quantidade digitada está em CAIXAS
   obs: string
   obsAberta: boolean
+}
+
+function novoItemForm(base: Partial<ItemForm> & Pick<ItemForm, 'key' | 'nome'>): ItemForm {
+  return {
+    codigo: '',
+    unidade: null,
+    qtd: '1',
+    preco: '',
+    porCaixa: '',
+    caixaAberta: false,
+    emCaixas: false,
+    obs: '',
+    obsAberta: false,
+    ...base,
+  }
 }
 
 // preço de 1 unidade, sem arredondar e sem desconto (null = preço inválido/vazio)
@@ -101,8 +119,16 @@ function precoFinal(i: ItemForm, fator: number): number | null {
   return b === null ? null : arredonda(b * fator)
 }
 
-function subtotalDe(i: ItemForm, fator: number) {
+// quantidade em UNIDADES (converte se estiver no modo "em caixas")
+function qtdUnidades(i: ItemForm): number {
   const q = paraNumero(i.qtd)
+  if (!Number.isFinite(q)) return q
+  const n = paraNumero(i.porCaixa)
+  return i.emCaixas && Number.isFinite(n) && n > 0 ? Math.round(q * n * 1000) / 1000 : q
+}
+
+function subtotalDe(i: ItemForm, fator: number) {
+  const q = qtdUnidades(i)
   const p = precoFinal(i, fator)
   return Number.isFinite(q) && q > 0 && p !== null ? arredonda(q * p) : 0
 }
@@ -172,18 +198,17 @@ function Conteudo({
   const [limiteBusca, setLimiteBusca] = useState(30)
 
   const [itens, setItens] = useState<ItemForm[]>(() =>
-    inicial.itens.map((i) => ({
-      key: ++contador.current,
-      codigo: i.codigo,
-      nome: i.nome,
-      unidade: i.unidade,
-      qtd: qtdTexto(i.quantidade),
-      preco: i.preco > 0 ? precoTexto(i.preco) : '',
-      porCaixa: '',
-      caixaAberta: false,
-      obs: i.observacao,
-      obsAberta: false,
-    }))
+    inicial.itens.map((i) =>
+      novoItemForm({
+        key: ++contador.current,
+        codigo: i.codigo,
+        nome: i.nome,
+        unidade: i.unidade,
+        qtd: qtdTexto(i.quantidade),
+        preco: i.preco > 0 ? precoTexto(i.preco) : '',
+        obs: i.observacao,
+      })
+    )
   )
 
   // busca de produtos
@@ -327,7 +352,7 @@ function Conteudo({
   // só pergunta antes de fechar se algo mudou
   const snapshot = JSON.stringify([
     ref, nome, contato, prazo, condicao, previsao, frete, desconto, modoDesconto, obs,
-    itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.porCaixa, i.obs]),
+    itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.porCaixa, i.emCaixas, i.obs]),
   ])
   const [snapshotInicial] = useState(snapshot)
   useEffect(() => {
@@ -379,47 +404,31 @@ function Conteudo({
     } else {
       const key = ++contador.current
       setItens((prev) => [
-        {
+        // o preço de compra é digitado: o do catálogo é o de venda
+        novoItemForm({
           key,
           codigo: p.code,
           nome: p.name,
           unidade: p.unit,
           qtd: qtdTexto(quantidade),
-          preco: '', // o preço de compra é digitado: o do catálogo é o de venda
-          porCaixa: '',
-          caixaAberta: false,
-          obs: '',
-          obsAberta: false,
-        },
+        }),
         ...prev,
       ])
       setFoco({ key, c: informou ? 2 : 1 })
     }
     setTermo('')
     setResultados([])
+    setLimiteBusca(30)
   }
 
   const adicionarAvulso = (nomeItem: string, quantidade: number, informou: boolean) => {
     setErro('')
     const key = ++contador.current
-    setItens((prev) => [
-      {
-        key,
-        codigo: '',
-        nome: nomeItem,
-        unidade: null,
-        qtd: qtdTexto(quantidade),
-        preco: '',
-        porCaixa: '',
-        caixaAberta: false,
-        obs: '',
-        obsAberta: false,
-      },
-      ...prev,
-    ])
+    setItens((prev) => [novoItemForm({ key, nome: nomeItem, qtd: qtdTexto(quantidade) }), ...prev])
     setFoco({ key, c: informou ? 2 : 1 })
     setTermo('')
     setResultados([])
+    setLimiteBusca(30)
   }
 
   // Enter: adiciona o resultado destacado; sem resultado, entra como item avulso
@@ -543,7 +552,7 @@ function Conteudo({
 
     const lista: ItemEntrada[] = []
     for (const i of itens) {
-      const q = paraNumero(i.qtd)
+      const q = qtdUnidades(i) // já convertida para unidades
       const p = precoFinal(i, fator) // já com o desconto aplicado no item
       if (i.nome.trim() === '') {
         setErro('Há um item sem nome.')
@@ -636,26 +645,26 @@ function Conteudo({
 
   return (
     <div onKeyDown={global} className="flex min-h-0 flex-1 flex-col">
-      <DialogHeader className="shrink-0 bg-[#079C9C] px-6 py-3.5 text-left">
+      <DialogHeader className="shrink-0 bg-[#079C9C] py-3.5 pl-6 pr-12 text-left">
         <div className="flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
             <ClipboardCheck className="size-5 text-white" />
           </div>
           <div className="min-w-0">
-            <DialogTitle className="text-lg font-bold text-white">
+            <DialogTitle className="truncate text-lg font-bold text-white">
               {editando ? 'Editar pedido de compra' : 'Novo pedido de compra'}
             </DialogTitle>
-            <DialogDescription className="text-sm text-white/80">
+            <DialogDescription className="truncate text-sm text-white/80">
               {d.comparacao_nome ? `Da comparação ${d.comparacao_nome}` : 'Fornecedor, itens e prazo de entrega'}
             </DialogDescription>
           </div>
         </div>
       </DialogHeader>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 md:px-6">
         {/* fornecedor e entrega */}
-        <section className="grid gap-3 md:grid-cols-3">
-          <Campo id="pc-nome" label="Fornecedor" className="md:col-span-2">
+        <section className="grid gap-3 md:grid-cols-12">
+          <Campo id="pc-nome" label="Fornecedor" className="md:col-span-6">
             <input
               id="pc-nome"
               list="pc-fornecedores"
@@ -685,7 +694,7 @@ function Conteudo({
             )}
           </Campo>
 
-          <Campo id="pc-previsao" label="Previsão de entrega">
+          <Campo id="pc-previsao" label="Previsão de entrega" className="md:col-span-3">
             <input
               id="pc-previsao"
               type="date"
@@ -701,42 +710,7 @@ function Conteudo({
             />
           </Campo>
 
-          <Campo id="pc-condicao" label="Condição de pagamento" className="md:col-span-2">
-            <input
-              id="pc-condicao"
-              value={condicao}
-              onChange={(e) => setCondicao(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
-                  e.preventDefault()
-                  buscaRef.current?.focus()
-                }
-              }}
-              maxLength={60}
-              autoComplete="off"
-              placeholder="Ex: 28 dias"
-              className={inputClass}
-            />
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {CONDICOES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => setCondicao(c)}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                    condicao === c
-                      ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
-                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </Campo>
-
-          <Campo id="pc-prazo" label="Prazo do fornecedor (dias)">
+          <Campo id="pc-prazo" label="Prazo do fornecedor (dias)" className="md:col-span-3">
             <input
               id="pc-prazo"
               value={prazo}
@@ -745,6 +719,43 @@ function Conteudo({
               autoComplete="off"
               className={inputClass}
             />
+          </Campo>
+
+          <Campo id="pc-condicao" label="Condição de pagamento" className="md:col-span-12">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <input
+                id="pc-condicao"
+                value={condicao}
+                onChange={(e) => setCondicao(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault()
+                    buscaRef.current?.focus()
+                  }
+                }}
+                maxLength={60}
+                autoComplete="off"
+                placeholder="Ex: 28 dias"
+                className={`${inputClass} md:max-w-xs`}
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {CONDICOES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setCondicao(c)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                      condicao === c
+                        ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
           </Campo>
         </section>
 
@@ -762,7 +773,10 @@ function Conteudo({
             <input
               ref={buscaRef}
               value={termo}
-              onChange={(e) => setTermo(e.target.value)}
+              onChange={(e) => {
+                setTermo(e.target.value)
+                setLimiteBusca(30)
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
                   e.preventDefault()
@@ -828,7 +842,7 @@ function Conteudo({
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-slate-900">{p.name}</span>
-                        <span className="block text-xs text-slate-500">
+                        <span className="block truncate text-xs text-slate-500">
                           Cód. {p.code}
                           {p.unit ? ` · ${p.unit}` : ''}
                         </span>
@@ -863,7 +877,7 @@ function Conteudo({
           )}
 
           {itens.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white py-8 text-center">
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
               <ClipboardCheck className="size-7 text-slate-300" />
               <p className="text-sm text-slate-500">
                 Nenhum item ainda. Digite na busca acima e aperte <Kbd>Enter</Kbd>. Se não achar no
@@ -873,7 +887,7 @@ function Conteudo({
           ) : (
             <div ref={tabelaRef} className="space-y-1.5">
               <div
-                className={`${LINHA} hidden px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 md:grid`}
+                className={`hidden px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400 md:grid md:items-center md:gap-x-2 ${COLUNAS}`}
               >
                 <span>Item</span>
                 <span className="text-right">Qtd</span>
@@ -893,9 +907,15 @@ function Conteudo({
 
                   const nPorCaixa = paraNumero(i.porCaixa)
                   const emCaixa = Number.isFinite(nPorCaixa) && nPorCaixa > 0
+                  const modoCaixas = emCaixa && i.emCaixas
                   const qtdNum = paraNumero(i.qtd)
+                  const unidadesTotal = qtdUnidades(i)
                   const caixas =
-                    emCaixa && Number.isFinite(qtdNum) && qtdNum > 0 ? qtdNum / nPorCaixa : null
+                    emCaixa && Number.isFinite(qtdNum) && qtdNum > 0
+                      ? modoCaixas
+                        ? qtdNum
+                        : qtdNum / nPorCaixa
+                      : null
 
                   return (
                     <li
@@ -913,10 +933,10 @@ function Conteudo({
                           value={i.nome}
                           onChange={(e) => alterar(i.key, { nome: e.target.value })}
                           aria-label="Nome do item"
-                          className={`${celula} col-span-3 font-semibold md:col-span-1`}
+                          className={`${celula} col-span-2 font-semibold md:col-span-1`}
                         />
 
-                        <div className="relative">
+                        <div className="relative min-w-0">
                           <input
                             data-cell=""
                             data-key={i.key}
@@ -927,17 +947,17 @@ function Conteudo({
                             value={i.qtd}
                             onChange={(e) => alterar(i.key, { qtd: e.target.value })}
                             inputMode="decimal"
-                            aria-label={`Quantidade de ${i.nome}`}
-                            className={`${celula} text-right ${i.unidade ? 'pr-9' : ''}`}
+                            aria-label={`${modoCaixas ? 'Quantidade em caixas de' : 'Quantidade de'} ${i.nome}`}
+                            className={`${celula} text-right ${i.unidade || modoCaixas ? 'pr-9' : ''}`}
                           />
-                          {i.unidade && (
-                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
-                              {i.unidade}
+                          {(modoCaixas || i.unidade) && (
+                            <span className="pointer-events-none absolute right-2 top-1/2 max-w-[2rem] -translate-y-1/2 truncate text-[11px] text-slate-400">
+                              {modoCaixas ? 'cx' : i.unidade}
                             </span>
                           )}
                         </div>
 
-                        <div className="relative">
+                        <div className="relative min-w-0">
                           <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
                             R$
                           </span>
@@ -959,11 +979,11 @@ function Conteudo({
                           />
                         </div>
 
-                        <div className="col-span-3 flex items-center justify-between gap-2 md:contents">
-                          <span className="text-base font-bold text-slate-900 md:text-right md:text-sm">
+                        <div className="col-span-2 flex items-center justify-between gap-2 md:contents">
+                          <span className="min-w-0 truncate text-base font-bold text-slate-900 md:text-right md:text-sm">
                             {reais(subtotalDe(i, fator))}
                           </span>
-                          <div className="flex justify-end gap-0.5">
+                          <div className="flex shrink-0 justify-end gap-0.5">
                             <button
                               type="button"
                               tabIndex={-1}
@@ -1004,7 +1024,7 @@ function Conteudo({
 
                       {(i.caixaAberta || emCaixa) && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
-                          <Package className="size-3.5 text-slate-400" />
+                          <Package className="size-3.5 shrink-0 text-slate-400" />
                           <label htmlFor={`pc-cx-${i.key}`}>Caixa com</label>
                           <input
                             id={`pc-cx-${i.key}`}
@@ -1022,7 +1042,7 @@ function Conteudo({
                             inputMode="numeric"
                             autoComplete="off"
                             placeholder="12"
-                            className={`${celula} w-16 text-right`}
+                            className={`${celula} !w-16 text-right`}
                           />
                           <span>un.</span>
                           {[12, 24].map((n) => (
@@ -1040,27 +1060,48 @@ function Conteudo({
                               {n}
                             </button>
                           ))}
-                          <span className="text-slate-500">
-                            {emCaixa
-                              ? `Preço acima é o da caixa; a quantidade é em unidades${
-                                  preco !== null ? ` → ${reais(preco)} por un.` : ''
-                                }${
-                                  caixas !== null
-                                    ? ` · ${qtdTexto(caixas)} ${caixas === 1 ? 'caixa' : 'caixas'}`
-                                    : ''
-                                }`
-                              : 'Informe quantas unidades vêm na caixa'}
-                          </span>
+
+                          {emCaixa && (
+                            <label className="flex cursor-pointer items-center gap-1.5 font-medium text-slate-700">
+                              <input
+                                type="checkbox"
+                                tabIndex={-1}
+                                checked={i.emCaixas}
+                                onChange={(e) => alterar(i.key, { emCaixas: e.target.checked })}
+                                className="size-3.5 accent-[#079C9C]"
+                              />
+                              Quantidade em caixas
+                            </label>
+                          )}
+
                           {emCaixa && (
                             <button
                               type="button"
                               tabIndex={-1}
-                              onClick={() => alterar(i.key, { porCaixa: '', caixaAberta: false })}
+                              onClick={() =>
+                                alterar(i.key, { porCaixa: '', caixaAberta: false, emCaixas: false })
+                              }
                               className="ml-auto font-semibold text-slate-500 hover:text-red-600"
                             >
                               Remover caixa
                             </button>
                           )}
+
+                          <span className="basis-full text-slate-500">
+                            {!emCaixa
+                              ? 'Informe quantas unidades vêm na caixa'
+                              : modoCaixas
+                                ? `${qtdTexto(Number.isFinite(qtdNum) ? qtdNum : 0)} cx × ${nPorCaixa} = ${qtdTexto(
+                                    Number.isFinite(unidadesTotal) ? unidadesTotal : 0
+                                  )} un.${preco !== null ? ` · ${reais(preco)} por un.` : ''} (preço acima é o da caixa)`
+                                : `Preço acima é o da caixa; a quantidade é em unidades${
+                                    preco !== null ? ` → ${reais(preco)} por un.` : ''
+                                  }${
+                                    caixas !== null
+                                      ? ` · ${qtdTexto(caixas)} ${caixas === 1 ? 'caixa' : 'caixas'}`
+                                      : ''
+                                  }`}
+                          </span>
                         </div>
                       )}
 
@@ -1123,7 +1164,11 @@ function Conteudo({
                 Desconto
               </label>
               <div className="flex items-center gap-1.5">
-                <div role="group" aria-label="Tipo de desconto" className="flex overflow-hidden rounded-md border border-slate-200 bg-white">
+                <div
+                  role="group"
+                  aria-label="Tipo de desconto"
+                  className="flex overflow-hidden rounded-md border border-slate-200 bg-white"
+                >
                   {(['valor', 'pct'] as const).map((m) => (
                     <button
                       key={m}
@@ -1158,7 +1203,7 @@ function Conteudo({
                   inputMode="decimal"
                   autoComplete="off"
                   placeholder={modoDesconto === 'pct' ? '0 %' : '0,00'}
-                  className={`${celula} w-24 text-right ${descontoInvalido ? 'border-red-300 bg-red-50' : ''}`}
+                  className={`${celula} !w-24 text-right ${descontoInvalido ? 'border-red-300 bg-red-50' : ''}`}
                 />
               </div>
             </div>
@@ -1186,7 +1231,7 @@ function Conteudo({
                 inputMode="decimal"
                 autoComplete="off"
                 placeholder="0,00"
-                className={`${celula} w-28 text-right`}
+                className={`${celula} !w-28 text-right`}
               />
             </div>
           </div>
@@ -1212,7 +1257,7 @@ function Conteudo({
           </button>
 
           {maisAberto && (
-            <div className="space-y-3 border-t border-slate-100 p-3">
+            <div className="grid gap-3 border-t border-slate-100 p-3 md:grid-cols-2">
               <Campo id="pc-contato" label="Contato do fornecedor">
                 <input
                   id="pc-contato"
@@ -1244,16 +1289,16 @@ function Conteudo({
         {erro && (
           <p
             role="alert"
-            className="flex items-start gap-2 border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-600"
+            className="flex items-start gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 md:px-6"
           >
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
             {erro}
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-3 px-6 py-3">
-          <div>
-            <p className="text-xs text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
+          <div className="min-w-0">
+            <p className="truncate text-xs text-slate-500">
               {previsao ? `Entrega prevista ${dataCurta(previsao)} · ` : ''}Total
             </p>
             <p className="text-2xl font-bold text-[#079C9C]">{reais(total)}</p>
@@ -1274,7 +1319,7 @@ function Conteudo({
               type="button"
               onClick={salvar}
               disabled={salvando}
-              className="min-w-40 gap-2 bg-[#079C9C] text-white shadow-sm hover:bg-[#079C9C]/90"
+              className="gap-2 bg-[#079C9C] text-white shadow-sm hover:bg-[#079C9C]/90 sm:min-w-44"
             >
               {salvando ? (
                 <>
@@ -1284,7 +1329,7 @@ function Conteudo({
               ) : (
                 <>
                   {editando ? 'Salvar alterações' : 'Salvar pedido'}
-                  <span className="text-[10px] text-white/70">Ctrl+Enter</span>
+                  <span className="hidden text-[10px] text-white/70 md:inline">Ctrl+Enter</span>
                 </>
               )}
             </Button>
@@ -1333,7 +1378,7 @@ export default function PedidoCompraDialog({
           // com texto na busca de itens, o Esc só limpa a busca
           if (esc.current) e.preventDefault()
         }}
-        className="top-[3%] flex max-h-[94dvh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[900px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100"
+        className="top-[3%] flex max-h-[94dvh] w-[calc(100%-1rem)] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[1120px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100"
       >
         {open && (
           <Conteudo
