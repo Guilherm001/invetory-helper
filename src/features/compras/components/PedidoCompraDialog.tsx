@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Loader2,
+  Package,
   Search,
   StickyNote,
   TrendingDown,
@@ -60,6 +61,8 @@ const LINHA =
 
 const CONDICOES = ['À vista', '7 dias', '14 dias', '28 dias', '30/60 dias']
 
+type ModoDesconto = 'valor' | 'pct'
+
 // "10 cimento" ou "10x cimento" -> quantidade 10
 function interpretar(texto: string): { nome: string; quantidade: number; informou: boolean } {
   const t = texto.trim()
@@ -77,17 +80,31 @@ interface ItemForm {
   nome: string
   unidade: string | null
   qtd: string
-  preco: string
+  preco: string // preço da unidade; se "porCaixa" estiver preenchido, é o preço da CAIXA
+  porCaixa: string // unidades por caixa ('' = preço já é por unidade)
+  caixaAberta: boolean
   obs: string
   obsAberta: boolean
 }
 
-function subtotalDe(i: ItemForm) {
-  const q = paraNumero(i.qtd)
+// preço de 1 unidade, sem arredondar e sem desconto (null = preço inválido/vazio)
+function precoBase(i: ItemForm): number | null {
   const p = lerPreco(i.preco)
-  return Number.isFinite(q) && q > 0 && p !== null && Number.isFinite(p) && p >= 0
-    ? arredonda(q * p)
-    : 0
+  if (p === null || !Number.isFinite(p) || p < 0) return null
+  const n = paraNumero(i.porCaixa)
+  return Number.isFinite(n) && n > 0 ? p / n : p
+}
+
+// preço final de 1 unidade (é o que vai para o pedido), já com o fator de desconto
+function precoFinal(i: ItemForm, fator: number): number | null {
+  const b = precoBase(i)
+  return b === null ? null : arredonda(b * fator)
+}
+
+function subtotalDe(i: ItemForm, fator: number) {
+  const q = paraNumero(i.qtd)
+  const p = precoFinal(i, fator)
+  return Number.isFinite(q) && q > 0 && p !== null ? arredonda(q * p) : 0
 }
 
 function Campo({
@@ -149,6 +166,7 @@ function Conteudo({
   const [previsao, setPrevisao] = useState(d.previsao_entrega ?? '')
   const [frete, setFrete] = useState(d.frete > 0 ? precoTexto(d.frete) : '')
   const [desconto, setDesconto] = useState(d.desconto > 0 ? precoTexto(d.desconto) : '')
+  const [modoDesconto, setModoDesconto] = useState<ModoDesconto>('valor')
   const [obs, setObs] = useState(d.observacao ?? '')
   const [maisAberto, setMaisAberto] = useState(!!(d.fornecedor_contato || d.observacao))
   const [limiteBusca, setLimiteBusca] = useState(30)
@@ -161,6 +179,8 @@ function Conteudo({
       unidade: i.unidade,
       qtd: qtdTexto(i.quantidade),
       preco: i.preco > 0 ? precoTexto(i.preco) : '',
+      porCaixa: '',
+      caixaAberta: false,
       obs: i.observacao,
       obsAberta: false,
     }))
@@ -274,18 +294,40 @@ function Conteudo({
     setFoco(null)
   }, [foco, itens])
 
-  // totais
-  const soma = arredonda(itens.reduce((s, i) => s + subtotalDe(i), 0))
+  // ---------- totais e desconto ----------
+
+  // soma dos itens SEM desconto
+  const bruto = arredonda(itens.reduce((s, i) => s + subtotalDe(i, 1), 0))
+
   const freteNum = frete.trim() === '' ? 0 : (lerPreco(frete) ?? 0)
-  const descontoNum = desconto.trim() === '' ? 0 : (lerPreco(desconto) ?? 0)
-  const total = arredonda(
-    soma + (Number.isFinite(freteNum) ? freteNum : 0) - (Number.isFinite(descontoNum) ? descontoNum : 0)
-  )
+
+  // desconto digitado: em % ou em R$ (nulo = inválido)
+  const descontoDigitado: number | null = (() => {
+    if (desconto.trim() === '') return 0
+    const v = modoDesconto === 'pct' ? paraNumero(desconto) : lerPreco(desconto)
+    return v === null || !Number.isFinite(v) || v < 0 ? null : v
+  })()
+
+  const descontoInvalido =
+    descontoDigitado === null ||
+    (modoDesconto === 'pct' && descontoDigitado > 100) ||
+    (modoDesconto === 'valor' && descontoDigitado > bruto)
+
+  // fator aplicado no preço de cada item: 1 = sem desconto
+  const fator = (() => {
+    if (descontoInvalido || !descontoDigitado) return 1
+    if (modoDesconto === 'pct') return 1 - descontoDigitado / 100
+    return bruto > 0 ? 1 - descontoDigitado / bruto : 1
+  })()
+
+  const soma = arredonda(itens.reduce((s, i) => s + subtotalDe(i, fator), 0))
+  const descontoEfetivo = arredonda(bruto - soma)
+  const total = arredonda(soma + (Number.isFinite(freteNum) ? freteNum : 0))
 
   // só pergunta antes de fechar se algo mudou
   const snapshot = JSON.stringify([
-    ref, nome, contato, prazo, condicao, previsao, frete, desconto, obs,
-    itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.obs]),
+    ref, nome, contato, prazo, condicao, previsao, frete, desconto, modoDesconto, obs,
+    itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.porCaixa, i.obs]),
   ])
   const [snapshotInicial] = useState(snapshot)
   useEffect(() => {
@@ -344,6 +386,8 @@ function Conteudo({
           unidade: p.unit,
           qtd: qtdTexto(quantidade),
           preco: '', // o preço de compra é digitado: o do catálogo é o de venda
+          porCaixa: '',
+          caixaAberta: false,
           obs: '',
           obsAberta: false,
         },
@@ -366,6 +410,8 @@ function Conteudo({
         unidade: null,
         qtd: qtdTexto(quantidade),
         preco: '',
+        porCaixa: '',
+        caixaAberta: false,
         obs: '',
         obsAberta: false,
       },
@@ -498,7 +544,7 @@ function Conteudo({
     const lista: ItemEntrada[] = []
     for (const i of itens) {
       const q = paraNumero(i.qtd)
-      const p = lerPreco(i.preco)
+      const p = precoFinal(i, fator) // já com o desconto aplicado no item
       if (i.nome.trim() === '') {
         setErro('Há um item sem nome.')
         focarCelula(String(i.key), 0)
@@ -509,7 +555,7 @@ function Conteudo({
         focarCelula(String(i.key), 1)
         return
       }
-      if (p === null || !Number.isFinite(p) || p < 0) {
+      if (p === null) {
         setErro(`Informe o preço de ${i.nome}.`)
         focarCelula(String(i.key), 2)
         return
@@ -528,12 +574,13 @@ function Conteudo({
       setErro('Frete inválido.')
       return
     }
-    if (!Number.isFinite(descontoNum) || descontoNum < 0) {
-      setErro('Desconto inválido.')
-      return
-    }
-    if (total < 0) {
-      setErro('O desconto não pode ser maior que o valor do pedido.')
+    if (descontoInvalido) {
+      setErro(
+        modoDesconto === 'pct'
+          ? 'Desconto inválido. Use um valor de 0 a 100%.'
+          : 'Desconto inválido. Não pode ser maior que o valor dos itens.'
+      )
+      document.getElementById('pc-desconto')?.focus()
       return
     }
 
@@ -556,7 +603,7 @@ function Conteudo({
       condicao_pagamento: condicao.trim() || null,
       previsao_entrega: previsao || null,
       frete: freteNum,
-      desconto: descontoNum,
+      desconto: 0, // o desconto já foi aplicado no preço de cada item
       observacao: obs.trim() || null,
     }
 
@@ -838,11 +885,17 @@ function Conteudo({
               <ul className="space-y-1.5">
                 {itens.map((i, r) => {
                   const ultimo = ultimos.get(chaveItem(i.codigo, i.nome))
-                  const preco = lerPreco(i.preco)
+                  const preco = precoFinal(i, fator) // preço da unidade, já com desconto
                   const variacao =
-                    ultimo && ultimo.preco > 0 && preco !== null && Number.isFinite(preco)
+                    ultimo && ultimo.preco > 0 && preco !== null
                       ? ((preco - ultimo.preco) / ultimo.preco) * 100
                       : null
+
+                  const nPorCaixa = paraNumero(i.porCaixa)
+                  const emCaixa = Number.isFinite(nPorCaixa) && nPorCaixa > 0
+                  const qtdNum = paraNumero(i.qtd)
+                  const caixas =
+                    emCaixa && Number.isFinite(qtdNum) && qtdNum > 0 ? qtdNum / nPorCaixa : null
 
                   return (
                     <li
@@ -898,8 +951,8 @@ function Conteudo({
                             value={i.preco}
                             onChange={(e) => alterar(i.key, { preco: e.target.value })}
                             inputMode="decimal"
-                            placeholder="Preço"
-                            aria-label={`Preço de ${i.nome}`}
+                            placeholder={emCaixa ? 'Preço cx' : 'Preço'}
+                            aria-label={`${emCaixa ? 'Preço da caixa de' : 'Preço de'} ${i.nome}`}
                             className={`${celula} pl-7 text-right ${
                               i.preco.trim() === '' ? 'border-amber-300 bg-amber-50' : ''
                             }`}
@@ -908,9 +961,21 @@ function Conteudo({
 
                         <div className="col-span-3 flex items-center justify-between gap-2 md:contents">
                           <span className="text-base font-bold text-slate-900 md:text-right md:text-sm">
-                            {reais(subtotalDe(i))}
+                            {reais(subtotalDe(i, fator))}
                           </span>
                           <div className="flex justify-end gap-0.5">
+                            <button
+                              type="button"
+                              tabIndex={-1}
+                              aria-label={`Unidades por caixa de ${i.nome}`}
+                              title="Preço por caixa (unidades por caixa)"
+                              onClick={() => alterar(i.key, { caixaAberta: !i.caixaAberta })}
+                              className={`rounded-md p-1.5 transition hover:bg-slate-100 ${
+                                emCaixa ? 'text-[#079C9C]' : 'text-slate-400 hover:text-slate-600'
+                              }`}
+                            >
+                              <Package className="size-4" />
+                            </button>
                             <button
                               type="button"
                               tabIndex={-1}
@@ -936,6 +1001,68 @@ function Conteudo({
                           </div>
                         </div>
                       </div>
+
+                      {(i.caixaAberta || emCaixa) && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+                          <Package className="size-3.5 text-slate-400" />
+                          <label htmlFor={`pc-cx-${i.key}`}>Caixa com</label>
+                          <input
+                            id={`pc-cx-${i.key}`}
+                            value={i.porCaixa}
+                            onChange={(e) =>
+                              alterar(i.key, { porCaixa: e.target.value.replace(/\D/g, '').slice(0, 5) })
+                            }
+                            onFocus={selecionar}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+                                e.preventDefault()
+                                buscaRef.current?.focus()
+                              }
+                            }}
+                            inputMode="numeric"
+                            autoComplete="off"
+                            placeholder="12"
+                            className={`${celula} w-16 text-right`}
+                          />
+                          <span>un.</span>
+                          {[12, 24].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() => alterar(i.key, { porCaixa: String(n) })}
+                              className={`rounded-full border px-2 py-0.5 font-medium transition ${
+                                nPorCaixa === n
+                                  ? 'border-[#079C9C] bg-[#079C9C]/10 text-[#079C9C]'
+                                  : 'border-slate-200 bg-white hover:bg-slate-100'
+                              }`}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                          <span className="text-slate-500">
+                            {emCaixa
+                              ? `Preço acima é o da caixa; a quantidade é em unidades${
+                                  preco !== null ? ` → ${reais(preco)} por un.` : ''
+                                }${
+                                  caixas !== null
+                                    ? ` · ${qtdTexto(caixas)} ${caixas === 1 ? 'caixa' : 'caixas'}`
+                                    : ''
+                                }`
+                              : 'Informe quantas unidades vêm na caixa'}
+                          </span>
+                          {emCaixa && (
+                            <button
+                              type="button"
+                              tabIndex={-1}
+                              onClick={() => alterar(i.key, { porCaixa: '', caixaAberta: false })}
+                              className="ml-auto font-semibold text-slate-500 hover:text-red-600"
+                            >
+                              Remover caixa
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {ultimo && (
                         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
@@ -985,11 +1112,62 @@ function Conteudo({
           )}
 
           {/* subtotal, frete e desconto */}
-          <div className="ml-auto w-full space-y-2 rounded-xl border border-[#079C9C]/20 bg-[#079C9C]/5 px-4 py-3 md:max-w-xs">
+          <div className="ml-auto w-full space-y-2 rounded-xl border border-[#079C9C]/20 bg-[#079C9C]/5 px-4 py-3 md:max-w-sm">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-slate-600">Subtotal</span>
-              <span className="font-semibold text-slate-900">{reais(soma)}</span>
+              <span className="font-semibold text-slate-900">{reais(bruto)}</span>
             </div>
+
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <label htmlFor="pc-desconto" className="text-slate-600">
+                Desconto
+              </label>
+              <div className="flex items-center gap-1.5">
+                <div role="group" aria-label="Tipo de desconto" className="flex overflow-hidden rounded-md border border-slate-200 bg-white">
+                  {(['valor', 'pct'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      tabIndex={-1}
+                      aria-pressed={modoDesconto === m}
+                      onClick={() => {
+                        setModoDesconto(m)
+                        document.getElementById('pc-desconto')?.focus()
+                      }}
+                      className={`h-9 px-2.5 text-xs font-bold transition ${
+                        modoDesconto === m
+                          ? 'bg-[#079C9C] text-white'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {m === 'valor' ? 'R$' : '%'}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  id="pc-desconto"
+                  value={desconto}
+                  onChange={(e) => setDesconto(e.target.value)}
+                  onFocus={selecionar}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      document.getElementById('pc-frete')?.focus()
+                    }
+                  }}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder={modoDesconto === 'pct' ? '0 %' : '0,00'}
+                  className={`${celula} w-24 text-right ${descontoInvalido ? 'border-red-300 bg-red-50' : ''}`}
+                />
+              </div>
+            </div>
+            {descontoEfetivo > 0 && (
+              <p className="text-right text-xs font-medium text-emerald-700">
+                − {reais(descontoEfetivo)} aplicado no preço de cada item
+              </p>
+            )}
+
             <div className="flex items-center justify-between gap-3 text-sm">
               <label htmlFor="pc-frete" className="text-slate-600">
                 Frete (R$)
@@ -998,27 +1176,6 @@ function Conteudo({
                 id="pc-frete"
                 value={frete}
                 onChange={(e) => setFrete(e.target.value)}
-                onFocus={selecionar}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
-                    e.preventDefault()
-                    document.getElementById('pc-desconto')?.focus()
-                  }
-                }}
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="0,00"
-                className={`${celula} w-28 text-right`}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <label htmlFor="pc-desconto" className="text-slate-600">
-                Desconto (R$)
-              </label>
-              <input
-                id="pc-desconto"
-                value={desconto}
-                onChange={(e) => setDesconto(e.target.value)}
                 onFocus={selecionar}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
