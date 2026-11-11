@@ -6,6 +6,10 @@ export type ComoCasou = 'manual' | 'ean' | 'nome' | 'parecido'
 
 const arred2 = (n: number) => Math.round(n * 100) / 100
 
+// soma dois valores opcionais: se nenhum dos dois existe (nota antiga), continua sem valor
+const somar = (a?: number, b?: number) =>
+  a === undefined && b === undefined ? undefined : arred2((a ?? 0) + (b ?? 0))
+
 // como o item da nota é guardado nos vínculos: pelo código do fornecedor ou, sem ele, pelo nome
 export const chaveNota = (i: Pick<ItemNota, 'codigo' | 'nome'>) =>
   i.codigo.trim() ? `c:${i.codigo.trim()}` : `n:${normalizar(i.nome)}`
@@ -31,6 +35,14 @@ export function agruparItensNota(itens: ItemNota[]): ItemNota[] {
       quantidade: q,
       subtotal: arred2(sub),
       preco: q > 0 ? Math.round((sub / q) * 10000) / 10000 : atual.preco,
+      icms: somar(atual.icms, i.icms),
+      ipi: somar(atual.ipi, i.ipi),
+      icmsSt: somar(atual.icmsSt, i.icmsSt),
+      outros: somar(atual.outros, i.outros),
+      totalComImpostos: somar(
+        atual.totalComImpostos ?? atual.subtotal,
+        i.totalComImpostos ?? i.subtotal
+      ),
     })
   }
 

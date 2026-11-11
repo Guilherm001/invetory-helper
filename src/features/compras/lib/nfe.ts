@@ -65,14 +65,38 @@ export interface ItemNota {
   nome: string
   unidade: string
   quantidade: number
-  preco: number // unitário, já sem o desconto do item
-  subtotal: number
+  preco: number // unitário, já sem o desconto do item (e sem impostos)
+  subtotal: number // vProd - vDesc (sem impostos)
+
+  // Impostos e acréscimos da linha. Opcionais: notas salvas antes desta versão não têm.
+  icms?: number // vICMS (ICMS próprio: já está embutido no preço, NÃO soma no total da nota)
+  ipi?: number // vIPI (soma no total da nota)
+  icmsSt?: number // vICMSST + vFCPST (soma no total da nota)
+  outros?: number // frete + seguro + outras despesas + imposto de importação da linha
+  totalComImpostos?: number // subtotal + ipi + icmsSt + outros (o custo real da linha)
 }
 
 export interface DuplicataNota {
   numero: string
   vencimento: string | null // AAAA-MM-DD
   valor: number
+}
+
+// Totais de impostos e acréscimos, como declarados no bloco ICMSTot do XML
+export interface ImpostosNota {
+  produtos: number // vProd
+  desconto: number // vDesc
+  desoneracao: number // vICMSDeson (abate do total)
+  icms: number // vICMS (próprio: informativo, não soma no total)
+  icmsSt: number // vST + vFCPST (soma no total)
+  ipi: number // vIPI (soma no total)
+  ipiDevolvido: number // vIPIDevol (soma no total)
+  importacao: number // vII (soma no total)
+  frete: number // vFrete
+  seguro: number // vSeg
+  outras: number // vOutro
+  calculado: number // total recalculado a partir das partes acima
+  diferenca: number // vNF (declarado) - calculado. Perto de zero = nota coerente
 }
 
 export interface NotaXml {
@@ -83,6 +107,7 @@ export interface NotaXml {
   emitenteDoc: string
   emitenteNome: string
   valor: number
+  impostos: ImpostosNota
   duplicatas: DuplicataNota[]
   itens: ItemNota[]
   autorizada: boolean | null // null = o arquivo não traz o protocolo de autorização
@@ -101,8 +126,52 @@ const paraNumero = (v: string) => {
   return Number.isFinite(n) ? n : 0
 }
 
+// lê um campo numérico (ausente = 0) já arredondado em centavos
+const dinheiro = (raiz: Raiz | null, nome: string) => arred2(paraNumero(valorDe(raiz, nome)))
+
 const arred2 = (n: number) => Math.round(n * 100) / 100
 const arred4 = (n: number) => Math.round(n * 10000) / 10000
+
+// custo unitário de verdade: com IPI, ST, frete e demais acréscimos da linha.
+// Em nota antiga (sem os campos novos) cai para o subtotal, como antes.
+export const custoUnitario = (i: Pick<ItemNota, 'quantidade' | 'subtotal' | 'totalComImpostos'>) =>
+  i.quantidade > 0 ? arred4((i.totalComImpostos ?? i.subtotal) / i.quantidade) : 0
+
+// lê o bloco ICMSTot e recalcula o total da nota pela regra da NF-e:
+// vNF = vProd - vDesc - vICMSDeson + vST + vFCPST + vFrete + vSeg + vOutro + vII + vIPI + vIPIDevol
+function lerImpostos(tot: Element | null, valorDeclarado: number): ImpostosNota {
+  const produtos = dinheiro(tot, 'vProd')
+  const desconto = dinheiro(tot, 'vDesc')
+  const desoneracao = dinheiro(tot, 'vICMSDeson')
+  const icms = dinheiro(tot, 'vICMS')
+  const icmsSt = arred2(dinheiro(tot, 'vST') + dinheiro(tot, 'vFCPST'))
+  const ipi = dinheiro(tot, 'vIPI')
+  const ipiDevolvido = dinheiro(tot, 'vIPIDevol')
+  const importacao = dinheiro(tot, 'vII')
+  const frete = dinheiro(tot, 'vFrete')
+  const seguro = dinheiro(tot, 'vSeg')
+  const outras = dinheiro(tot, 'vOutro')
+
+  const calculado = arred2(
+    produtos - desconto - desoneracao + icmsSt + frete + seguro + outras + importacao + ipi + ipiDevolvido
+  )
+
+  return {
+    produtos,
+    desconto,
+    desoneracao,
+    icms,
+    icmsSt,
+    ipi,
+    ipiDevolvido,
+    importacao,
+    frete,
+    seguro,
+    outras,
+    calculado,
+    diferenca: arred2(valorDeclarado - calculado),
+  }
+}
 
 export function lerXmlNfe(conteudo: string): NotaXml {
   const doc = new DOMParser().parseFromString(conteudo, 'application/xml')
@@ -126,15 +195,31 @@ export function lerXmlNfe(conteudo: string): NotaXml {
   const valor = arred2(paraNumero(valorDe(tot, 'vNF')))
   if (!(valor > 0)) throw new Error('O XML não traz o valor total da nota.')
 
+  const impostos = lerImpostos(tot, valor)
+
   const emissaoBruta = valorDe(ide, 'dhEmi') || valorDe(ide, 'dEmi')
   const emissao = /^\d{4}-\d{2}-\d{2}/.test(emissaoBruta) ? emissaoBruta.slice(0, 10) : null
 
   const itens: ItemNota[] = Array.from(inf.getElementsByTagNameNS('*', 'det'))
     .map((det) => {
       const prod = primeiro(det, 'prod')
+      const imposto = primeiro(det, 'imposto')
       const q = paraNumero(valorDe(prod, 'qCom'))
       const liquido = paraNumero(valorDe(prod, 'vProd')) - paraNumero(valorDe(prod, 'vDesc'))
       const ean = valorDe(prod, 'cEAN')
+
+      // impostos da linha (cada grupo pode não existir: Simples Nacional, isento etc. => 0)
+      const icmsEl = primeiro(imposto, 'ICMS')
+      const ipiEl = primeiro(imposto, 'IPI')
+      const iiEl = primeiro(imposto, 'II')
+
+      const icms = dinheiro(icmsEl, 'vICMS')
+      const ipi = dinheiro(ipiEl, 'vIPI')
+      const icmsSt = arred2(dinheiro(icmsEl, 'vICMSST') + dinheiro(icmsEl, 'vFCPST'))
+      const outros = arred2(
+        dinheiro(prod, 'vFrete') + dinheiro(prod, 'vSeg') + dinheiro(prod, 'vOutro') + dinheiro(iiEl, 'vII')
+      )
+
       return {
         codigo: valorDe(prod, 'cProd'),
         ean: /^\d{8,14}$/.test(ean) ? ean : '', // "SEM GTIN" vira vazio
@@ -143,6 +228,11 @@ export function lerXmlNfe(conteudo: string): NotaXml {
         quantidade: q,
         preco: q > 0 ? arred4(liquido / q) : 0,
         subtotal: arred2(liquido),
+        icms,
+        ipi,
+        icmsSt,
+        outros,
+        totalComImpostos: arred2(liquido + ipi + icmsSt + outros),
       }
     })
     .filter((i) => i.nome && i.quantidade > 0)
@@ -168,6 +258,7 @@ export function lerXmlNfe(conteudo: string): NotaXml {
     emitenteDoc: soAlfanum(valorDe(emit, 'CNPJ') || valorDe(emit, 'CPF')),
     emitenteNome: valorDe(emit, 'xNome').slice(0, 200),
     valor,
+    impostos,
     duplicatas,
     itens,
     autorizada: cStat ? cStat === '100' || cStat === '150' : null,
