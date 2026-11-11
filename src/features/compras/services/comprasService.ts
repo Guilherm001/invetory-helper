@@ -14,6 +14,40 @@ export type FiltroCompra =
   | 'recebido'
   | 'cancelado'
 
+// qual data o filtro de período usa
+export type CampoData = 'criado' | 'previsao' | 'recebido'
+export type OrdemCompra = 'recentes' | 'antigos' | 'maior' | 'menor' | 'entrega'
+export type FiltroNota = 'todas' | 'com' | 'sem'
+
+// tudo que a lista de pedidos pode filtrar
+export interface FiltrosPedidos {
+  filtro: FiltroCompra
+  termo: string
+  campoData: CampoData
+  de: string // AAAA-MM-DD ('' = sem limite)
+  ate: string // AAAA-MM-DD ('' = sem limite)
+  fornecedor: string // nome exato ('' = todos)
+  valorMin: number | null
+  valorMax: number | null
+  nota: FiltroNota
+  parcial: boolean // só pedidos com recebimento parcial
+  ordem: OrdemCompra
+}
+
+export const FILTROS_VAZIOS: FiltrosPedidos = {
+  filtro: 'todos',
+  termo: '',
+  campoData: 'criado',
+  de: '',
+  ate: '',
+  fornecedor: '',
+  valorMin: null,
+  valorMax: null,
+  nota: 'todas',
+  parcial: false,
+  ordem: 'recentes',
+}
+
 export interface PedidoCompra {
   id: string
   numero: number
@@ -190,14 +224,25 @@ function normalizarItem(r: unknown): ItemPedidoCompra {
 
 // ---------- leitura ----------
 
-export async function listarPedidos(opts: {
-  filtro: FiltroCompra
-  termo: string
-  pagina: number
-}): Promise<{ itens: PedidoCompra[]; total: number }> {
-  let q = supabase.from('pedidos_compra').select(COLUNAS, { count: 'exact' })
+// "com nota" / "sem nota" precisam ligar a tabela de notas; sem esse filtro nem busca
+function colunasDe(f: FiltrosPedidos, base: string) {
+  if (f.nota === 'com') return `${base}, notas:pedido_compra_notas!inner(id)`
+  if (f.nota === 'sem') return `${base}, notas:pedido_compra_notas(id)`
+  return base
+}
 
-  switch (opts.filtro) {
+// início do dia (hora local do navegador) em formato ISO, para colunas timestamptz
+const inicioDoDia = (d: string) => new Date(`${d}T00:00:00`).toISOString()
+const diaSeguinte = (d: string) => {
+  const x = new Date(`${d}T00:00:00`)
+  x.setDate(x.getDate() + 1)
+  return x.toISOString()
+}
+
+// aplica todos os filtros no mesmo lugar: a lista e a soma usam exatamente as mesmas regras
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function aplicarFiltros(q: any, f: FiltrosPedidos): any {
+  switch (f.filtro) {
     case 'rascunho':
       q = q.eq('status', 'rascunho')
       break
@@ -215,8 +260,30 @@ export async function listarPedidos(opts: {
       break
   }
 
+  // período (se as datas vieram trocadas, inverte)
+  let { de, ate } = f
+  if (de && ate && de > ate) [de, ate] = [ate, de]
+
+  if (de || ate) {
+    if (f.campoData === 'previsao') {
+      // coluna do tipo date: compara direto
+      if (de) q = q.gte('previsao_entrega', de)
+      if (ate) q = q.lte('previsao_entrega', ate)
+    } else {
+      const coluna = f.campoData === 'recebido' ? 'recebido_em' : 'criado_em'
+      if (de) q = q.gte(coluna, inicioDoDia(de))
+      if (ate) q = q.lt(coluna, diaSeguinte(ate))
+    }
+  }
+
+  if (f.fornecedor) q = q.eq('fornecedor_nome', f.fornecedor)
+  if (f.valorMin !== null) q = q.gte('total', f.valorMin)
+  if (f.valorMax !== null) q = q.lte('total', f.valorMax)
+  if (f.parcial) q = q.eq('recebido_parcial', true)
+  if (f.nota === 'sem') q = q.is('notas', null)
+
   // vírgula, %, parênteses, aspas e * quebram o filtro .or()
-  const t = opts.termo.trim().replace(/[%,()*"\\]/g, ' ').trim()
+  const t = f.termo.trim().replace(/[%,()*"\\]/g, ' ').trim()
   if (t) {
     const partes = [`fornecedor_nome.ilike.%${t}%`]
     const digitos = t.replace(/^pc[-\s]*/i, '')
@@ -224,15 +291,89 @@ export async function listarPedidos(opts: {
     q = q.or(partes.join(','))
   }
 
+  return q
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ordenar(q: any, ordem: OrdemCompra): any {
+  switch (ordem) {
+    case 'antigos':
+      q = q.order('criado_em', { ascending: true })
+      break
+    case 'maior':
+      q = q.order('total', { ascending: false }).order('criado_em', { ascending: false })
+      break
+    case 'menor':
+      q = q.order('total', { ascending: true }).order('criado_em', { ascending: false })
+      break
+    case 'entrega':
+      // sem previsão vai para o fim
+      q = q
+        .order('previsao_entrega', { ascending: true, nullsFirst: false })
+        .order('criado_em', { ascending: false })
+      break
+    default:
+      q = q.order('criado_em', { ascending: false })
+  }
+  return q.order('id')
+}
+
+export async function listarPedidos(
+  opts: FiltrosPedidos & { pagina: number }
+): Promise<{ itens: PedidoCompra[]; total: number }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q: any = supabase
+    .from('pedidos_compra')
+    .select(colunasDe(opts, COLUNAS), { count: 'exact' })
+
+  q = ordenar(aplicarFiltros(q, opts), opts.ordem)
+
   const de = opts.pagina * TAMANHO_PAGINA
-  const { data, error, count } = await q
-    .order('criado_em', { ascending: false })
-    .order('id')
-    .range(de, de + TAMANHO_PAGINA - 1)
+  const { data, error, count } = await q.range(de, de + TAMANHO_PAGINA - 1)
 
   if (error) throw traduz(error)
 
-  return { itens: (data ?? []).map(normalizarPedido), total: count ?? 0 }
+  return { itens: ((data ?? []) as unknown[]).map(normalizarPedido), total: count ?? 0 }
+}
+
+// soma do valor de TODOS os pedidos que batem com o filtro (não só da página aberta)
+export async function totalDosPedidos(f: FiltrosPedidos): Promise<number> {
+  const POR_VEZ = 1000
+  let soma = 0
+
+  for (let pagina = 0; pagina < 10; pagina++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q: any = supabase.from('pedidos_compra').select(colunasDe(f, 'total'))
+    q = ordenar(aplicarFiltros(q, f), 'recentes')
+
+    const de = pagina * POR_VEZ
+    const { data, error } = await q.range(de, de + POR_VEZ - 1)
+    if (error) throw traduz(error)
+
+    const linhas = (data ?? []) as { total: unknown }[]
+    for (const l of linhas) soma += num(l.total)
+    if (linhas.length < POR_VEZ) break
+  }
+
+  return Math.round(soma * 100) / 100
+}
+
+// nomes de fornecedor que já têm pedido (para o filtro por fornecedor)
+export async function listarFornecedoresDosPedidos(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('pedidos_compra')
+    .select('fornecedor_nome')
+    .order('criado_em', { ascending: false })
+    .limit(2000)
+
+  if (error) throw traduz(error)
+
+  const nomes = new Set<string>()
+  for (const r of data ?? []) {
+    const n = String((r as { fornecedor_nome: unknown }).fornecedor_nome ?? '').trim()
+    if (n) nomes.add(n)
+  }
+  return [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }
 
 export async function resumoPedidos(): Promise<ResumoCompras> {
