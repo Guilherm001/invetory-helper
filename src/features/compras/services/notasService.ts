@@ -245,10 +245,12 @@ export async function registrarNota(
   // salvos, mesmo que a função do banco descarte esses campos.
   if (dados.itens.length === 0 && !impostos) return
 
+  // .select('id') devolve as linhas alteradas: quando o RLS bloqueia o UPDATE, o Supabase
+  // NÃO dá erro, só altera 0 linhas. Sem essa conferência a falha passa em silêncio.
   const atualizar = async (campos: Record<string, unknown>) => {
     let q = supabase.from('pedido_compra_notas').update(campos).eq('pedido_id', pedidoId)
     q = dados.chave ? q.eq('chave', dados.chave) : q.eq('numero', dados.numero)
-    return await q
+    return await q.select('id')
   }
 
   let r = await atualizar({ itens: dados.itens, impostos })
@@ -258,8 +260,14 @@ export async function registrarNota(
     r = await atualizar({ itens: dados.itens })
   }
 
-  // normalmente é RLS sem policy de UPDATE em pedido_compra_notas
-  if (r.error) console.warn('Não foi possível regravar itens/impostos da nota:', r.error.message)
+  if (r.error) {
+    throw new Error(`A nota foi registrada, mas os impostos não foram gravados: ${r.error.message}`)
+  }
+  if (!r.data || r.data.length === 0) {
+    throw new Error(
+      'A nota foi registrada, mas o banco não permitiu gravar os impostos dos itens (falta permissão de UPDATE em pedido_compra_notas). Peça para ajustar a policy e importe o XML de novo.'
+    )
+  }
 }
 
 export async function excluirNota(id: string) {

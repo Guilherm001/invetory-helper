@@ -173,6 +173,21 @@ function lerImpostos(tot: Element | null, valorDeclarado: number): ImpostosNota 
   }
 }
 
+// Reparte um valor entre os itens, proporcional ao subtotal; o último item leva o resto
+// para a soma fechar no centavo. Altera os itens no lugar.
+function ratearNosItens(itens: ItemNota[], campo: 'ipi' | 'icmsSt', valor: number) {
+  const base = itens.reduce((s, i) => s + i.subtotal, 0)
+  if (valor <= 0.005 || base <= 0) return
+
+  let resto = valor
+  itens.forEach((i, idx) => {
+    const parte = idx === itens.length - 1 ? resto : arred2((i.subtotal / base) * valor)
+    resto = arred2(resto - parte)
+    i[campo] = arred2((i[campo] ?? 0) + parte)
+    i.totalComImpostos = arred2((i.totalComImpostos ?? i.subtotal) + parte)
+  })
+}
+
 export function lerXmlNfe(conteudo: string): NotaXml {
   const doc = new DOMParser().parseFromString(conteudo, 'application/xml')
   if (doc.getElementsByTagName('parsererror').length > 0) {
@@ -236,6 +251,12 @@ export function lerXmlNfe(conteudo: string): NotaXml {
       }
     })
     .filter((i) => i.nome && i.quantidade > 0)
+
+  // Imposto declarado no cabeçalho que não apareceu nas linhas entra nos itens,
+  // em vez de sobrar e cair no frete do pedido.
+  const somaLinha = (k: 'ipi' | 'icmsSt') => itens.reduce((s, i) => s + (i[k] ?? 0), 0)
+  ratearNosItens(itens, 'ipi', arred2(impostos.ipi + impostos.ipiDevolvido - somaLinha('ipi')))
+  ratearNosItens(itens, 'icmsSt', arred2(impostos.icmsSt - somaLinha('icmsSt')))
 
   const duplicatas: DuplicataNota[] = Array.from(inf.getElementsByTagNameNS('*', 'dup'))
     .map((d) => {
