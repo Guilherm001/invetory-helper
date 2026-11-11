@@ -2,11 +2,12 @@ import { formatarCnpj, formatarCpf } from '@/features/clientes/lib/documentos'
 import { numeroTexto, reais } from '@/features/loja/lib/formatar'
 import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
 import type { DivergenciaAceita, NotaCompra } from '../services/notasService'
-import type { ItemNota } from './nfe'
+import { custoUnitario, type ItemNota } from './nfe'
 import {
   agruparItensNota,
   casar,
   chaveNota,
+  itensDaNota,
   similaridade,
   type ComoCasou,
 } from './casamento'
@@ -40,6 +41,17 @@ export function diferencaDeValor(
     dif: arred2(totalNotas - esperado),
     parcial: algumRecebido && pedido.status !== 'recebido',
   }
+}
+
+// valor da nota que NÃO está em nenhuma linha de item (frete no rodapé, despesas etc.).
+// É só isso que deve ir para o frete do pedido: IPI, ST e frete de linha já entram no item.
+// Em nota antiga, o IPI/ST do cabeçalho é rateado nos itens antes de calcular a sobra.
+export function sobraDasNotas(notas: NotaCompra[]): number {
+  const total = notas.reduce((s, n) => s + n.valor, 0)
+  const nasLinhas = notas
+    .flatMap((n) => itensDaNota(n))
+    .reduce((s, i) => s + (i.totalComImpostos ?? i.subtotal), 0)
+  return arred2(total - nasLinhas)
 }
 
 // ---------- avisos (valor e emitente) ----------
@@ -112,13 +124,22 @@ export function alertasDasNotas(
 
 // ---------- conferência item a item (pedido x nota x recebido) ----------
 
+export interface ImpostosDoItem {
+  icms: number // próprio: já está embutido no preço, só informativo
+  ipi: number // soma no custo
+  icmsSt: number // soma no custo
+  outros: number // frete/seguro/outras despesas da linha: soma no custo
+}
+
 export interface LinhaConferencia {
   id: string
   pedido: ItemPedidoCompra
   nota: ItemNota
   como: ComoCasou
   notaChave: string
-  difPreco: number | null // % da nota contra o pedido
+  custoNota: number // custo unitário da nota, já com IPI, ST e acréscimos da linha
+  impostos: ImpostosDoItem
+  difPreco: number | null // % do custo da nota (com impostos) contra o pedido
   difQtd: number | null // nota - pedido
   recebidoDiferente: boolean
   unidadeDiferente: boolean // só quando a unidade é realmente outra (UN e PC contam como iguais)
@@ -150,10 +171,11 @@ function sugerirPares(soPedido: ItemPedidoCompra[], soNota: ItemNota[]): Sugesta
     for (const n of soNota) {
       const nome = similaridade(p.produto_nome, n.nome)
 
+      const totalNota = n.totalComImpostos ?? n.subtotal
       const mesmoTotal =
         p.subtotal > 0 &&
-        n.subtotal > 0 &&
-        Math.abs(p.subtotal - n.subtotal) / Math.max(p.subtotal, n.subtotal) <= 0.015
+        totalNota > 0 &&
+        Math.abs(p.subtotal - totalNota) / Math.max(p.subtotal, totalNota) <= 0.015
 
       const mesmaQtdPreco =
         p.preco_unitario > 0 &&
@@ -197,7 +219,8 @@ export function conferirItens(
   barcodes: Map<string, string>,
   vinculos: Map<string, string>
 ): ResultadoConferencia {
-  const daNota = agruparItensNota(notas.flatMap((n) => n.itens))
+  // itensDaNota rateia IPI/ST do cabeçalho nos itens quando a nota foi salva sem imposto por linha
+  const daNota = agruparItensNota(notas.flatMap((n) => itensDaNota(n)))
   // nome parecido NÃO liga sozinho aqui: vira sugestão, porque a ligação pode alterar o pedido
   const mapaPares = casar(pedidoItens, daNota, barcodes, vinculos, { parecido: false })
   const usadasNota = new Set([...mapaPares.values()].map((p) => p.ni))
@@ -210,9 +233,12 @@ export function conferirItens(
     if (!par) return
     const n = daNota[par.ni]
 
+    // custo de verdade da nota: com IPI, ST e acréscimos da linha
+    const custoNota = custoUnitario(n)
+
     const difPreco =
-      p.preco_unitario > 0 && Math.abs(n.preco - p.preco_unitario) >= 0.01
-        ? Math.round(((n.preco - p.preco_unitario) / p.preco_unitario) * 1000) / 10
+      p.preco_unitario > 0 && Math.abs(custoNota - p.preco_unitario) >= 0.01
+        ? Math.round(((custoNota - p.preco_unitario) / p.preco_unitario) * 1000) / 10
         : null
     const difQtd =
       Math.abs(n.quantidade - p.quantidade) > 0.0005 ? arred3(n.quantidade - p.quantidade) : null
@@ -223,6 +249,13 @@ export function conferirItens(
       nota: n,
       como: par.como,
       notaChave: chaveNota(n),
+      custoNota,
+      impostos: {
+        icms: n.icms ?? 0,
+        ipi: n.ipi ?? 0,
+        icmsSt: n.icmsSt ?? 0,
+        outros: n.outros ?? 0,
+      },
       difPreco,
       difQtd,
       recebidoDiferente: algumRecebido && Math.abs(p.quantidade_recebida - n.quantidade) > 0.0005,
@@ -272,9 +305,12 @@ export interface Ajuste {
   aviso: string | null
 }
 
-// o preço sai do total da linha da nota, para o item do pedido fechar no mesmo valor
+// o preço sai do total da linha da nota COM impostos (IPI, ST e acréscimos da linha),
+// para o item do pedido fechar no mesmo valor que a nota cobra. O ICMS próprio não entra:
+// já está dentro do preço. Nota antiga (sem os campos de imposto) cai para o subtotal.
 function comoNaNota(n: ItemNota, quantidade: number, unidade: string | null): ValoresAjuste {
-  const preco = arred6(quantidade > 0 ? n.subtotal / quantidade : n.preco)
+  const total = n.totalComImpostos ?? n.subtotal
+  const preco = arred6(quantidade > 0 ? total / quantidade : custoUnitario(n))
   return { quantidade, preco, subtotal: arred2(quantidade * preco), unidade }
 }
 

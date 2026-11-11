@@ -1,5 +1,5 @@
 import { normalizar } from '@/features/historico-precos/utils/estatisticas'
-import type { ItemNota } from './nfe'
+import type { ImpostosNota, ItemNota } from './nfe'
 import { chaveItem } from './compras'
 
 export type ComoCasou = 'manual' | 'ean' | 'nome' | 'parecido'
@@ -13,6 +13,42 @@ const somar = (a?: number, b?: number) =>
 // como o item da nota é guardado nos vínculos: pelo código do fornecedor ou, sem ele, pelo nome
 export const chaveNota = (i: Pick<ItemNota, 'codigo' | 'nome'>) =>
   i.codigo.trim() ? `c:${i.codigo.trim()}` : `n:${normalizar(i.nome)}`
+
+// ---------- rateio de impostos (notas salvas antes da leitura por linha) ----------
+
+// Se os itens não trazem imposto próprio (nota antiga), divide o IPI, o ICMS-ST e o
+// imposto de importação do cabeçalho entre os itens, proporcional ao subtotal.
+// O ICMS próprio NÃO entra (já está dentro do preço) e o frete de rodapé também não:
+// ele continua indo para o frete do pedido.
+export function ratearImpostos(
+  itens: ItemNota[],
+  imp: Pick<ImpostosNota, 'ipi' | 'icmsSt' | 'importacao' | 'ipiDevolvido'> | null | undefined
+): ItemNota[] {
+  if (!imp) return itens
+  // já tem imposto por linha: nada a ratear
+  if (itens.some((i) => i.totalComImpostos !== undefined)) return itens
+
+  const extra = arred2(
+    (imp.ipi ?? 0) + (imp.icmsSt ?? 0) + (imp.importacao ?? 0) + (imp.ipiDevolvido ?? 0)
+  )
+  const base = itens.reduce((s, i) => s + i.subtotal, 0)
+  if (extra <= 0 || base <= 0) return itens
+
+  let restante = extra
+  return itens.map((i, idx) => {
+    // o último item leva o resto, para a soma fechar no centavo
+    const parte = idx === itens.length - 1 ? restante : arred2((i.subtotal / base) * extra)
+    restante = arred2(restante - parte)
+    return { ...i, totalComImpostos: arred2(i.subtotal + parte) }
+  })
+}
+
+// itens da nota já com o imposto rateado quando for nota antiga.
+// Aceita qualquer nota que tenha `itens` e, opcionalmente, `impostos`.
+export function itensDaNota(n: { itens: ItemNota[] }): ItemNota[] {
+  const imp = (n as { impostos?: ImpostosNota | null }).impostos
+  return ratearImpostos(n.itens, imp)
+}
 
 // junta o mesmo produto quando aparece em mais de uma linha ou em mais de uma nota
 export function agruparItensNota(itens: ItemNota[]): ItemNota[] {

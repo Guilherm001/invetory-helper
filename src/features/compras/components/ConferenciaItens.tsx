@@ -336,10 +336,14 @@ export default function ConferenciaItens({
                         </Lado>
 
                         <Lado tipo="nota">
-                          <p className="text-sm font-semibold text-slate-800">
-                            {qp(l.nota.quantidade, l.nota.unidade, l.nota.preco)}
+                                                    <p className="text-sm font-semibold text-slate-800">
+                            {qp(l.nota.quantidade, l.nota.unidade, l.custoNota)}
                           </p>
-                          <p className="text-xs text-slate-500">Total {reais(l.nota.subtotal)}</p>
+                          <p className="text-xs text-slate-500">
+                            Total {reais(l.nota.totalComImpostos ?? l.nota.subtotal)}
+                            {((l.impostos.ipi + l.impostos.icmsSt + l.impostos.outros) > 0) &&
+                              ` (inclui ${reais(l.impostos.ipi + l.impostos.icmsSt + l.impostos.outros)} de impostos e acréscimos)`}
+                          </p>
                         </Lado>
 
                         <Lado tipo="recebido">

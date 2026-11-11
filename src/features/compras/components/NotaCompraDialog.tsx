@@ -72,7 +72,10 @@ function Conteudo({
 
     setSalvando(true)
     try {
-      await registrarNota(pedido.id, v.dados)
+      // Com XML importado, manda os itens exatamente como o XML trouxe (com IPI, ST e acréscimos
+      // por linha) e os totais de impostos do cabeçalho, para o custo do produto sair completo.
+      const dados = nota.xml ? { ...v.dados, itens: nota.xml.itens } : v.dados
+      await registrarNota(pedido.id, dados, nota.xml?.impostos ?? null)
       onSalvo()
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível registrar a nota')

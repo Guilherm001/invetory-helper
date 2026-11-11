@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { DuplicataNota, ItemNota } from '../lib/nfe'
+import type { DuplicataNota, ImpostosNota, ItemNota } from '../lib/nfe'
 
 const BUCKET = 'notas-compra'
 
@@ -23,6 +23,7 @@ export interface DadosNota {
   arquivos: ArquivoNota[]
   itens: ItemNota[]
   duplicatas: DuplicataNota[]
+  impostos?: ImpostosNota | null
 }
 
 export interface NotaCompra {
@@ -40,6 +41,8 @@ export interface NotaCompra {
   arquivos: ArquivoNota[]
   itens: ItemNota[]
   duplicatas: DuplicataNota[]
+  // totais de impostos do cabeçalho do XML (usados para ratear nos itens de notas antigas)
+  impostos?: ImpostosNota | null
   registrada_por: string | null
   criado_em: string
 }
@@ -52,8 +55,9 @@ export interface Vinculo {
   alvo_nome: string
 }
 
-const COLUNAS =
+const COLUNAS_BASE =
   'id, pedido_id, numero, serie, chave, emissao, valor, emitente_doc, emitente_nome, observacao, origem, arquivos, itens, duplicatas, registrada_por, criado_em'
+const COLUNAS = `${COLUNAS_BASE}, impostos`
 
 function traduz(error: { message: string; code?: string }) {
   const m = error.message.toLowerCase()
@@ -193,32 +197,71 @@ export async function linkDoArquivo(path: string): Promise<string> {
 // ---------- notas ----------
 
 function mapear(r: Record<string, unknown>): NotaCompra {
+  const imp = r.impostos
   return {
     ...(r as unknown as NotaCompra),
     valor: Number(r.valor),
     arquivos: Array.isArray(r.arquivos) ? (r.arquivos as ArquivoNota[]) : [],
     itens: Array.isArray(r.itens) ? (r.itens as ItemNota[]) : [],
     duplicatas: Array.isArray(r.duplicatas) ? (r.duplicatas as DuplicataNota[]) : [],
+    impostos: imp && typeof imp === 'object' ? (imp as ImpostosNota) : null,
   }
 }
 
 export async function listarNotas(pedidoId: string): Promise<NotaCompra[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('pedido_compra_notas')
     .select(COLUNAS)
     .eq('pedido_id', pedidoId)
     .order('criado_em')
 
+  // a coluna "impostos" ainda não existe no banco: lê sem ela (rode o SQL de impostos)
+  if (error && (error.code === '42703' || error.message.toLowerCase().includes('impostos'))) {
+    const tentativa = await supabase
+      .from('pedido_compra_notas')
+      .select(COLUNAS_BASE)
+      .eq('pedido_id', pedidoId)
+      .order('criado_em')
+    data = tentativa.data as typeof data
+    error = tentativa.error
+  }
+
   if (error) throw traduz(error)
-  return (data ?? []).map((r) => mapear(r as Record<string, unknown>))
+  return (data ?? []).map((r) => mapear(r as unknown as Record<string, unknown>))
 }
 
-export async function registrarNota(pedidoId: string, dados: DadosNota) {
+export async function registrarNota(
+  pedidoId: string,
+  dados: DadosNota,
+  impostos: ImpostosNota | null = dados.impostos ?? null
+) {
   const { error } = await supabase.rpc('registrar_nota_compra', {
     p_pedido: pedidoId,
-    p_nota: dados,
+    p_nota: { ...dados, impostos },
   })
   if (error) throw traduz(error)
+
+  // Garante que os impostos do cabeçalho fiquem salvos mesmo que a função do banco
+  // ainda não grave esse campo. Se a coluna não existir ou não houver permissão, ignora.
+  if (impostos) {
+    try {
+      if (dados.chave) {
+        await supabase
+          .from('pedido_compra_notas')
+          .update({ impostos })
+          .eq('pedido_id', pedidoId)
+          .eq('chave', dados.chave)
+      } else {
+        await supabase
+          .from('pedido_compra_notas')
+          .update({ impostos })
+          .eq('pedido_id', pedidoId)
+          .eq('numero', dados.numero)
+      }
+    } catch {
+      // sem a coluna "impostos": a conferência segue só com o imposto por linha
+    }
+  }
 }
 
 export async function excluirNota(id: string) {

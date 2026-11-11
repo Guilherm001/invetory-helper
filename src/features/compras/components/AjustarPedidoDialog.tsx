@@ -23,7 +23,7 @@ import {
 } from '../lib/conferenciaNota'
 import { chaveNota } from '../lib/casamento'
 import { chaveItem, numeroPedido } from '../lib/compras'
-import type { ItemNota } from '../lib/nfe'
+import { custoUnitario, type ItemNota } from '../lib/nfe'
 import {
   arred2,
   lerDecimal,
@@ -48,6 +48,16 @@ const reais4 = (n: number) =>
 
 const qp = (v: ValoresAjuste) =>
   `${numeroTexto(v.quantidade)}${v.unidade ? ` ${v.unidade}` : ''} × ${reais4(v.preco)}`
+
+// "IPI R$ 12,00 · ST R$ 5,00 · frete R$ 3,00 · ICMS R$ 40,00 incluso"
+function detalheImpostos(n: ItemNota): string {
+  const partes: string[] = []
+  if ((n.ipi ?? 0) > 0) partes.push(`IPI ${reais(n.ipi ?? 0)}`)
+  if ((n.icmsSt ?? 0) > 0) partes.push(`ST ${reais(n.icmsSt ?? 0)}`)
+  if ((n.outros ?? 0) > 0) partes.push(`frete/outros ${reais(n.outros ?? 0)}`)
+  if ((n.icms ?? 0) > 0) partes.push(`ICMS ${reais(n.icms ?? 0)} incluso`)
+  return partes.join(' · ')
+}
 
 const GRID =
   'grid grid-cols-[2rem_minmax(13rem,1fr)_8.5rem_8.5rem_11.5rem_7rem_5.5rem] items-center gap-x-3'
@@ -596,8 +606,11 @@ function Conteudo({
   const [novos, setNovos] = useState<Record<string, NovoItem>>(() =>
     Object.fromEntries(
       soNota.map((n) => {
-        const k = chaveNota(n)
-        const preco = n.quantidade > 0 ? Math.round((n.subtotal / n.quantidade) * 1e6) / 1e6 : n.preco
+                const k = chaveNota(n)
+        // custo real da linha: com IPI, ST e acréscimos (o ICMS próprio já está no preço)
+        const totalLinha = n.totalComImpostos ?? n.subtotal
+        const preco =
+          n.quantidade > 0 ? Math.round((totalLinha / n.quantidade) * 1e6) / 1e6 : n.preco
         const v: NovoItem = {
           marcado: notasPreMarcadas.includes(k),
           nome: n.nome,
@@ -1278,9 +1291,14 @@ function Conteudo({
                           </div>
 
                           <span className="text-xs text-slate-600">{qp(de)}</span>
-                          <span className="text-xs text-slate-600">
+                                                    <span className="text-xs text-slate-600">
                             {numeroTexto(l.nota.quantidade)}
-                            {l.nota.unidade ? ` ${l.nota.unidade}` : ''} × {reais4(l.nota.preco)}
+                            {l.nota.unidade ? ` ${l.nota.unidade}` : ''} × {reais4(l.custoNota)}
+                            {detalheImpostos(l.nota) && (
+                              <span className="block text-[11px] text-slate-400">
+                                {detalheImpostos(l.nota)}
+                              </span>
+                            )}
                           </span>
                           <span
                             className={`text-sm font-semibold ${
@@ -1431,9 +1449,14 @@ function Conteudo({
                         </div>
 
                         <span className="text-xs text-slate-400">— não está</span>
-                        <span className="text-xs text-slate-600">
+                                                <span className="text-xs text-slate-600">
                           {numeroTexto(n.quantidade)}
-                          {n.unidade ? ` ${n.unidade}` : ''} × {reais4(n.preco)}
+                          {n.unidade ? ` ${n.unidade}` : ''} × {reais4(custoUnitario(n))}
+                          {detalheImpostos(n) && (
+                            <span className="block text-[11px] text-slate-400">
+                              {detalheImpostos(n)}
+                            </span>
+                          )}
                         </span>
 
                         <div>
@@ -1475,7 +1498,7 @@ function Conteudo({
                           <BuscaCatalogo
                             inicial={n.nome}
                             nomeNota={n.nome}
-                            resumoNota={`${numeroTexto(n.quantidade)}${n.unidade ? ` ${n.unidade}` : ''} × ${reais4(n.preco)}`}
+                            resumoNota={`${numeroTexto(n.quantidade)}${n.unidade ? ` ${n.unidade}` : ''} × ${reais4(custoUnitario(n))}`}
                             unidadeNota={n.unidade}
                             onFechar={() => fecharBusca(k)}
                             onEscolher={(prod) => {
