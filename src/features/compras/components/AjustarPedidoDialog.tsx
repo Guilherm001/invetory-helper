@@ -94,8 +94,12 @@ function Kbd({ children }: { children: React.ReactNode }) {
 // ---------- busca no catálogo ----------
 
 const MAX_RESULTADOS = 60
+const MAX_RESULTADOS_VARIACAO = 30
 const MAX_PAGINAS = 8
 const SALTO_PAGINA = 8
+
+// palavras que pouco ajudam a identificar o produto (usadas só nas variações da busca)
+const STOP = new Set(['c', 's', 'de', 'com', 'sem', 'p', 'para', 'kg', 'pc', 'un', 'gerdau'])
 
 const semAcento = (s: string) =>
   s
@@ -105,13 +109,74 @@ const semAcento = (s: string) =>
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-// junta várias páginas da busca até chegar em MAX_RESULTADOS
-async function buscarVarios(termo: string, cancelado: () => boolean): Promise<ProdutoLoja[]> {
+// "C/CABECA" -> "c cabeca", "19 X 36" / "19×36" -> "19x36"
+const normalizar = (s: string) =>
+  semAcento(s)
+    .toLowerCase()
+    .replace(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/g, '$1x$2')
+    .replace(/[/\\\-_;()]+/g, ' ')
+    .replace(/(?<!\d)[.,]|[.,](?!\d)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const ehMedida = (t: string) => /\d/.test(t)
+
+const medidaDe = (s: string): string | null =>
+  normalizar(s).match(/\d+(?:[.,]\d+)?x\d+(?:[.,]\d+)?/)?.[0] ?? null
+
+function termosDe(termo: string): string[] {
+  return normalizar(termo)
+    .split(' ')
+    .filter((t) => t.length >= 2 || ehMedida(t))
+}
+
+// pontua o quanto o produto combina com o que foi digitado
+function analisar(p: ProdutoLoja, termos: string[], unidadeNota?: string | null) {
+  const nome = normalizar(p.name)
+  const palavras = new Set(nome.split(' '))
+  let pts = 0
+  let achados = 0
+
+  for (const t of termos) {
+    const medida = ehMedida(t)
+    if (palavras.has(t)) {
+      pts += medida ? 6 : 2
+      achados++
+    } else if (nome.includes(t)) {
+      pts += medida ? 3 : 1
+      achados++
+    } else if (medida) {
+      pts -= 5 // a medida da nota não está no produto
+    }
+  }
+
+  const completo = termos.length > 0 && achados === termos.length
+  if (completo) pts += 6
+  if (unidadeNota && p.unit && p.unit.toUpperCase() === unidadeNota.toUpperCase()) pts += 2
+  if (termos.length === 1 && String(p.code) === termos[0]) pts += 100 // código exato
+
+  return { pts, completo }
+}
+
+function ordenar(lista: ProdutoLoja[], termo: string, unidadeNota?: string | null) {
+  const termos = termosDe(termo)
+  return lista
+    .map((p) => ({ p, s: analisar(p, termos, unidadeNota).pts }))
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.p)
+}
+
+// junta várias páginas da busca até chegar no máximo pedido
+async function buscarVarios(
+  termo: string,
+  cancelado: () => boolean,
+  maximo = MAX_RESULTADOS
+): Promise<ProdutoLoja[]> {
   const vistos = new Set<ProdutoLoja['id']>()
   const lista: ProdutoLoja[] = []
   let tamanhoPagina = 0
 
-  for (let pagina = 0; pagina < MAX_PAGINAS && lista.length < MAX_RESULTADOS; pagina++) {
+  for (let pagina = 0; pagina < MAX_PAGINAS && lista.length < maximo; pagina++) {
     const r = await buscarProdutos({ termo, pagina, soComEstoque: false })
     if (cancelado() || r.itens.length === 0) break
     if (pagina === 0) tamanhoPagina = r.itens.length
@@ -129,31 +194,63 @@ async function buscarVarios(termo: string, cancelado: () => boolean): Promise<Pr
     if (novos === 0 || r.itens.length < tamanhoPagina) break
   }
 
-  return lista.slice(0, MAX_RESULTADOS)
+  return lista.slice(0, maximo)
 }
 
-// se o nome inteiro não achar nada, tira a última palavra e tenta de novo
-async function buscarComFallback(termo: string, cancelado: () => boolean) {
-  let atual = termo.trim()
-  for (;;) {
-    const itens = await buscarVarios(atual, cancelado)
-    if (cancelado() || itens.length > 0) return { itens, usado: atual }
-    const palavras = atual.split(/\s+/)
-    if (palavras.length <= 1) return { itens: [] as ProdutoLoja[], usado: atual }
-    atual = palavras.slice(0, -1).join(' ')
+// termo inteiro + versões mais curtas que sempre mantêm a medida
+function variacoes(termo: string): string[] {
+  const termos = termosDe(termo)
+  const medidas = termos.filter(ehMedida)
+  const fortes = termos.filter((t) => !ehMedida(t) && !STOP.has(t))
+  const out = new Set<string>([termo.trim()])
+
+  if (medidas.length && fortes.length) out.add(`${fortes[0]} ${medidas.join(' ')}`) // "prego 19x36"
+  if (fortes.length >= 2) out.add(fortes.slice(0, 2).join(' ')) // "prego polido"
+  if (fortes.length) out.add(fortes[0]) // "prego"
+
+  return [...out].filter((v) => v.length >= 2)
+}
+
+// roda as variações em paralelo e junta tudo sem repetir
+async function buscarInteligente(termo: string, cancelado: () => boolean): Promise<ProdutoLoja[]> {
+  const lista = variacoes(termo)
+  const resultados = await Promise.allSettled(
+    lista.map((v, i) => buscarVarios(v, cancelado, i === 0 ? MAX_RESULTADOS : MAX_RESULTADOS_VARIACAO))
+  )
+
+  const unico = new Map<ProdutoLoja['id'], ProdutoLoja>()
+  let algumaOk = false
+  for (const r of resultados) {
+    if (r.status !== 'fulfilled') continue
+    algumaOk = true
+    for (const p of r.value) if (!unico.has(p.id)) unico.set(p.id, p)
   }
+
+  if (!algumaOk) {
+    const falha = resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+    if (falha) throw falha.reason
+  }
+  return [...unico.values()]
 }
 
-// marca no texto as palavras que a pessoa digitou (sem diferenciar acento ou maiúscula)
+// marca no texto as palavras digitadas (sem diferenciar acento ou maiúscula); medidas ficam em verde
 function Destaque({ texto, termo }: { texto: string; termo: string }) {
-  const palavras = semAcento(termo)
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((p) => p.length >= 2)
-  if (palavras.length === 0) return <>{texto}</>
+  const termos = termosDe(termo).sort((a, b) => b.length - a.length)
+  if (termos.length === 0) return <>{texto}</>
+
+  const padrao = termos
+    .map((t) =>
+      ehMedida(t) && t.includes('x')
+        ? t
+            .split('x')
+            .map(escapeRe)
+            .join('\\s*[x×]\\s*')
+        : escapeRe(t)
+    )
+    .join('|')
 
   const base = semAcento(texto).toLowerCase()
-  const re = new RegExp(palavras.map(escapeRe).join('|'), 'g')
+  const re = new RegExp(padrao, 'g')
   const partes: React.ReactNode[] = []
   let ultimo = 0
 
@@ -162,7 +259,10 @@ function Destaque({ texto, termo }: { texto: string; termo: string }) {
     if (m[0].length === 0 || i < ultimo) continue
     if (i > ultimo) partes.push(texto.slice(ultimo, i))
     partes.push(
-      <mark key={i} className="rounded-sm bg-yellow-200/80 text-inherit">
+      <mark
+        key={i}
+        className={`rounded-sm text-inherit ${ehMedida(m[0]) ? 'bg-emerald-200' : 'bg-yellow-200/80'}`}
+      >
         {texto.slice(i, i + m[0].length)}
       </mark>
     )
@@ -176,18 +276,19 @@ function BuscaCatalogo({
   inicial,
   nomeNota,
   resumoNota,
+  unidadeNota,
   onEscolher,
   onFechar,
 }: {
   inicial: string
   nomeNota: string
   resumoNota: string
+  unidadeNota?: string | null
   onEscolher: (p: ProdutoLoja) => void
   onFechar: () => void
 }) {
   const [termo, setTermo] = useState(inicial)
   const [res, setRes] = useState<ProdutoLoja[]>([])
-  const [usado, setUsado] = useState('')
   const [ativo, setAtivo] = useState(0)
   const [buscando, setBuscando] = useState(false)
 
@@ -196,6 +297,8 @@ function BuscaCatalogo({
   const itemRefs = useRef<(HTMLLIElement | null)[]>([])
   // só rola a lista quando a pessoa navega pelo teclado (o mouse não deve causar rolagem)
   const porTeclado = useRef(false)
+  // guarda o resultado de cada termo enquanto a busca está aberta
+  const cache = useRef(new Map<string, ProdutoLoja[]>())
 
   // traz o painel para a área visível ao abrir
   useEffect(() => {
@@ -207,27 +310,35 @@ function BuscaCatalogo({
     const t = termo.trim()
     if (t.length < 2) {
       setRes([])
-      setUsado('')
       setBuscando(false)
       return
     }
+
+    const emCache = cache.current.get(t)
+    if (emCache) {
+      porTeclado.current = false
+      setRes(emCache)
+      setAtivo(0)
+      setBuscando(false)
+      if (listaRef.current) listaRef.current.scrollTop = 0
+      return
+    }
+
     let cancelado = false
     setBuscando(true)
     const timer = setTimeout(async () => {
       try {
-        const r = await buscarComFallback(t, () => cancelado)
+        const itens = await buscarInteligente(t, () => cancelado)
         if (!cancelado) {
+          const ordenados = ordenar(itens, t, unidadeNota).slice(0, MAX_RESULTADOS)
+          cache.current.set(t, ordenados)
           porTeclado.current = false
-          setRes(r.itens)
-          setUsado(r.usado)
+          setRes(ordenados)
           setAtivo(0)
           if (listaRef.current) listaRef.current.scrollTop = 0
         }
       } catch {
-        if (!cancelado) {
-          setRes([])
-          setUsado(t)
-        }
+        if (!cancelado) setRes([])
       } finally {
         if (!cancelado) setBuscando(false)
       }
@@ -236,7 +347,7 @@ function BuscaCatalogo({
       cancelado = true
       clearTimeout(timer)
     }
-  }, [termo])
+  }, [termo, unidadeNota])
 
   // mantém o item ativo sempre visível dentro da lista
   useEffect(() => {
@@ -256,7 +367,13 @@ function BuscaCatalogo({
   }
 
   const t = termo.trim()
-  const trocouTermo = usado !== '' && usado !== t && res.length > 0
+  const termos = useMemo(() => termosDe(t), [t])
+  const medidaBusca = useMemo(() => medidaDe(t), [t])
+  const analise = useMemo(
+    () => res.map((p) => analisar(p, termos, unidadeNota)),
+    [res, termos, unidadeNota]
+  )
+  const completos = analise.filter((a) => a.completo).length
 
   let status: React.ReactNode = null
   if (t.length < 2) {
@@ -265,19 +382,14 @@ function BuscaCatalogo({
     status = 'Buscando...'
   } else if (res.length === 0) {
     status = 'Nenhum produto encontrado. Tente outra palavra, o código ou o código de barras.'
-  } else if (trocouTermo) {
-    status = (
-      <>
-        Nada com <strong>“{t}”</strong>. Mostrando resultados para <strong>“{usado}”</strong> ·{' '}
-        {res.length}
-        {res.length >= MAX_RESULTADOS ? '+' : ''}
-      </>
-    )
   } else {
     status = (
       <>
         {res.length}
-        {res.length >= MAX_RESULTADOS ? '+' : ''} {res.length === 1 ? 'resultado' : 'resultados'}
+        {res.length >= MAX_RESULTADOS ? '+' : ''} {res.length === 1 ? 'resultado' : 'resultados'} · mais
+        parecidos primeiro
+        {completos === 0 && ' · nenhum tem todas as palavras'}
+        {completos > 0 && completos < res.length && ` · ${completos} com todas as palavras`}
         {res.length >= MAX_RESULTADOS && ' · refine a busca para ver outros'}
       </>
     )
@@ -359,6 +471,13 @@ function BuscaCatalogo({
         >
           {res.map((p, i) => {
             const marcado = i === ativo
+            const medidaProd = medidaDe(p.name)
+            const medidaIgual = !!medidaBusca && medidaProd === medidaBusca
+            const medidaOutra = !!medidaBusca && !!medidaProd && medidaProd !== medidaBusca
+            const melhor = i === 0 && analise[i]?.completo && !medidaOutra
+            const unidadeIgual =
+              !!unidadeNota && !!p.unit && p.unit.toUpperCase() === unidadeNota.toUpperCase()
+
             return (
               <li
                 key={p.id}
@@ -379,16 +498,35 @@ function BuscaCatalogo({
               >
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold leading-snug text-slate-900">
-                    <Destaque texto={p.name} termo={usado || t} />
+                    <Destaque texto={p.name} termo={t} />
                   </span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                     <span>
-                      Cód. <Destaque texto={String(p.code)} termo={usado || t} />
+                      Cód. <Destaque texto={String(p.code)} termo={t} />
                     </span>
                     {p.unit && (
-                      <span className="rounded bg-slate-100 px-1.5 py-px font-semibold text-slate-600">
+                      <span
+                        className={`rounded px-1.5 py-px font-semibold ${
+                          unidadeIgual
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
                         {p.unit}
                       </span>
+                    )}
+                    {melhor && (
+                      <span className={`${chipClass} bg-[#079C9C]/15 text-[#047a7a]`}>
+                        melhor correspondência
+                      </span>
+                    )}
+                    {medidaIgual && (
+                      <span className={`${chipClass} bg-emerald-50 text-emerald-700`}>
+                        medida igual
+                      </span>
+                    )}
+                    {medidaOutra && (
+                      <span className={`${chipClass} bg-amber-50 text-amber-700`}>outra medida</span>
                     )}
                   </span>
                 </span>
@@ -1338,6 +1476,7 @@ function Conteudo({
                             inicial={n.nome}
                             nomeNota={n.nome}
                             resumoNota={`${numeroTexto(n.quantidade)}${n.unidade ? ` ${n.unidade}` : ''} × ${reais4(n.preco)}`}
+                            unidadeNota={n.unidade}
                             onFechar={() => fecharBusca(k)}
                             onEscolher={(prod) => {
                               setNovo(k, {
