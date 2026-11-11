@@ -241,27 +241,25 @@ export async function registrarNota(
   })
   if (error) throw traduz(error)
 
-  // Garante que os impostos do cabeçalho fiquem salvos mesmo que a função do banco
-  // ainda não grave esse campo. Se a coluna não existir ou não houver permissão, ignora.
-  if (impostos) {
-    try {
-      if (dados.chave) {
-        await supabase
-          .from('pedido_compra_notas')
-          .update({ impostos })
-          .eq('pedido_id', pedidoId)
-          .eq('chave', dados.chave)
-      } else {
-        await supabase
-          .from('pedido_compra_notas')
-          .update({ impostos })
-          .eq('pedido_id', pedidoId)
-          .eq('numero', dados.numero)
-      }
-    } catch {
-      // sem a coluna "impostos": a conferência segue só com o imposto por linha
-    }
+  // Garante que os itens (com imposto por linha) e os impostos do cabeçalho fiquem
+  // salvos, mesmo que a função do banco descarte esses campos.
+  if (dados.itens.length === 0 && !impostos) return
+
+  const atualizar = async (campos: Record<string, unknown>) => {
+    let q = supabase.from('pedido_compra_notas').update(campos).eq('pedido_id', pedidoId)
+    q = dados.chave ? q.eq('chave', dados.chave) : q.eq('numero', dados.numero)
+    return await q
   }
+
+  let r = await atualizar({ itens: dados.itens, impostos })
+
+  // a coluna "impostos" ainda não existe: grava só os itens
+  if (r.error && (r.error.code === '42703' || r.error.message.toLowerCase().includes('impostos'))) {
+    r = await atualizar({ itens: dados.itens })
+  }
+
+  // normalmente é RLS sem policy de UPDATE em pedido_compra_notas
+  if (r.error) console.warn('Não foi possível regravar itens/impostos da nota:', r.error.message)
 }
 
 export async function excluirNota(id: string) {

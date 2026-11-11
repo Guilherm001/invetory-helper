@@ -891,7 +891,12 @@ function Conteudo({
         setErro(v.erro)
         return
       }
-      dadosNotaRef.current = v.dados
+      // Com XML importado, manda os itens exatamente como o XML trouxe (com IPI, ST e
+      // acréscimos por linha) e os impostos do cabeçalho. Sem isso o custo sai sem imposto
+      // e a diferença da nota cai toda no frete do pedido.
+      dadosNotaRef.current = nota.xml
+        ? { ...v.dados, itens: nota.xml.itens, impostos: nota.xml.impostos ?? null }
+        : v.dados
     }
 
     // o balcão se identifica com a senha; o dono já está identificado
