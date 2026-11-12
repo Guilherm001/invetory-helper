@@ -207,6 +207,23 @@ function atalhosDePeriodo(): [string, string, string][] {
   ]
 }
 
+// cor de fundo suave + faixa lateral por situação do pedido (classes completas para o Tailwind)
+const TOM_LINHA = {
+  rascunho: 'border-slate-200 border-l-slate-300 bg-slate-50',
+  enviado: 'border-sky-200 border-l-sky-400 bg-sky-50/70',
+  confirmado: 'border-indigo-200 border-l-indigo-400 bg-indigo-50/60',
+  parcial: 'border-orange-200 border-l-orange-400 bg-orange-50/70',
+  recebido: 'border-emerald-200 border-l-emerald-500 bg-emerald-50/60',
+  cancelado: 'border-rose-200 border-l-rose-300 bg-rose-50/50',
+  atrasado: 'border-amber-300 border-l-amber-500 bg-amber-50/80',
+} as const
+
+function tomDaLinha(p: PedidoCompra, atraso: boolean): string {
+  if (atraso) return TOM_LINHA.atrasado
+  if (p.recebido_parcial && p.status !== 'recebido' && p.status !== 'cancelado') return TOM_LINHA.parcial
+  return TOM_LINHA[p.status]
+}
+
 function dataDoPedido(p: PedidoCompra, campo: CampoData) {
   if (campo === 'previsao') return p.previsao_entrega ? dataCurta(p.previsao_entrega) : '—'
   const v = campo === 'recebido' ? p.recebido_em : p.criado_em
@@ -839,7 +856,7 @@ export default function PedidosCompraLista({
                     type="button"
                     onClick={() => abrirPedido(p.id)}
                     title={detalhes || undefined}
-                    className={`grid w-full grid-cols-2 items-center gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-px hover:border-[#079C9C]/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#079C9C] ${COLUNAS}`}
+                    className={`grid w-full grid-cols-2 items-center gap-x-3 gap-y-1.5 rounded-xl border border-l-4 px-4 py-3 text-left shadow-sm transition hover:-translate-y-px hover:shadow-md hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#079C9C] ${tomDaLinha(p, atraso)} ${COLUNAS}`}
                   >
                     {/* pedido */}
                     <span className="order-1 text-sm font-bold text-[#079C9C] lg:order-none">
