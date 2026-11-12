@@ -19,6 +19,45 @@ const arred6 = (n: number) => Math.round(n * 1e6) / 1e6
 const soAlfanum = (s: string) => s.toUpperCase().replace(/[^0-9A-Z]/g, '')
 const fmtDoc = (d: string) => (d.length <= 11 ? formatarCpf(d) : formatarCnpj(d))
 
+// ---------- frete e despesas da nota: entram no custo dos produtos ----------
+
+// Como o valor que está na nota mas fora das linhas (frete no rodapé, outras despesas)
+// é dividido entre os produtos:
+//  - 'valor': proporcional ao valor de cada item (um item caro leva mais frete que um barato)
+//  - 'igual': a mesma parte para cada item da nota, não importa o preço
+// Para trocar a regra, é só mudar esta linha.
+export type RateioFrete = 'valor' | 'igual'
+export const RATEIO_FRETE: RateioFrete = 'valor'
+
+// Soma a parte de cada item em "outros" (frete/despesas da linha) e no custo total da linha.
+// O último item leva o resto, para a soma fechar no centavo.
+function ratearSobraNosItens(
+  itens: ItemNota[],
+  sobra: number,
+  modo: RateioFrete = RATEIO_FRETE
+): ItemNota[] {
+  if (itens.length === 0 || Math.abs(sobra) < 0.01) return itens
+
+  const base = itens.reduce((s, i) => s + (i.totalComImpostos ?? i.subtotal), 0)
+  const porValor = modo === 'valor' && base > 0
+
+  let restante = sobra
+  return itens.map((i, idx) => {
+    const atual = i.totalComImpostos ?? i.subtotal
+    const parte =
+      idx === itens.length - 1
+        ? restante
+        : arred2(sobra * (porValor ? atual / base : 1 / itens.length))
+    restante = arred2(restante - parte)
+
+    return {
+      ...i,
+      outros: arred2((i.outros ?? 0) + parte),
+      totalComImpostos: arred2(atual + parte),
+    }
+  })
+}
+
 // ---------- valor: nota contra pedido ----------
 
 export function diferencaDeValor(
@@ -44,8 +83,9 @@ export function diferencaDeValor(
 }
 
 // valor da nota que NÃO está em nenhuma linha de item (frete no rodapé, despesas etc.).
-// É só isso que deve ir para o frete do pedido: IPI, ST e frete de linha já entram no item.
-// Em nota antiga, o IPI/ST do cabeçalho é rateado nos itens antes de calcular a sobra.
+// IPI, ST e frete de linha já entram no item. Em nota antiga, o IPI/ST do cabeçalho é
+// rateado nos itens antes de calcular a sobra.
+// Esse valor é dividido entre os itens da nota na conferência (ver ratearSobraNosItens).
 export function sobraDasNotas(notas: NotaCompra[]): number {
   const total = notas.reduce((s, n) => s + n.valor, 0)
   const nasLinhas = notas
@@ -128,7 +168,7 @@ export interface ImpostosDoItem {
   icms: number // próprio: já está embutido no preço, só informativo
   ipi: number // soma no custo
   icmsSt: number // soma no custo
-  outros: number // frete/seguro/outras despesas da linha: soma no custo
+  outros: number // frete/seguro/despesas da linha + a parte do frete da nota: soma no custo
 }
 
 export interface LinhaConferencia {
@@ -137,9 +177,9 @@ export interface LinhaConferencia {
   nota: ItemNota
   como: ComoCasou
   notaChave: string
-  custoNota: number // custo unitário da nota, já com IPI, ST e acréscimos da linha
+  custoNota: number // custo unitário da nota, já com IPI, ST, frete e acréscimos
   impostos: ImpostosDoItem
-  difPreco: number | null // % do custo da nota (com impostos) contra o pedido
+  difPreco: number | null // % do custo da nota (com impostos e frete) contra o pedido
   difQtd: number | null // nota - pedido
   recebidoDiferente: boolean
   unidadeDiferente: boolean // só quando a unidade é realmente outra (UN e PC contam como iguais)
@@ -219,8 +259,16 @@ export function conferirItens(
   barcodes: Map<string, string>,
   vinculos: Map<string, string>
 ): ResultadoConferencia {
+  // Só entram as notas com XML (as outras não têm itens para receber a parte do frete).
+  const comXml = notas.filter((n) => n.itens.length > 0)
+
   // itensDaNota rateia IPI/ST do cabeçalho nos itens quando a nota foi salva sem imposto por linha
-  const daNota = agruparItensNota(notas.flatMap((n) => itensDaNota(n)))
+  const agrupados = agruparItensNota(comXml.flatMap((n) => itensDaNota(n)))
+
+  // O que a nota cobra além das linhas (frete no rodapé, despesas) vira custo dos produtos:
+  // é dividido entre todos os itens da nota, em vez de ficar como frete do pedido.
+  const daNota = ratearSobraNosItens(agrupados, sobraDasNotas(comXml))
+
   // nome parecido NÃO liga sozinho aqui: vira sugestão, porque a ligação pode alterar o pedido
   const mapaPares = casar(pedidoItens, daNota, barcodes, vinculos, { parecido: false })
   const usadasNota = new Set([...mapaPares.values()].map((p) => p.ni))
@@ -233,7 +281,7 @@ export function conferirItens(
     if (!par) return
     const n = daNota[par.ni]
 
-    // custo de verdade da nota: com IPI, ST e acréscimos da linha
+    // custo de verdade da nota: com IPI, ST, frete e acréscimos
     const custoNota = custoUnitario(n)
 
     const difPreco =
@@ -305,9 +353,10 @@ export interface Ajuste {
   aviso: string | null
 }
 
-// o preço sai do total da linha da nota COM impostos (IPI, ST e acréscimos da linha),
-// para o item do pedido fechar no mesmo valor que a nota cobra. O ICMS próprio não entra:
-// já está dentro do preço. Nota antiga (sem os campos de imposto) cai para o subtotal.
+// o preço sai do total da linha da nota COM impostos (IPI, ST, frete e acréscimos da linha,
+// mais a parte do frete da nota), para o item do pedido fechar no mesmo valor que a nota cobra.
+// O ICMS próprio não entra: já está dentro do preço. Nota antiga (sem os campos de imposto)
+// cai para o subtotal.
 function comoNaNota(n: ItemNota, quantidade: number, unidade: string | null): ValoresAjuste {
   const total = n.totalComImpostos ?? n.subtotal
   const preco = arred6(quantidade > 0 ? total / quantidade : custoUnitario(n))
