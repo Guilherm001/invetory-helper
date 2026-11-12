@@ -46,9 +46,19 @@ export interface PedidoInicial {
 // ---------- utilidades ----------
 
 const arredonda = (n: number) => Math.round(n * 100) / 100
+const arredonda6 = (n: number) => Math.round(n * 1e6) / 1e6
 const paraNumero = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')))
 const qtdTexto = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', ',')
 const precoTexto = (n: number) => n.toFixed(2).replace('.', ',')
+
+// custo unitário com frete pode ter até 4 casas
+const reais4 = (n: number) =>
+  n.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })
 
 const inputClass =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20 md:text-sm'
@@ -64,6 +74,24 @@ const LINHA = `grid grid-cols-2 items-center gap-x-2 gap-y-1.5 ${COLUNAS}`
 const CONDICOES = ['À vista', '7 dias', '14 dias', '28 dias', '30/60 dias']
 
 type ModoDesconto = 'valor' | 'pct'
+
+// O que fazer com o frete:
+//  - 'valor': soma no custo dos itens, proporcional ao valor de cada um
+//  - 'igual': soma no custo dos itens, a mesma parte para cada item
+//  - 'separado': fica como frete do pedido, fora do custo dos itens
+type ModoFrete = 'valor' | 'igual' | 'separado'
+
+const MODOS_FRETE: [ModoFrete, string][] = [
+  ['valor', 'Por valor'],
+  ['igual', 'Igual'],
+  ['separado', 'Separado'],
+]
+
+const EXPLICACAO_FRETE: Record<ModoFrete, string> = {
+  valor: 'Somado ao custo dos itens, proporcional ao valor de cada um.',
+  igual: 'Somado ao custo dos itens, a mesma parte para cada item.',
+  separado: 'Fica como frete do pedido, fora do custo dos itens.',
+}
 
 // "10 cimento" ou "10x cimento" -> quantidade 10
 function interpretar(texto: string): { nome: string; quantidade: number; informou: boolean } {
@@ -113,7 +141,7 @@ function precoBase(i: ItemForm): number | null {
   return Number.isFinite(n) && n > 0 ? p / n : p
 }
 
-// preço final de 1 unidade (é o que vai para o pedido), já com o fator de desconto
+// preço final de 1 unidade, já com o fator de desconto (sem frete)
 function precoFinal(i: ItemForm, fator: number): number | null {
   const b = precoBase(i)
   return b === null ? null : arredonda(b * fator)
@@ -131,6 +159,38 @@ function subtotalDe(i: ItemForm, fator: number) {
   const q = qtdUnidades(i)
   const p = precoFinal(i, fator)
   return Number.isFinite(q) && q > 0 && p !== null ? arredonda(q * p) : 0
+}
+
+// divide o frete entre os itens (em centavos); o último item leva o resto para fechar a soma
+function dividirFrete(
+  itens: ItemForm[],
+  fator: number,
+  frete: number,
+  modo: Exclude<ModoFrete, 'separado'>
+): Map<number, number> {
+  const partes = new Map<number, number>()
+
+  const alvos = itens.flatMap((i) => {
+    const q = qtdUnidades(i)
+    const b = precoBase(i)
+    return Number.isFinite(q) && q > 0 && b !== null ? [{ key: i.key, total: q * b * fator }] : []
+  })
+  if (alvos.length === 0 || frete <= 0) return partes
+
+  const somaTotais = alvos.reduce((s, a) => s + a.total, 0)
+  const porValor = modo === 'valor' && somaTotais > 0
+
+  let restante = frete
+  alvos.forEach((a, idx) => {
+    const parte =
+      idx === alvos.length - 1
+        ? restante
+        : arredonda(frete * (porValor ? a.total / somaTotais : 1 / alvos.length))
+    restante = arredonda(restante - parte)
+    partes.set(a.key, parte)
+  })
+
+  return partes
 }
 
 function Campo({
@@ -191,6 +251,9 @@ function Conteudo({
   const [condicao, setCondicao] = useState(d.condicao_pagamento ?? '')
   const [previsao, setPrevisao] = useState(d.previsao_entrega ?? '')
   const [frete, setFrete] = useState(d.frete > 0 ? precoTexto(d.frete) : '')
+  // pedido novo: o frete já entra no custo dos itens. Pedido antigo com frete separado
+  // continua como estava, até a pessoa escolher outra opção.
+  const [modoFrete, setModoFrete] = useState<ModoFrete>(editando && d.frete > 0 ? 'separado' : 'valor')
   const [desconto, setDesconto] = useState(d.desconto > 0 ? precoTexto(d.desconto) : '')
   const [modoDesconto, setModoDesconto] = useState<ModoDesconto>('valor')
   const [obs, setObs] = useState(d.observacao ?? '')
@@ -319,7 +382,7 @@ function Conteudo({
     setFoco(null)
   }, [foco, itens])
 
-  // ---------- totais e desconto ----------
+  // ---------- totais, desconto e frete ----------
 
   // soma dos itens SEM desconto
   const bruto = arredonda(itens.reduce((s, i) => s + subtotalDe(i, 1), 0))
@@ -345,13 +408,40 @@ function Conteudo({
     return bruto > 0 ? 1 - descontoDigitado / bruto : 1
   })()
 
-  const soma = arredonda(itens.reduce((s, i) => s + subtotalDe(i, fator), 0))
-  const descontoEfetivo = arredonda(bruto - soma)
-  const total = arredonda(soma + (Number.isFinite(freteNum) ? freteNum : 0))
+  // soma dos itens já com o desconto, antes do frete
+  const somaBase = arredonda(itens.reduce((s, i) => s + subtotalDe(i, fator), 0))
+  const descontoEfetivo = arredonda(bruto - somaBase)
+
+  const freteValor = Number.isFinite(freteNum) && freteNum > 0 ? freteNum : 0
+  const ratearFrete = modoFrete !== 'separado' && freteValor > 0 && somaBase > 0
+
+  // quanto do frete cai em cada item
+  const partesFrete = ratearFrete
+    ? dividirFrete(itens, fator, freteValor, modoFrete as Exclude<ModoFrete, 'separado'>)
+    : new Map<number, number>()
+
+  // preço final de 1 unidade: com desconto e com a parte do frete (é o que vai para o pedido)
+  const custoUnit = (i: ItemForm): number | null => {
+    const p = precoFinal(i, fator)
+    const extra = partesFrete.get(i.key)
+    const q = qtdUnidades(i)
+    const b = precoBase(i)
+    if (!extra || p === null || b === null || !(q > 0)) return p
+    return arredonda6(b * fator + extra / q)
+  }
+
+  const subtotalFinal = (i: ItemForm) => {
+    const q = qtdUnidades(i)
+    const c = custoUnit(i)
+    return Number.isFinite(q) && q > 0 && c !== null ? arredonda(q * c) : 0
+  }
+
+  // o dinheiro que sai é o mesmo nos dois casos: itens (com desconto) + frete
+  const total = arredonda(somaBase + (Number.isFinite(freteNum) ? freteNum : 0))
 
   // só pergunta antes de fechar se algo mudou
   const snapshot = JSON.stringify([
-    ref, nome, contato, prazo, condicao, previsao, frete, desconto, modoDesconto, obs,
+    ref, nome, contato, prazo, condicao, previsao, frete, modoFrete, desconto, modoDesconto, obs,
     itens.map((i) => [i.codigo, i.nome, i.qtd, i.preco, i.porCaixa, i.emCaixas, i.obs]),
   ])
   const [snapshotInicial] = useState(snapshot)
@@ -553,7 +643,7 @@ function Conteudo({
     const lista: ItemEntrada[] = []
     for (const i of itens) {
       const q = qtdUnidades(i) // já convertida para unidades
-      const p = precoFinal(i, fator) // já com o desconto aplicado no item
+      const p = custoUnit(i) // já com o desconto e a parte do frete
       if (i.nome.trim() === '') {
         setErro('Há um item sem nome.')
         focarCelula(String(i.key), 0)
@@ -611,7 +701,8 @@ function Conteudo({
       comparacao_nome: d.comparacao_nome,
       condicao_pagamento: condicao.trim() || null,
       previsao_entrega: previsao || null,
-      frete: freteNum,
+      // frete rateado já está no preço de cada item: não pode contar de novo
+      frete: ratearFrete ? 0 : freteNum,
       desconto: 0, // o desconto já foi aplicado no preço de cada item
       observacao: obs.trim() || null,
     }
@@ -899,7 +990,8 @@ function Conteudo({
               <ul className="space-y-1.5">
                 {itens.map((i, r) => {
                   const ultimo = ultimos.get(chaveItem(i.codigo, i.nome))
-                  const preco = precoFinal(i, fator) // preço da unidade, já com desconto
+                  const preco = custoUnit(i) // preço da unidade, com desconto e frete
+                  const extraFrete = partesFrete.get(i.key) ?? 0
                   const variacao =
                     ultimo && ultimo.preco > 0 && preco !== null
                       ? ((preco - ultimo.preco) / ultimo.preco) * 100
@@ -981,7 +1073,7 @@ function Conteudo({
 
                         <div className="col-span-2 flex items-center justify-between gap-2 md:contents">
                           <span className="min-w-0 truncate text-base font-bold text-slate-900 md:text-right md:text-sm">
-                            {reais(subtotalDe(i, fator))}
+                            {reais(subtotalFinal(i))}
                           </span>
                           <div className="flex shrink-0 justify-end gap-0.5">
                             <button
@@ -1021,6 +1113,12 @@ function Conteudo({
                           </div>
                         </div>
                       </div>
+
+                      {extraFrete > 0 && preco !== null && (
+                        <p className="mt-1.5 text-xs font-medium text-emerald-700">
+                          + {reais(extraFrete)} de frete → custo de {reais4(preco)} por un.
+                        </p>
+                      )}
 
                       {(i.caixaAberta || emCaixa) && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
@@ -1093,9 +1191,9 @@ function Conteudo({
                               : modoCaixas
                                 ? `${qtdTexto(Number.isFinite(qtdNum) ? qtdNum : 0)} cx × ${nPorCaixa} = ${qtdTexto(
                                     Number.isFinite(unidadesTotal) ? unidadesTotal : 0
-                                  )} un.${preco !== null ? ` · ${reais(preco)} por un.` : ''} (preço acima é o da caixa)`
+                                  )} un.${preco !== null ? ` · ${reais4(preco)} por un.` : ''} (preço acima é o da caixa)`
                                 : `Preço acima é o da caixa; a quantidade é em unidades${
-                                    preco !== null ? ` → ${reais(preco)} por un.` : ''
+                                    preco !== null ? ` → ${reais4(preco)} por un.` : ''
                                   }${
                                     caixas !== null
                                       ? ` · ${qtdTexto(caixas)} ${caixas === 1 ? 'caixa' : 'caixas'}`
@@ -1234,6 +1332,41 @@ function Conteudo({
                 className={`${celula} !w-28 text-right`}
               />
             </div>
+
+            {freteValor > 0 && (
+              <div className="space-y-1.5">
+                <div
+                  role="radiogroup"
+                  aria-label="O que fazer com o frete"
+                  className="flex overflow-hidden rounded-md border border-slate-200 bg-white"
+                >
+                  {MODOS_FRETE.map(([v, rotulo]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      tabIndex={-1}
+                      aria-checked={modoFrete === v}
+                      onClick={() => setModoFrete(v)}
+                      className={`h-8 flex-1 text-xs font-semibold transition ${
+                        modoFrete === v
+                          ? 'bg-[#079C9C] text-white'
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+                <p
+                  className={`text-right text-xs ${
+                    modoFrete === 'separado' ? 'text-slate-500' : 'font-medium text-emerald-700'
+                  }`}
+                >
+                  {EXPLICACAO_FRETE[modoFrete]}
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
