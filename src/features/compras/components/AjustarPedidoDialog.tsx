@@ -12,7 +12,13 @@ import {
 } from '../../../../components/ui/dialog'
 import { numeroTexto, reais } from '@/features/loja/lib/formatar'
 import { buscarProdutos, type ProdutoLoja } from '@/features/loja/services/lojaCatalogoService'
-import type { ItemPedidoCompra, PedidoCompra } from '../services/comprasService'
+import {
+  precosDeVenda,
+  ultimosPrecos,
+  type ItemPedidoCompra,
+  type PedidoCompra,
+  type UltimoPreco,
+} from '../services/comprasService'
 import { ajustarPedidoPelaNota, vincularItem, type AjusteEnviado } from '../services/notasService'
 import { adicionarItensAoPedido, definirPrecosVenda } from '../services/ajusteNotaService'
 import {
@@ -91,6 +97,8 @@ interface LinhaPreco {
   novo: boolean
   itemId?: string
   notaKey?: string
+  codigo?: string | null
+  custoPedido?: number
 }
 
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -606,7 +614,7 @@ function Conteudo({
   const [novos, setNovos] = useState<Record<string, NovoItem>>(() =>
     Object.fromEntries(
       soNota.map((n) => {
-                const k = chaveNota(n)
+        const k = chaveNota(n)
         // custo real da linha: com IPI, ST e acréscimos (o ICMS próprio já está no preço)
         const totalLinha = n.totalComImpostos ?? n.subtotal
         const preco =
@@ -625,6 +633,40 @@ function Conteudo({
     )
   )
   const [buscandoKey, setBuscandoKey] = useState<string | null>(null)
+
+  // preço de venda atual (catálogo) e custo antigo (última compra) de cada produto
+  const [vendasAntigas, setVendasAntigas] = useState<Map<string, number>>(new Map())
+  const [custosAnt, setCustosAnt] = useState<Map<string, UltimoPreco>>(new Map())
+
+  const itensRef = [
+    ...pares
+      .filter((l) => l.pedido.produto_codigo)
+      .map((l) => ({ codigo: l.pedido.produto_codigo as string, nome: l.pedido.produto_nome })),
+    ...Object.values(novos)
+      .filter((v) => v.marcado && v.codigo)
+      .map((v) => ({ codigo: v.codigo, nome: v.nome })),
+  ]
+  const refKey = itensRef.map((i) => `${i.codigo}|${i.nome}`).join(';')
+
+  useEffect(() => {
+    if (itensRef.length === 0) return
+    let cancel = false
+    Promise.all([
+      precosDeVenda(itensRef.map((i) => i.codigo)).catch(() => new Map<string, number>()),
+      ultimosPrecos(
+        itensRef.map((i) => chaveItem(i.codigo, i.nome)),
+        pedido.id
+      ).catch(() => new Map<string, UltimoPreco>()),
+    ]).then(([v, c]) => {
+      if (cancel) return
+      setVendasAntigas(v)
+      setCustosAnt(c)
+    })
+    return () => {
+      cancel = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refKey, pedido.id])
 
   const [base, setBase] = useState<BaseMargem>('markup')
   const [precos, setPrecos] = useState<Record<string, PrecoEntrada>>({})
@@ -728,12 +770,20 @@ function Conteudo({
       const moveu = mover(el, e.shiftKey ? -1 : 1, 0)
       if (!moveu && !e.shiftKey) document.getElementById('aj-aplicar')?.focus()
     } else if (e.key === 'ArrowRight') {
-      if (!texto || (input!.selectionEnd === input!.value.length && (input!.selectionStart === input!.value.length || input!.selectionStart === 0))) {
+      if (
+        !texto ||
+        (input!.selectionEnd === input!.value.length &&
+          (input!.selectionStart === input!.value.length || input!.selectionStart === 0))
+      ) {
         e.preventDefault()
         mover(el, 0, 1)
       }
     } else if (e.key === 'ArrowLeft') {
-      if (!texto || (input!.selectionStart === 0 && (input!.selectionEnd === 0 || input!.selectionEnd === input!.value.length))) {
+      if (
+        !texto ||
+        (input!.selectionStart === 0 &&
+          (input!.selectionEnd === 0 || input!.selectionEnd === input!.value.length))
+      ) {
         e.preventDefault()
         mover(el, 0, -1)
       }
@@ -814,6 +864,8 @@ function Conteudo({
         custo: v ? v.preco : l.pedido.preco_unitario,
         novo: false,
         itemId: l.pedido.id,
+        codigo: l.pedido.produto_codigo,
+        custoPedido: l.pedido.preco_unitario,
       }
     }),
     ...novosParse.map((x) => ({
@@ -822,6 +874,7 @@ function Conteudo({
       custo: x.p ?? 0,
       novo: true,
       notaKey: x.k,
+      codigo: x.v.codigo || null,
     })),
   ]
 
@@ -836,9 +889,31 @@ function Conteudo({
     return { venda: p !== null ? vendaPorPercentual(custo, p, b) : null, pct: p }
   }
 
+  // preço de venda atual do catálogo e custo antigo (última compra ou, sem ela, o do pedido)
+  const refDe = (l: LinhaPreco) => {
+    if (!l.codigo) return null
+    const venda = vendasAntigas.get(l.codigo)
+    if (venda == null || !(venda > 0)) return null
+    const custo = custosAnt.get(chaveItem(l.codigo, l.nome))?.preco ?? l.custoPedido ?? null
+    return { venda, custo: custo && custo > 0 ? custo : null }
+  }
+
+  // sem digitação da pessoa: sugere o preço mantendo a margem de antes
+  const entradaDe = (l: LinhaPreco, custo: number): PrecoEntrada | undefined => {
+    const digitado = precos[l.chave]
+    if (digitado) return digitado
+    const ref = refDe(l)
+    if (!ref || !ref.custo || !(custo > 0)) return undefined
+    return { modo: 'venda', texto: textoMoeda(arred2((ref.venda * custo) / ref.custo)) }
+  }
+
   const precosSalvar = linhasPreco.flatMap((l) => {
-    const r = resolver(l.custo, precos[l.chave])
-    return r.venda !== null ? [{ l, venda: r.venda, pct: r.pct }] : []
+    const r = resolver(l.custo, entradaDe(l, l.custo))
+    if (r.venda === null) return []
+    const ref = refDe(l)
+    // não mexeu e continua igual ao preço atual: não precisa gravar
+    if (ref && !precos[l.chave] && Math.abs(r.venda - ref.venda) < 0.005) return []
+    return [{ l, venda: r.venda, pct: r.pct }]
   })
 
   const setPreco = (chave: string, modo: 'venda' | 'margem', texto: string) => {
@@ -1043,8 +1118,26 @@ function Conteudo({
   const paresVisiveis = pares.filter((l) => !soDif || ajustePorItem.has(l.pedido.id))
   let linha = 0
 
+  // selo com o preço de venda atual e a margem que ele tinha sobre o último custo
+  const chipPrecoAntigo = (chave: string) => {
+    const l = linhasPreco.find((x) => x.chave === chave)
+    const ref = l ? refDe(l) : null
+    if (!ref) return null
+    const pct = ref.custo ? percentualPorVenda(ref.custo, ref.venda, base) : null
+    return (
+      <span
+        className={`${chipClass} bg-sky-50 text-sky-700`}
+        title="Preço de venda atual no catálogo e a margem que ele tinha sobre o último custo"
+      >
+        venda atual {reais(ref.venda)}
+        {pct !== null && ` · ${base === 'markup' ? 'markup' : 'margem'} ${textoPct(pct)}%`}
+      </span>
+    )
+  }
+
   const camposPreco = (r: number, chave: string, custo: number, habilitado: boolean, nome: string) => {
-    const e = precos[chave]
+    const l = linhasPreco.find((x) => x.chave === chave)
+    const e = l ? entradaDe(l, custo) : precos[chave]
     const res = resolver(custo, e)
     const vendaTexto = e?.modo === 'venda' ? e.texto : res.venda !== null ? textoMoeda(res.venda) : ''
     const pctTexto = e?.modo === 'margem' ? e.texto : res.pct !== null ? textoPct(res.pct) : ''
@@ -1184,7 +1277,8 @@ function Conteudo({
           {base === 'markup'
             ? 'Markup: custo R$ 10,00 com 40% = venda R$ 14,00.'
             : 'Margem: custo R$ 10,00 com 40% = venda R$ 16,67.'}{' '}
-          Digite o preço final <strong>ou</strong> o %: o outro campo se calcula. Vazio = não define.
+          Digite o preço final <strong>ou</strong> o %: o outro campo se calcula. Vazio = não define. Já
+          vem preenchido mantendo a margem de antes: é só ajustar o que quiser.
         </p>
       </div>
 
@@ -1287,11 +1381,12 @@ function Conteudo({
                                 </span>
                               )}
                               {!a && <span className={`${chipClass} bg-emerald-50 text-emerald-700`}>igual</span>}
+                              {chipPrecoAntigo(chave)}
                             </div>
                           </div>
 
                           <span className="text-xs text-slate-600">{qp(de)}</span>
-                                                    <span className="text-xs text-slate-600">
+                          <span className="text-xs text-slate-600">
                             {numeroTexto(l.nota.quantidade)}
                             {l.nota.unidade ? ` ${l.nota.unidade}` : ''} × {reais4(l.custoNota)}
                             {detalheImpostos(l.nota) && (
@@ -1351,7 +1446,10 @@ function Conteudo({
           {soNota.length > 0 && (
             <section className="mt-5">
               <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Só na nota ({soNota.length}) <span className="font-normal normal-case text-slate-400">· marque com Espaço para adicionar ao pedido</span>
+                Só na nota ({soNota.length}){' '}
+                <span className="font-normal normal-case text-slate-400">
+                  · marque com Espaço para adicionar ao pedido
+                </span>
               </h4>
 
               {pedido.status === 'recebido' && (
@@ -1433,8 +1531,9 @@ function Conteudo({
                               className={`${campo} ${nomeRuim ? 'border-red-400' : ''}`}
                             />
                           )}
-                          <div className="mt-0.5 flex items-center gap-2">
+                          <div className="mt-0.5 flex flex-wrap items-center gap-2">
                             <span className={`${chipClass} bg-[#079C9C]/15 text-[#047a7a]`}>item novo</span>
+                            {chipPrecoAntigo(chave)}
                             {v.marcado && (
                               <button
                                 type="button"
@@ -1449,7 +1548,7 @@ function Conteudo({
                         </div>
 
                         <span className="text-xs text-slate-400">— não está</span>
-                                                <span className="text-xs text-slate-600">
+                        <span className="text-xs text-slate-600">
                           {numeroTexto(n.quantidade)}
                           {n.unidade ? ` ${n.unidade}` : ''} × {reais4(custoUnitario(n))}
                           {detalheImpostos(n) && (
