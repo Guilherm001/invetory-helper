@@ -288,8 +288,9 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
     fornecedores.length === 1 ? fornecedores[0].id : ''
   )
   const [texto, setTexto] = useState('')
-  // escolhas manuais, por número da linha: id do item, IGNORAR ou '' (limpar)
-  const [escolhas, setEscolhas] = useState<Record<number, string>>({})
+  // escolhas manuais, por linha (chave = nome normalizado + ocorrência), para não se perderem
+  // quando o texto é editado: id do item, IGNORAR ou '' (limpar)
+  const [escolhas, setEscolhas] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -333,7 +334,6 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
   const trocarModo = (novo: ModoPreco) => {
     setModoPreco(novo)
     setTexto(textoDasLinhas(itensPdf, novo))
-    setEscolhas({})
   }
 
   const mapa = useMemo(() => montarMapa(precos), [precos])
@@ -342,31 +342,36 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
   const vinculos = useMemo(() => carregarVinculos(fornecedorId), [fornecedorId])
   const indice = useMemo(() => montarIndice(itens), [itens])
 
-  const linhas = useMemo(
-    () =>
-      texto
-        .split('\n')
-        .map(lerLinha)
-        .filter((l): l is Linha => l !== null)
-        .map((l) => {
-          const r = l.valor === null ? SEM_ACHADO : candidatosDe(l.nome, indice, vinculos)
-          return {
-            ...l,
-            candidatos: r.candidatos,
-            auto: r.auto,
-            aproximado: r.aproximado,
-            lembrado: r.lembrado,
-          }
-        }),
-    [texto, indice, vinculos]
-  )
+  const linhas = useMemo(() => {
+    const vistos = new Map<string, number>()
+    return texto
+      .split('\n')
+      .map(lerLinha)
+      .filter((l): l is Linha => l !== null)
+      .map((l) => {
+        // a chave acompanha o nome da linha, não a posição: adicionar ou remover linhas
+        // (ou mudar um preço) não desfaz as ligações já feitas
+        const base = normalizarBusca(l.nome).join(' ') || l.nome
+        const n = (vistos.get(base) ?? 0) + 1
+        vistos.set(base, n)
+        const r = l.valor === null ? SEM_ACHADO : candidatosDe(l.nome, indice, vinculos)
+        return {
+          ...l,
+          chave: `${base}#${n}`,
+          candidatos: r.candidatos,
+          auto: r.auto,
+          aproximado: r.aproximado,
+          lembrado: r.lembrado,
+        }
+      })
+  }, [texto, indice, vinculos])
 
   // item escolhido em cada linha: escolha manual > casamento automático > nenhum
   const linhasFinais = linhas.map((l, idx) => {
-    const escolhido = escolhas[idx] ?? l.auto
+    const escolhido = escolhas[l.chave] ?? l.auto
     const valido = l.valor !== null && escolhido !== '' && escolhido !== IGNORAR
     // casou por semelhança e o usuário ainda não confirmou no seletor
-    const parecido = valido && l.aproximado && escolhas[idx] === undefined
+    const parecido = valido && l.aproximado && escolhas[l.chave] === undefined
     return { ...l, idx, escolhido, valido, parecido }
   })
 
@@ -415,7 +420,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           (l) =>
             l.valor !== null &&
             l.escolhido !== '' &&
-            (escolhas[l.idx] !== undefined || !l.aproximado)
+            (escolhas[l.chave] !== undefined || !l.aproximado)
         )
         .map((l) => ({ nome: l.nome, itemId: l.escolhido }))
     )
@@ -498,10 +503,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           <textarea
             id="colar-texto"
             value={texto}
-            onChange={(e) => {
-              setTexto(e.target.value)
-              setEscolhas({})
-            }}
+            onChange={(e) => setTexto(e.target.value)}
             autoFocus
             className={`${inputClass} min-h-[160px] resize-y leading-relaxed`}
             placeholder={'Um item por linha, com o preço no fim. Ex:\ncimento CP-II 32,50\nareia média - R$ 120,00\ntijolo 8 furos: 1,15'}
@@ -590,7 +592,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
                             tom={tom}
                             ariaLabel={`Item para "${l.nome}"`}
                             onChange={(valor) =>
-                              setEscolhas((prev) => ({ ...prev, [l.idx]: valor }))
+                              setEscolhas((prev) => ({ ...prev, [l.chave]: valor }))
                             }
                           />
 
