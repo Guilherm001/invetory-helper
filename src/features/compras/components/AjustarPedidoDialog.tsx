@@ -114,10 +114,35 @@ function Kbd({ children }: { children: React.ReactNode }) {
 const MAX_RESULTADOS = 60
 const MAX_RESULTADOS_VARIACAO = 30
 const MAX_PAGINAS = 8
+const MAX_VARIACOES = 12
 const SALTO_PAGINA = 8
 
-// palavras que pouco ajudam a identificar o produto (usadas só nas variações da busca)
-const STOP = new Set(['c', 's', 'de', 'com', 'sem', 'p', 'para', 'kg', 'pc', 'un', 'gerdau'])
+// palavras que não ajudam a identificar o produto
+const STOP = new Set(['c', 's', 'de', 'da', 'do', 'com', 'sem', 'p', 'para', 'pra', 'e', 'un', 'und', 'pc', 'pcs', 'cx'])
+
+// palavras muito comuns: sozinhas não diferenciam um produto do outro
+const GENERICAS = new Set([
+  'broca', 'parafuso', 'prego', 'porca', 'arruela', 'tubo', 'cano', 'luva', 'joelho', 'disco',
+  'lixa', 'fita', 'cabo', 'fio', 'chave', 'tinta', 'serra', 'lamina', 'conexao', 'mangueira', 'tampa',
+])
+
+// grafias que significam a mesma coisa (a primeira é a "oficial"). Vá acrescentando as da sua loja.
+const GRUPOS_SINONIMOS: string[][] = [
+  ['widia', 'vidia', 'videa', 'widea'],
+  ['philips', 'phillips', 'fillips'],
+  ['galvanizado', 'galv', 'galvan'],
+  ['inox', 'inoxidavel'],
+  ['sextavado', 'sext'],
+]
+
+const CANON = new Map<string, string>()
+const VARIANTES = new Map<string, string[]>()
+for (const [oficial, ...outras] of GRUPOS_SINONIMOS) {
+  VARIANTES.set(oficial, [oficial, ...outras])
+  CANON.set(oficial, oficial)
+  for (const o of outras) CANON.set(o, oficial)
+}
+const canon = (t: string) => CANON.get(t) ?? t
 
 const semAcento = (s: string) =>
   s
@@ -125,64 +150,179 @@ const semAcento = (s: string) =>
     .map((c) => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '')[0] ?? c)
     .join('')
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-// "C/CABECA" -> "c cabeca", "19 X 36" / "19×36" -> "19x36"
+// "C/CABECA" -> "c cabeca" | "19 X 36" -> "19x36" | "6 mm" -> "6mm" | "3/8"" -> "3/8pol" | "***" some
 const normalizar = (s: string) =>
   semAcento(s)
     .toLowerCase()
-    .replace(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/g, '$1x$2')
-    .replace(/[/\\\-_;()]+/g, ' ')
+    .replace(/×/g, 'x')
+    .replace(/(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)/g, '$1x$2')
+    .replace(/(\d)\s*["”″]/g, '$1pol')
+    .replace(/(\d)\s+(mm|cm|mts?|m|pol|kg|ml|g|l|v|w)(?![a-z0-9])/g, '$1$2')
+    .replace(/(?<!\d)\/|\/(?!\d)/g, ' ') // separa "c/cabeca", mas mantém "3/8"
+    .replace(/[^a-z0-9.,/\s]/g, ' ') // tira *, -, (, ), #, aspas...
     .replace(/(?<!\d)[.,]|[.,](?!\d)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
-const ehMedida = (t: string) => /\d/.test(t)
+// ----- medidas -----
 
-const medidaDe = (s: string): string | null =>
-  normalizar(s).match(/\d+(?:[.,]\d+)?x\d+(?:[.,]\d+)?/)?.[0] ?? null
+const UNIDADES = new Set(['mm', 'cm', 'm', 'mt', 'mts', 'pol', 'kg', 'g', 'l', 'ml', 'v', 'w'])
+const un = (u: string) => (u === 'mt' || u === 'mts' ? 'm' : u)
+const num = (s: string) => String(parseFloat(s.replace(',', '.')))
 
-function termosDe(termo: string): string[] {
-  return normalizar(termo)
-    .split(' ')
-    .filter((t) => t.length >= 2 || ehMedida(t))
+interface Medida {
+  tipo: 'n' | 'd' | 'f' // número, dimensão (19x36) ou fração (3/8)
+  v: string
+  un: string
+  raw: string
 }
 
-// pontua o quanto o produto combina com o que foi digitado
-function analisar(p: ProdutoLoja, termos: string[], unidadeNota?: string | null) {
-  const nome = normalizar(p.name)
-  const palavras = new Set(nome.split(' '))
-  let pts = 0
-  let achados = 0
+function medidaDeToken(t: string): Medida | null {
+  let m = t.match(/^(\d+(?:[.,]\d+)?(?:x\d+(?:[.,]\d+)?)+)([a-z]*)$/)
+  if (m && (!m[2] || UNIDADES.has(m[2])))
+    return { tipo: 'd', v: m[1].split('x').map(num).join('x'), un: un(m[2]), raw: t }
 
-  for (const t of termos) {
-    const medida = ehMedida(t)
-    if (palavras.has(t)) {
-      pts += medida ? 6 : 2
-      achados++
-    } else if (nome.includes(t)) {
-      pts += medida ? 3 : 1
-      achados++
-    } else if (medida) {
-      pts -= 5 // a medida da nota não está no produto
+  m = t.match(/^(\d+)\/(\d+)([a-z]*)$/)
+  if (m && (!m[3] || UNIDADES.has(m[3]))) return { tipo: 'f', v: `${+m[1]}/${+m[2]}`, un: un(m[3]), raw: t }
+
+  m = t.match(/^(\d+(?:[.,]\d+)?)([a-z]*)$/)
+  if (m && (!m[2] || UNIDADES.has(m[2]))) return { tipo: 'n', v: num(m[1]), un: un(m[2]), raw: t }
+
+  return null
+}
+
+// igual: mesmo valor | outra: o produto tem medida do mesmo tipo, mas diferente | nao: não tem medida
+function casaMedida(q: Medida, produto: Medida[]): 'igual' | 'outra' | 'nao' {
+  const compat = produto.filter((x) => x.tipo === q.tipo && (!q.un || !x.un || q.un === x.un))
+  if (compat.some((x) => x.v === q.v)) return 'igual'
+  return compat.length > 0 ? 'outra' : 'nao'
+}
+
+// ----- palavras -----
+
+function distancia(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    let menor = i
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+      if (cur[j] < menor) menor = cur[j]
     }
+    if (menor > max) return max + 1
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+// 1 = igual | 0,85 = começa com | 0,7 = grafia parecida | 0,5 = está dentro de outra palavra
+function casaPalavra(t: string, palavrasProduto: string[]): number {
+  const c = canon(t)
+  const limite = c.length >= 8 ? 2 : 1
+  let melhor = 0
+  for (const w of palavrasProduto) {
+    if (w === c) return 1
+    if (c.length >= 3 && w.startsWith(c)) melhor = Math.max(melhor, 0.85)
+    else if (c.length >= 5 && w.length >= 4 && distancia(c, w, limite) <= limite) melhor = Math.max(melhor, 0.7)
+    else if (c.length >= 4 && w.includes(c)) melhor = Math.max(melhor, 0.5)
+  }
+  return melhor
+}
+
+// ----- consulta e pontuação -----
+
+interface Consulta {
+  palavras: string[]
+  medidas: Medida[]
+}
+
+function consultaDe(termo: string): Consulta {
+  const palavras = new Set<string>()
+  const medidas = new Map<string, Medida>()
+  for (const tok of normalizar(termo).split(' ')) {
+    if (!tok) continue
+    const m = medidaDeToken(tok)
+    if (m) medidas.set(`${m.tipo}:${m.v}:${m.un}`, m)
+    else if (/^\d/.test(tok) || tok.length < 2 || STOP.has(tok)) continue // "100pc", "c", "de"...
+    else palavras.add(tok)
+  }
+  return { palavras: [...palavras], medidas: [...medidas.values()] }
+}
+
+const pesoPalavra = (t: string) => 2 + Math.min(t.length, 8) * 0.25
+const PESO_MEDIDA = 5
+
+interface Analise {
+  pts: number
+  cobertura: number // 0 a 1: quanto do que foi digitado o produto tem
+  completo: boolean
+  hits: Set<string> // palavras digitadas que o produto tem
+  medida: 'igual' | 'outra' | 'nao' | null
+  exato: boolean // código ou código de barras igual ao digitado
+}
+
+function analisar(p: ProdutoLoja, q: Consulta, bruto: string, unidadeNota?: string | null): Analise {
+  const toks = normalizar(p.name).split(' ').filter(Boolean)
+  const medidasProd = toks.map(medidaDeToken).filter((m): m is Medida => m !== null)
+  const palavrasProd = toks.filter((t) => !medidaDeToken(t)).map(canon)
+
+  let total = 0
+  let ganho = 0
+  let penal = 0
+  const hits = new Set<string>()
+
+  for (const t of q.palavras) {
+    const peso = pesoPalavra(t)
+    const s = casaPalavra(t, palavrasProd)
+    total += peso
+    ganho += peso * s
+    if (s >= 0.7) hits.add(t)
   }
 
-  const completo = termos.length > 0 && achados === termos.length
-  if (completo) pts += 6
-  if (unidadeNota && p.unit && p.unit.toUpperCase() === unidadeNota.toUpperCase()) pts += 2
-  if (termos.length === 1 && String(p.code) === termos[0]) pts += 100 // código exato
+  const resultados = q.medidas.map((m) => casaMedida(m, medidasProd))
+  for (const r of resultados) {
+    total += PESO_MEDIDA
+    if (r === 'igual') ganho += PESO_MEDIDA
+    else if (r === 'outra') penal += 6 // a medida da nota existe no produto, mas é outra
+  }
+  const medida: Analise['medida'] =
+    resultados.length === 0
+      ? null
+      : resultados.includes('outra')
+        ? 'outra'
+        : resultados.every((r) => r === 'igual')
+          ? 'igual'
+          : 'nao'
 
-  return { pts, completo }
+  const completo =
+    q.palavras.length + q.medidas.length > 0 &&
+    hits.size === q.palavras.length &&
+    (medida === null || medida === 'igual')
+  const exato = !!bruto && (String(p.code) === bruto || p.barcode === bruto)
+
+  let pts = ganho - penal
+  if (completo) pts += 6
+  if (unidadeNota && p.unit && p.unit.toUpperCase() === unidadeNota.toUpperCase()) pts += 1.5
+  if (exato) pts += 100
+  pts -= toks.length * 0.05 // nomes mais enxutos primeiro
+
+  return { pts, cobertura: total > 0 ? ganho / total : 0, completo, hits, medida, exato }
 }
 
 function ordenar(lista: ProdutoLoja[], termo: string, unidadeNota?: string | null) {
-  const termos = termosDe(termo)
-  return lista
-    .map((p) => ({ p, s: analisar(p, termos, unidadeNota).pts }))
-    .sort((a, b) => b.s - a.s)
-    .map((x) => x.p)
+  const q = consultaDe(termo)
+  const bruto = termo.trim()
+  const pontuados = lista
+    .map((p) => ({ p, a: analisar(p, q, bruto, unidadeNota) }))
+    .sort((x, y) => y.a.pts - x.a.pts)
+
+  // se alguns casam bem, esconde os que só combinam por uma palavra genérica
+  const bons = pontuados.filter((x) => x.a.cobertura >= 0.5 || x.a.exato)
+  return (bons.length > 0 ? bons : pontuados).map((x) => x.p)
 }
+
+// ----- busca no servidor -----
 
 // junta várias páginas da busca até chegar no máximo pedido
 async function buscarVarios(
@@ -215,18 +355,37 @@ async function buscarVarios(
   return lista.slice(0, maximo)
 }
 
-// termo inteiro + versões mais curtas que sempre mantêm a medida
+// termo original + versões limpas, com a palavra mais específica e com cada grafia alternativa
 function variacoes(termo: string): string[] {
-  const termos = termosDe(termo)
-  const medidas = termos.filter(ehMedida)
-  const fortes = termos.filter((t) => !ehMedida(t) && !STOP.has(t))
+  const q = consultaDe(termo)
+  const meds = q.medidas.map((m) => m.raw)
+  const todas = q.palavras.map(canon)
+  const rank = (w: string) =>
+    (GENERICAS.has(w) ? 0 : 10) + (VARIANTES.has(w) ? 5 : 0) + Math.min(w.length, 9) / 10
+  const esp = [...todas].sort((a, b) => rank(b) - rank(a))
+  const naOrdem = (ws: string[]) => todas.filter((w) => ws.includes(w))
+
   const out = new Set<string>([termo.trim()])
+  const add = (ws: string[], ms: string[] = []) => {
+    const s = [...naOrdem(ws), ...ms].join(' ')
+    if (s.length >= 2) out.add(s)
+  }
 
-  if (medidas.length && fortes.length) out.add(`${fortes[0]} ${medidas.join(' ')}`) // "prego 19x36"
-  if (fortes.length >= 2) out.add(fortes.slice(0, 2).join(' ')) // "prego polido"
-  if (fortes.length) out.add(fortes[0]) // "prego"
+  add(todas, meds) // tudo limpo: "broca widia irwin 6mm"
+  if (esp[0]) {
+    add([esp[0]], meds) // "widia 6mm"
+    for (const w of esp.slice(1)) add([esp[0], w]) // "broca widia", "widia irwin"
+    add([esp[0]]) // "widia"
+  }
+  // cada grafia alternativa: o catálogo pode ter "VIDEA" em vez de "WIDIA"
+  for (const w of todas) {
+    for (const v of VARIANTES.get(w) ?? []) {
+      out.add(v)
+      if (meds.length) out.add(`${v} ${meds.join(' ')}`)
+    }
+  }
 
-  return [...out].filter((v) => v.length >= 2)
+  return [...out].filter((v) => v.length >= 2).slice(0, MAX_VARIACOES)
 }
 
 // roda as variações em paralelo e junta tudo sem repetir
@@ -251,40 +410,30 @@ async function buscarInteligente(termo: string, cancelado: () => boolean): Promi
   return [...unico.values()]
 }
 
-// marca no texto as palavras digitadas (sem diferenciar acento ou maiúscula); medidas ficam em verde
-function Destaque({ texto, termo }: { texto: string; termo: string }) {
-  const termos = termosDe(termo).sort((a, b) => b.length - a.length)
-  if (termos.length === 0) return <>{texto}</>
-
-  const padrao = termos
-    .map((t) =>
-      ehMedida(t) && t.includes('x')
-        ? t
-            .split('x')
-            .map(escapeRe)
-            .join('\\s*[x×]\\s*')
-        : escapeRe(t)
-    )
-    .join('|')
+// marca no texto só o que de fato casou (mesma regra da pontuação); medidas em verde
+function Destaque({ texto, consulta }: { texto: string; consulta: Consulta }) {
+  if (consulta.palavras.length === 0 && consulta.medidas.length === 0) return <>{texto}</>
 
   const base = semAcento(texto).toLowerCase()
-  const re = new RegExp(padrao, 'g')
   const partes: React.ReactNode[] = []
   let ultimo = 0
 
-  for (const m of base.matchAll(re)) {
+  for (const m of base.matchAll(/[a-z0-9]+(?:[.,/]\d+[a-z]*)*/g)) {
+    const tok = m[0]
     const i = m.index ?? 0
-    if (m[0].length === 0 || i < ultimo) continue
+    const med = medidaDeToken(tok)
+    const ehMed = !!med && consulta.medidas.some((q) => casaMedida(q, [med]) === 'igual')
+    const ehPal =
+      !med && tok.length >= 2 && consulta.palavras.some((t) => casaPalavra(t, [canon(tok)]) >= 0.7)
+    if (!ehMed && !ehPal) continue
+
     if (i > ultimo) partes.push(texto.slice(ultimo, i))
     partes.push(
-      <mark
-        key={i}
-        className={`rounded-sm text-inherit ${ehMedida(m[0]) ? 'bg-emerald-200' : 'bg-yellow-200/80'}`}
-      >
-        {texto.slice(i, i + m[0].length)}
+      <mark key={i} className={`rounded-sm text-inherit ${ehMed ? 'bg-emerald-200' : 'bg-yellow-200/80'}`}>
+        {texto.slice(i, i + tok.length)}
       </mark>
     )
-    ultimo = i + m[0].length
+    ultimo = i + tok.length
   }
   partes.push(texto.slice(ultimo))
   return <>{partes}</>
@@ -385,13 +534,14 @@ function BuscaCatalogo({
   }
 
   const t = termo.trim()
-  const termos = useMemo(() => termosDe(t), [t])
-  const medidaBusca = useMemo(() => medidaDe(t), [t])
+  const consulta = useMemo(() => consultaDe(t), [t])
   const analise = useMemo(
-    () => res.map((p) => analisar(p, termos, unidadeNota)),
-    [res, termos, unidadeNota]
+    () => res.map((p) => analisar(p, consulta, t, unidadeNota)),
+    [res, consulta, t, unidadeNota]
   )
   const completos = analise.filter((a) => a.completo).length
+  const faltam = consulta.palavras.filter((w) => !analise.some((a) => a.hits.has(w)))
+  const faltaMedida = consulta.medidas.length > 0 && !analise.some((a) => a.medida === 'igual')
 
   let status: React.ReactNode = null
   if (t.length < 2) {
@@ -406,8 +556,17 @@ function BuscaCatalogo({
         {res.length}
         {res.length >= MAX_RESULTADOS ? '+' : ''} {res.length === 1 ? 'resultado' : 'resultados'} · mais
         parecidos primeiro
-        {completos === 0 && ' · nenhum tem todas as palavras'}
-        {completos > 0 && completos < res.length && ` · ${completos} com todas as palavras`}
+        {completos === 0 && ' · nenhum tem tudo o que você digitou'}
+        {completos > 0 && completos < res.length && ` · ${completos} com tudo`}
+        {faltam.length > 0 && (
+          <span className="text-amber-700"> · nenhum tem: {faltam.join(', ')}</span>
+        )}
+        {faltaMedida && (
+          <span className="text-amber-700">
+            {' '}
+            · nenhum com a medida {consulta.medidas.map((m) => m.raw).join(', ')}
+          </span>
+        )}
         {res.length >= MAX_RESULTADOS && ' · refine a busca para ver outros'}
       </>
     )
@@ -488,11 +647,11 @@ function BuscaCatalogo({
           className="relative max-h-[22rem] divide-y divide-slate-100 overflow-y-auto border-t border-slate-200"
         >
           {res.map((p, i) => {
+            const a = analise[i]
             const marcado = i === ativo
-            const medidaProd = medidaDe(p.name)
-            const medidaIgual = !!medidaBusca && medidaProd === medidaBusca
-            const medidaOutra = !!medidaBusca && !!medidaProd && medidaProd !== medidaBusca
-            const melhor = i === 0 && analise[i]?.completo && !medidaOutra
+            const medidaIgual = a?.medida === 'igual'
+            const medidaOutra = a?.medida === 'outra'
+            const melhor = i === 0 && !!a?.completo
             const unidadeIgual =
               !!unidadeNota && !!p.unit && p.unit.toUpperCase() === unidadeNota.toUpperCase()
 
@@ -516,11 +675,11 @@ function BuscaCatalogo({
               >
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold leading-snug text-slate-900">
-                    <Destaque texto={p.name} termo={t} />
+                    <Destaque texto={p.name} consulta={consulta} />
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                     <span>
-                      Cód. <Destaque texto={String(p.code)} termo={t} />
+                      Cód. <Destaque texto={String(p.code)} consulta={consulta} />
                     </span>
                     {p.unit && (
                       <span

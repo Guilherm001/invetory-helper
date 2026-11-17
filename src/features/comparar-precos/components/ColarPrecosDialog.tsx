@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
-  ClipboardPaste,
   FileUp,
   Loader2,
   Search,
@@ -46,7 +45,10 @@ interface Props {
 }
 
 const inputClass =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
+  'w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20'
+
+// colunas da conferência (telas médias em diante)
+const colunasGrid = 'md:grid md:grid-cols-[minmax(0,1fr)_110px_minmax(0,1.15fr)_150px] md:gap-x-5'
 
 // ---------- leitura do texto colado ----------
 
@@ -181,7 +183,7 @@ function SeletorItem({
       role="option"
       aria-selected={i.id === escolhido}
       onClick={() => escolher(i.id)}
-      className={`block w-full whitespace-normal break-words px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-50 ${
+      className={`block w-full whitespace-normal break-words px-4 py-2.5 text-left text-sm text-slate-800 transition hover:bg-slate-50 ${
         i.id === escolhido ? 'bg-[#079C9C]/10 font-medium' : ''
       }`}
     >
@@ -190,9 +192,7 @@ function SeletorItem({
   )
 
   const titulo = (texto: string) => (
-    <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-      {texto}
-    </p>
+    <p className="px-4 pb-1 pt-3 text-xs font-medium text-slate-500">{texto}</p>
   )
 
   return (
@@ -203,18 +203,20 @@ function SeletorItem({
         aria-haspopup="listbox"
         aria-expanded={aberto}
         onClick={() => (aberto ? fechar() : setAberto(true))}
-        className={`flex w-full items-start justify-between gap-2 rounded-lg border px-2.5 py-2 text-left text-sm outline-none transition focus:ring-2 focus:ring-[#079C9C]/20 ${tom}`}
+        className={`flex w-full items-start justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm outline-none transition focus:ring-2 focus:ring-[#079C9C]/20 ${tom}`}
       >
-        <span className="min-w-0 flex-1 whitespace-normal break-words">{rotulo}</span>
+        <span className="min-w-0 flex-1 whitespace-normal break-words leading-snug">
+          {rotulo}
+        </span>
         <ChevronDown
           className={`mt-0.5 size-4 shrink-0 text-slate-400 transition ${aberto ? 'rotate-180' : ''}`}
         />
       </button>
 
       {aberto && (
-        <div className="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="relative border-b border-slate-100 p-2">
-            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+        <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-md">
+          <div className="relative border-b border-slate-100 p-2.5">
+            <Search className="pointer-events-none absolute left-5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input
               data-seletor-busca=""
               autoFocus
@@ -233,11 +235,11 @@ function SeletorItem({
               }}
               placeholder="Pesquisar item..."
               aria-label="Pesquisar item"
-              className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
+              className="w-full rounded-md border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
             />
           </div>
 
-          <div role="listbox" className="max-h-52 overflow-y-auto pb-1">
+          <div role="listbox" className="max-h-60 overflow-y-auto pb-1">
             {provaveis.length > 0 && (
               <>
                 {titulo('Prováveis')}
@@ -251,15 +253,15 @@ function SeletorItem({
               </>
             )}
             {provaveis.length === 0 && outros.length === 0 && (
-              <p className="px-3 py-3 text-sm text-slate-500">Nenhum item encontrado.</p>
+              <p className="px-4 py-4 text-sm text-slate-500">Nenhum item encontrado.</p>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-sm">
             <button
               type="button"
               onClick={() => escolher(IGNORAR)}
-              className="text-slate-500 hover:text-slate-800 hover:underline"
+              className="font-medium text-slate-500 hover:text-slate-800 hover:underline"
             >
               Ignorar esta linha
             </button>
@@ -267,7 +269,7 @@ function SeletorItem({
               <button
                 type="button"
                 onClick={() => escolher('')}
-                className="text-[#079C9C] hover:underline"
+                className="font-medium text-[#079C9C] hover:underline"
               >
                 Limpar escolha
               </button>
@@ -422,31 +424,24 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
 
   return (
     <>
-      <DialogHeader className="bg-[#079C9C] px-6 py-5 text-left">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/20">
-            <ClipboardPaste className="size-6 text-white" />
-          </div>
-          <div>
-            <DialogTitle className="text-xl font-bold text-white">Colar preços</DialogTitle>
-            <DialogDescription className="text-sm text-white/80">
-              Cole a lista ou importe um PDF e confira antes de aplicar
-            </DialogDescription>
-          </div>
-        </div>
+      <DialogHeader className="border-b border-slate-200 px-8 py-6 text-left">
+        <DialogTitle className="text-xl font-semibold text-slate-900">Colar preços</DialogTitle>
+        <DialogDescription className="text-sm text-slate-500">
+          Cole a lista ou importe um PDF e confira os itens antes de aplicar.
+        </DialogDescription>
       </DialogHeader>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+      <div className="flex-1 space-y-8 overflow-y-auto px-8 py-7">
         {/* Fornecedor */}
-        <div className="space-y-1.5">
-          <label htmlFor="colar-fornecedor" className="block text-sm font-semibold text-slate-700">
+        <div className="space-y-2">
+          <label htmlFor="colar-fornecedor" className="block text-sm font-medium text-slate-700">
             Fornecedor
           </label>
           <select
             id="colar-fornecedor"
             value={fornecedorId}
             onChange={(e) => setFornecedorId(e.target.value)}
-            className={inputClass}
+            className={`${inputClass} sm:max-w-sm`}
           >
             <option value="">Escolher fornecedor...</option>
             {fornecedores.map((f) => (
@@ -458,16 +453,16 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
         </div>
 
         {/* Texto */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label htmlFor="colar-texto" className="block text-sm font-semibold text-slate-700">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-4">
+            <label htmlFor="colar-texto" className="block text-sm font-medium text-slate-700">
               Lista de preços
             </label>
             <button
               type="button"
               onClick={() => inputArquivoRef.current?.click()}
               disabled={lendoPdf}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#079C9C] hover:underline disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
             >
               {lendoPdf ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -486,13 +481,13 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           </div>
 
           {temEmbalagem && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-              <span className="font-medium text-slate-700">Preço a usar:</span>
+            <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 px-4 py-3 text-sm">
+              <span className="font-medium text-slate-700">Preço a usar</span>
               <select
                 value={modoPreco}
                 onChange={(e) => trocarModo(e.target.value as ModoPreco)}
                 aria-label="Preço por unidade ou por caixa"
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
+                className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-[#079C9C] focus:ring-2 focus:ring-[#079C9C]/20"
               >
                 <option value="unidade">Por unidade (valor ÷ embalagem)</option>
                 <option value="caixa">Por caixa</option>
@@ -508,64 +503,85 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
               setEscolhas({})
             }}
             autoFocus
-            className={`${inputClass} min-h-[130px] resize-y`}
+            className={`${inputClass} min-h-[160px] resize-y leading-relaxed`}
             placeholder={'Um item por linha, com o preço no fim. Ex:\ncimento CP-II 32,50\nareia média - R$ 120,00\ntijolo 8 furos: 1,15'}
           />
-          <p className="text-xs text-slate-400">
-            O nome não precisa ser igual: ignora acentos e maiúsculas e aceita parte do nome,
-            abreviações (cim. CP2) e pequenos erros de digitação. Preços como 32,50, 32.50 e
-            R$ 1.234,56 funcionam, e mais de 2 casas decimais são arredondadas.
+          <p className="text-sm leading-relaxed text-slate-500">
+            O nome não precisa ser idêntico: acentos, maiúsculas, abreviações e pequenos erros
+            de digitação são aceitos. Preços como 32,50, 32.50 ou R$ 1.234,56 funcionam.
           </p>
         </div>
 
         {/* Conferência */}
         {linhasFinais.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-              <span className="font-semibold text-slate-700">Conferência</span>
-              <span className="font-medium text-emerald-700">{prontas.length} prontas</span>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+              <h3 className="text-base font-semibold text-slate-900">Conferência</h3>
+              <span className="text-sm font-medium text-emerald-700">
+                {prontas.length} {prontas.length === 1 ? 'pronta' : 'prontas'}
+              </span>
               {atencao > 0 && (
-                <span className="font-medium text-amber-600">{atencao} precisam de atenção</span>
+                <span className="text-sm font-medium text-amber-700">
+                  {atencao} {atencao === 1 ? 'precisa' : 'precisam'} de atenção
+                </span>
               )}
-              {ignoradas > 0 && <span className="text-slate-400">{ignoradas} ignoradas</span>}
+              {ignoradas > 0 && (
+                <span className="text-sm text-slate-500">
+                  {ignoradas} {ignoradas === 1 ? 'ignorada' : 'ignoradas'}
+                </span>
+              )}
             </div>
 
-            <ul className="max-h-72 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-              {linhasFinais.map((l) => {
-                const precoAtual =
-                  l.valido && fornecedorId
-                    ? mapa.get(chave(l.escolhido, fornecedorId))
-                    : undefined
-                const troca = precoAtual !== undefined && precoAtual !== l.valor
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              {/* cabeçalho das colunas */}
+              <div
+                className={`hidden border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-medium text-slate-500 ${colunasGrid}`}
+              >
+                <span>Linha colada</span>
+                <span className="text-right">Preço</span>
+                <span>Item vinculado</span>
+                <span>Situação</span>
+              </div>
 
-                const tom = l.valido
-                  ? 'border-emerald-300 bg-emerald-50/60 text-slate-800'
-                  : l.escolhido === IGNORAR
-                    ? 'border-slate-200 bg-slate-50 text-slate-500'
-                    : 'border-amber-300 bg-amber-50 text-slate-800'
+              <ul className="max-h-[420px] divide-y divide-slate-100 overflow-y-auto">
+                {linhasFinais.map((l) => {
+                  const precoAtual =
+                    l.valido && fornecedorId
+                      ? mapa.get(chave(l.escolhido, fornecedorId))
+                      : undefined
+                  const troca = precoAtual !== undefined && precoAtual !== l.valor
 
-                return (
-                  <li
-                    key={l.idx}
-                    className={`space-y-1.5 px-3 py-2.5 ${l.escolhido === IGNORAR ? 'opacity-50' : ''}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 break-words text-sm font-medium text-slate-800">
+                  const tom = l.valido
+                    ? 'border-slate-300 bg-white text-slate-900 hover:border-slate-400'
+                    : l.escolhido === IGNORAR
+                      ? 'border-slate-200 bg-slate-50 text-slate-500'
+                      : 'border-amber-300 bg-amber-50/60 text-slate-900'
+
+                  return (
+                    <li
+                      key={l.idx}
+                      className={`space-y-3 px-5 py-4 md:space-y-0 md:items-start ${colunasGrid} ${
+                        l.escolhido === IGNORAR ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {/* linha colada */}
+                      <span className="block min-w-0 break-words text-sm font-medium leading-snug text-slate-900 md:pt-2.5">
                         {l.valor === null ? l.bruta : l.nome || '(sem nome)'}
                       </span>
-                      <span className="shrink-0 text-sm font-semibold text-slate-900">
+
+                      {/* preço */}
+                      <span className="block text-sm font-semibold tabular-nums text-slate-900 md:pt-2.5 md:text-right">
                         {l.valor === null ? '—' : formatarReais(l.valor)}
                       </span>
-                    </div>
 
-                    {l.valor === null ? (
-                      <p className="flex items-center gap-1 text-xs font-medium text-red-600">
-                        <AlertTriangle className="size-3.5" />
-                        Não encontrei o preço no fim da linha
-                      </p>
-                    ) : (
-                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
-                        <div className="min-w-0 flex-1">
+                      {l.valor === null ? (
+                        <p className="flex items-center gap-1.5 text-sm font-medium text-red-600 md:col-span-2 md:pt-2.5">
+                          <AlertTriangle className="size-4 shrink-0" />
+                          Não encontrei o preço no fim da linha
+                        </p>
+                      ) : (
+                        <>
+                          {/* item vinculado */}
                           <SeletorItem
                             escolhido={l.escolhido}
                             candidatos={l.candidatos}
@@ -577,63 +593,62 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
                               setEscolhas((prev) => ({ ...prev, [l.idx]: valor }))
                             }
                           />
-                        </div>
 
-                        <span className="shrink-0 text-xs sm:pt-2.5">
-                          {l.valido ? (
-                            <span className="inline-flex items-center gap-1.5 font-medium">
-                              {l.parecido ? (
-                                <span className="text-amber-600">parecido, confira</span>
+                          {/* situação */}
+                          <div className="space-y-0.5 text-sm md:pt-2.5">
+                            {l.valido ? (
+                              l.parecido ? (
+                                <p className="font-medium text-amber-700">Parecido, confira</p>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-emerald-700">
-                                  <Check className="size-3.5" />
+                                <p className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+                                  <Check className="size-4" />
                                   {precoAtual !== undefined && !troca
-                                    ? 'igual ao atual'
+                                    ? 'Igual ao atual'
                                     : l.lembrado
-                                      ? 'lembrado'
-                                      : 'ok'}
-                                </span>
-                              )}
-                              {troca && (
-                                <span className="text-amber-600">
-                                  · troca {formatarReais(precoAtual as number)}
-                                </span>
-                              )}
-                            </span>
-                          ) : l.escolhido === IGNORAR ? (
-                            <span className="text-slate-400">ignorada</span>
-                          ) : l.candidatos.length > 0 ? (
-                            <span className="font-medium text-amber-600">
-                              {l.candidatos.length}{' '}
-                              {l.candidatos.length === 1 ? 'possível' : 'possíveis'}
-                            </span>
-                          ) : (
-                            <span className="font-medium text-amber-600">não achei</span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+                                      ? 'Lembrado'
+                                      : 'Ok'}
+                                </p>
+                              )
+                            ) : l.escolhido === IGNORAR ? (
+                              <p className="text-slate-500">Ignorada</p>
+                            ) : l.candidatos.length > 0 ? (
+                              <p className="font-medium text-amber-700">
+                                {l.candidatos.length}{' '}
+                                {l.candidatos.length === 1 ? 'possível' : 'possíveis'}
+                              </p>
+                            ) : (
+                              <p className="font-medium text-amber-700">Não achei</p>
+                            )}
+                            {l.valido && troca && (
+                              <p className="text-xs text-slate-500">
+                                Substitui {formatarReais(precoAtual as number)}
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
           </div>
         )}
 
         {errorMessage && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {errorMessage}
           </p>
         )}
       </div>
 
-      <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+      <div className="flex justify-end gap-3 border-t border-slate-200 bg-white px-8 py-5">
         <Button
           type="button"
           variant="outline"
           onClick={onClose}
           disabled={saving}
-          className="border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+          className="border-slate-300 bg-white px-5 text-slate-700 hover:bg-slate-50"
         >
           Cancelar
         </Button>
@@ -641,7 +656,7 @@ function Conteudo({ itens, fornecedores, precos, onClose, onAplicar }: Omit<Prop
           type="button"
           onClick={aplicar}
           disabled={saving || prontas.length === 0}
-          className="min-w-44 gap-2 bg-[#079C9C] text-white shadow-sm hover:bg-[#079C9C]/90"
+          className="min-w-48 gap-2 bg-[#079C9C] px-5 text-white hover:bg-[#079C9C]/90"
         >
           {saving ? (
             <>
@@ -666,7 +681,7 @@ export default function ColarPrecosDialog({ open, ...resto }: Props) {
           const ativo = document.activeElement as HTMLElement | null
           if (ativo && ativo.dataset.seletorBusca !== undefined) e.preventDefault()
         }}
-        className="top-[5%] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[600px] [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100"
+        className="top-[4%] flex max-h-[92vh] w-[calc(100vw-2rem)] translate-y-0 flex-col gap-0 overflow-hidden border-slate-200 bg-white p-0 sm:max-w-[1000px]"
       >
         <Conteudo {...resto} />
       </DialogContent>
